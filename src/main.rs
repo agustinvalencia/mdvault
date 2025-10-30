@@ -34,7 +34,7 @@ fn main() -> Result<()> {
     let arena = Arena::new();
     let options = Options::default();
 
-    let file = String::from("./tmp/test.md");
+    let file = String::from("./examples/test.md");
     let md = load_doc(file)?;
 
     let root = parse_document(&arena, &md, &options);

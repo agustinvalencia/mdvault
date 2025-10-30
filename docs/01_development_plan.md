@@ -1,48 +1,38 @@
 # markadd — Expanded Development Plan (with UML & Sequence Diagrams)
 
-This document outlines the **phased roadmap** for developing **markadd**, including architectural diagrams, class interactions, and sequence flows.  
-Each phase builds incrementally on the previous ones, converging toward a safe, extensible Markdown automation CLI/TUI inspired by Obsidian’s QuickAdd.
+This document outlines the **phased roadmap** for developing **markadd**, including architectural diagrams
+, class interactions, and sequence flows.  
+Each phase builds incrementally on the previous ones, converging toward a safe, extensible Markdown
+automation CLI/TUI inspired by Obsidian’s QuickAdd.
 
+# markadd — Development Plan with Descriptions, Deliverables, Diagrams, and Folder Snapshots
 
+This roadmap details each phase with: a short **Goal**, a **Description** of scope and constraints, explicit **Deliverables**, a **UML class diagram**, a **sequence diagram** of supported/tested flows, and a **filesystem snapshot** expected at the end of the phase.
 
-## Phase 0 — Repo Bootstrap & CI Setup
+Note: tree views are illustrative; some files (e.g., Cargo.lock) omitted for clarity.
 
-**Objective:** Establish a clean, multi-crate Rust workspace, ready for modular development, testing, and CI integration.
+## Phase 0 — Repo Bootstrap & CI
 
-**Description:**  
-We initialise the repository as a Cargo workspace with three crates (`core`, `cli`, and a stub `tui`) and integrate CI pipelines for linting, testing, and formatting.  
-A dummy `markadd doctor` command will print version and build metadata to confirm a functioning binary and workspace structure.
+**Goal**  
+Establish a clean multi-crate workspace, CI pipeline, and a compiling “doctor” stub to validate toolchain and wiring.
 
-**Deliverables:**
-- Crate layout (`core`, `cli`, `tui`)
-- GitHub Actions workflow (fmt, clippy, test)
-- Basic CLI skeleton (`markadd doctor`)
-- Documentation: `CONTRIBUTING.md`, coding style guide
+**Description**  
+Create a Cargo workspace with `core`, `cli`, and a stub `tui`. Add GitHub Actions for fmt, clippy, and tests. Provide a minimal `doctor` command that prints build/version info. Define coding conventions and contribution guidelines.
+
+**Deliverables**  
+- Cargo workspace with crates: `core`, `cli`, `tui` (stub)  
+- CI workflow (fmt, clippy, test)  
+- `markadd doctor` stub  
+- CONTRIBUTING and basic README
 
 ```mermaid
 classDiagram
   direction LR
-  class Workspace {
-    +/crates/core
-    +/crates/cli
-    +/crates/tui (stub)
-    +/docs
-    +/examples
-  }
-
-  class CI {
-    +fmt()
-    +clippy()
-    +test()
-    +cacheDeps()
-  }
-
-  class DoctorStub {
-    +run(): Output
-  }
-
-  Workspace --> CI : Continuous integration
-  Workspace --> DoctorStub : CLI proof of life
+  class Workspace { +/crates/core +/crates/cli +/crates/tui +/docs +/examples }
+  class CI { +fmt() +clippy() +test() +cacheDeps() }
+  class DoctorStub { +run(): Output }
+  Workspace --> CI
+  Workspace --> DoctorStub
 ```
 
 ```mermaid
@@ -51,53 +41,56 @@ sequenceDiagram
   participant CI
   participant CLI as cli::main
   participant Doctor as DoctorStub
-
   Dev->>CI: push repo
-  CI->>CI: run fmt, clippy, test
+  CI->>CI: fmt + clippy + test
   Dev->>CLI: markadd doctor
   CLI->>Doctor: run()
   Doctor-->>CLI: version/build info
-  CLI-->>Dev: prints diagnostic output
+  CLI-->>Dev: prints diagnostics
 ```
 
+Filesystem snapshot
+```
+markadd/
+├─ Cargo.toml
+├─ .github/workflows/ci.yml
+├─ README.md
+├─ CONTRIBUTING.md
+├─ crates/
+│  ├─ core/  
+│  │  ├─ Cargo.toml  
+│  │  └─ src/lib.rs
+│  ├─ cli/   
+│  │  ├─ Cargo.toml  
+│  │  └─ src/main.rs
+│  └─ tui/   
+│     ├─ Cargo.toml  
+│     └─ src/main.rs
+├─ docs/DEVELOPMENT.md
+└─ examples/.gitkeep
+```
 
+## Phase 1 — Config Loader (TOML) & Doctor
 
-## Phase 1 — Config Loader (TOML) & Doctor Command
+**Goal**  
+Load and validate the ground-truth `~/.config/markadd/config.toml`, resolve the active profile, expand paths, and report via `doctor`.
 
-**Objective:** Implement deterministic configuration loading from `~/.config/markadd/config.toml`, ensuring profiles, directories, and security settings are validated.
+**Description**  
+Implement `ConfigLoader` with schema v1. Ensure deterministic precedence for `--config` and `--profile`. Validate directories and security flags. Extend `doctor` to show resolved state and actionable errors.
 
-**Description:**  
-This phase introduces the `ConfigLoader`, which parses the ground-truth TOML file, validates directory paths, and expands `~`.  
-The `doctor` command is extended to provide detailed feedback on active profiles and configuration validity.
-
-**Deliverables:**
-- Config schema (version, profiles, security)
-- TOML parser and validator
-- `ResolvedConfig` struct
-- Updated `doctor` command printing loaded profile info
+**Deliverables**  
+- `ResolvedConfig` and `SecurityPolicy` types  
+- Loader with `~` expansion and absolute path normalisation  
+- Detailed `doctor` output and error taxonomy  
+- Unit tests for config edge cases
 
 ```mermaid
 classDiagram
   direction LR
-  class ConfigLoader {
-    +load(path, profile?): ResolvedConfig
-  }
-  class ResolvedConfig {
-    +profile: String
-    +vault_root: Path
-    +templates_dir: Path
-    +captures_dir: Path
-    +macros_dir: Path
-    +security: SecurityPolicy
-  }
-  class SecurityPolicy {
-    +allow_shell: bool
-    +allow_http: bool
-  }
-  class DoctorCmd {
-    +run(rc: ResolvedConfig): Report
-  }
-
+  class ConfigLoader { +load(path, profile?): ResolvedConfig }
+  class ResolvedConfig { +profile +vault_root +templates_dir +captures_dir +macros_dir +security }
+  class SecurityPolicy { +allow_shell: bool +allow_http: bool }
+  class DoctorCmd { +run(rc: ResolvedConfig): Report }
   ConfigLoader --> ResolvedConfig
   ResolvedConfig o--> SecurityPolicy
   DoctorCmd --> ResolvedConfig
@@ -109,32 +102,38 @@ sequenceDiagram
   participant CLI as cli::doctor
   participant CFG as core::ConfigLoader
   participant OS as FS/Env
-  participant OUT as Doctor Report
-
+  participant OUT as Report
   User->>CLI: markadd doctor [--config|--profile]
   CLI->>OS: resolve config path
-  CLI->>CFG: load(config_path, profile)
+  CLI->>CFG: load(path, profile)
   CFG-->>CLI: ResolvedConfig
-  CLI->>OUT: generate report
-  OUT-->>User: show vault_root, dirs, security flags
+  CLI->>OUT: build diagnostics
+  OUT-->>User: profile, dirs, security
 ```
 
+Filesystem snapshot
+```
+markadd/
+├─ crates/core/src/config/
+│  ├─ loader.rs
+│  └─ types.rs
+├─ crates/core/tests/config_tests.rs
+└─ crates/cli/src/cmd/doctor.rs
+```
 
+## Phase 2 — Content Parsers (YAML/MD)
 
-## Phase 2 — YAML/Markdown Content Parsers
+**Goal**  
+Parse Template (MD+front-matter), Capture (YAML), and Macro (YAML) with strict validation and friendly errors. Provide `list`.
 
-**Objective:** Implement robust parsers for the three content types: **templates**, **captures**, and **macros**.
+**Description**  
+Implement a `ContentLoader` that reads templates with YAML front-matter (vars, target policy) and YAML files for captures/macros. Reject unknown keys. `list` enumerates valid items with names/paths.
 
-**Description:**  
-Templates are Markdown files with YAML front-matter defining variables and output policies.  
-Captures and macros are YAML-only and describe insertions and multi-step workflows respectively.  
-Parsing must be strict: fail early for malformed fields and report human-readable errors.
-
-**Deliverables:**
-- Parsers for `.md` (front-matter split) and `.yaml`
-- Strong typing for variable and target definitions
-- Error spans with file/line feedback
-- `markadd list` command listing available items
+**Deliverables**  
+- `TemplateSpec`, `CaptureSpec`, `MacroSpec` types  
+- Front-matter splitter for `.md` templates  
+- Strict serde_yaml parsers and error messages with file/line  
+- `markadd list` command and tests
 
 ```mermaid
 classDiagram
@@ -143,30 +142,11 @@ classDiagram
     +load_template(dir, nameOrPath): TemplateSpec
     +load_capture(dir, nameOrPath): CaptureSpec
     +load_macro(dir, nameOrPath): MacroSpec
+    +scan(dir, kind): Vec<ItemMeta>
   }
-
-  class TemplateSpec {
-    +name: String
-    +vars: VarSpec[]
-    +target: TargetPolicy
-    +body: String
-  }
-  class CaptureSpec {
-    +name: String
-    +vars: VarSpec[]
-    +target: CaptureTarget
-    +content: String
-    +dedupe: DedupeSpec?
-  }
-  class MacroSpec {
-    +name: String
-    +vars: VarSpec[]
-    +steps: Step[]
-  }
-
-  ContentLoader --> TemplateSpec
-  ContentLoader --> CaptureSpec
-  ContentLoader --> MacroSpec
+  class TemplateSpec { +name +vars +target +body }
+  class CaptureSpec { +name +vars +target +content +dedupe? }
+  class MacroSpec   { +name +vars +steps }
 ```
 
 ```mermaid
@@ -175,95 +155,112 @@ sequenceDiagram
   participant CLI as cli::list
   participant CFG as ConfigLoader
   participant CTL as ContentLoader
-  User->>CLI: markadd list templates
-  CLI->>CFG: load config
+  User->>CLI: markadd list templates|captures|macros
+  CLI->>CFG: load
   CFG-->>CLI: ResolvedConfig
-  CLI->>CTL: scan templates_dir
-  CTL-->>CLI: TemplateSpec[]
-  CLI-->>User: display names/descriptions
+  CLI->>CTL: scan & parse items
+  CTL-->>CLI: ItemMeta[]
+  CLI-->>User: print names/descriptions
 ```
 
+Filesystem snapshot
+```
+markadd/
+├─ crates/core/src/content/
+│  ├─ loader.rs
+│  ├─ template.rs
+│  ├─ capture.rs
+│  ├─ macro.rs
+│  └─ errors.rs
+├─ crates/cli/src/cmd/list.rs
+└─ examples/.markadd/{templates,captures,macros}/...
+```
 
+## Phase 3 — Variable Resolution & Tera Rendering
 
-## Phase 3 — Variable Resolution & Template Engine (Tera)
+**Goal**  
+Deterministically resolve variables from providers/defaults/CLI and render both output paths and Markdown bodies. Provide `preview`.
 
-**Objective:** Introduce variable providers, merging logic, and templating for rendering paths and content.
+**Description**  
+Add `Resolver` with precedence: providers → YAML defaults → `with:` → CLI `--var` → prompt (UI). Integrate Tera and custom filters. Implement `preview` to render without writing.
 
-**Description:**  
-Variable resolution merges values from multiple layers: auto providers (now, uuid, git branch), defaults from YAML, CLI arguments, and interactive prompts.  
-We integrate **Tera** for safe, familiar Jinja-like rendering with filters like `date` and `slugify`.  
-The `preview` command is introduced for dry-run rendering.
-
-**Deliverables:**
-- `Resolver` module with layered precedence
-- Core providers (`Time`, `UUID`, `Git`, `Env`)
-- Integration with Tera
-- `markadd preview` command
+**Deliverables**  
+- `Resolver`, `Provider` trait, and core providers (time, uuid, git, env)  
+- Tera engine with helpers (date, slugify, sha1)  
+- `markadd preview` command  
+- Tests for validation and rendering
 
 ```mermaid
 classDiagram
   direction LR
-  class Resolver {
-    +resolve(vars, defaults, withVars, cliVars, providers): Context
-  }
-  class Provider { <<interface>> +enrich(ctx): void }
-  class TemplateEngine {
-    +render_str(template, ctx): String
-  }
-  Resolver --> Provider
-  Resolver --> Context
-  TemplateEngine --> Context
+  class Resolver { +resolve(vars, inputs, providers): Context }
+  class Provider <<interface>> { +enrich(ctx) }
+  class TimeProvider
+  class UuidProvider
+  class GitProvider
+  class EnvProvider
+  class TemplateEngine { +render_str(tpl, ctx): String }
+  Provider <|.. TimeProvider
+  Provider <|.. UuidProvider
+  Provider <|.. GitProvider
+  Provider <|.. EnvProvider
+  Resolver --> TemplateEngine
 ```
 
 ```mermaid
 sequenceDiagram
   participant User
   participant CLI as cli::preview
-  participant CFG as ConfigLoader
-  participant CTL as ContentLoader
+  participant CFG as Config
+  participant CTL as Content
   participant RES as Resolver
-  participant TPL as TemplateEngine
-
-  User->>CLI: markadd preview template meeting-note
-  CLI->>CFG: load config
-  CFG-->>CLI: ResolvedConfig
+  participant TPL as Tera
+  User->>CLI: markadd preview template meeting-note --var title=Sync
+  CLI->>CFG: load
   CLI->>CTL: load_template
-  CTL-->>CLI: TemplateSpec
-  CLI->>RES: resolve(vars/providers)
+  CLI->>RES: resolve context
   RES-->>CLI: Context
-  CLI->>TPL: render_str(pathTpl, ctx) & render_str(bodyTpl, ctx)
-  TPL-->>CLI: path + rendered markdown
-  CLI-->>User: output rendered preview
+  CLI->>TPL: render path/body
+  TPL-->>CLI: strings
+  CLI-->>User: rendered preview
 ```
 
-
+Filesystem snapshot
+```
+markadd/
+├─ crates/core/src/vars/
+│  ├─ resolver.rs
+│  ├─ provider.rs
+│  ├─ providers/{time.rs,uuid.rs,git.rs,env.rs}
+│  └─ types.rs
+├─ crates/core/src/template/tera_engine.rs
+└─ crates/cli/src/cmd/preview.rs
+```
 
 ## Phase 4 — Markdown AST Insertions (Comrak)
 
-**Objective:** Implement AST-based insertion at section boundaries, eliminating fragile regex manipulations.
+**Goal**  
+Insert Markdown fragments at the beginning or end of a named section using an AST, not regex.
 
-**Description:**  
-We use **Comrak** to parse Markdown into an AST and insert new fragments safely at the beginning or end of specific sections.  
-This ensures syntax preservation even in complex documents.
+**Description**  
+Wrap Comrak to parse, find headings, compute section bounds, splice fragment, and render back. Golden tests cover tricky documents (code fences, tables, last section).
 
-**Deliverables:**
-- AST insertion logic
-- Section-finding utilities
-- Golden tests for edge cases
+**Deliverables**  
+- `MarkdownEdit` trait with Comrak implementation  
+- Section navigation helpers  
+- Golden tests and fixtures
 
 ```mermaid
 classDiagram
   direction LR
-  class MarkdownEdit {
-    +insert_into_section(input, section, frag_md, pos): String
-  }
+  class MarkdownEdit { +insert_into_section(input, section, frag, pos): String }
   class ComrakAdapter {
-    +parse()
-    +render()
-    +find_heading()
-    +splice_after()
+    +parse(md): Ast
+    +render(ast): String
+    +find_heading(ast, title): Node
+    +section_tail(node, level): Node
+    +splice_after(anchor, fragmentAst)
   }
-
   MarkdownEdit --> ComrakAdapter
 ```
 
@@ -271,80 +268,94 @@ classDiagram
 sequenceDiagram
   participant Test
   participant Edit as MarkdownEdit
-  participant Comrak as ComrakAdapter
-
-  Test->>Edit: insert_into_section(markdown, "Inbox", frag, Begin)
-  Edit->>Comrak: parse(input)
+  participant Comrak as Adapter
+  Test->>Edit: insert_into_section(md,"Inbox",frag,Begin)
+  Edit->>Comrak: parse
   Comrak-->>Edit: AST
-  Edit->>Comrak: find_heading(AST, "Inbox")
-  Edit->>Comrak: splice_after(headingNode, fragmentAST)
-  Edit->>Comrak: render(AST)
-  Comrak-->>Edit: new Markdown
-  Edit-->>Test: assert golden diff
+  Edit->>Comrak: find_heading
+  Edit->>Comrak: parse(fragment)
+  Edit->>Comrak: splice_after
+  Edit->>Comrak: render
+  Comrak-->>Edit: newMd
+  Edit-->>Test: assert golden
 ```
 
+Filesystem snapshot
+```
+markadd/
+├─ crates/core/src/markdown_ast/
+│  ├─ mod.rs
+│  ├─ comrak.rs
+│  └─ tests/{insert_tests.rs,golden_*}
+└─ docs/CAPTURE.md
+```
 
+## Phase 5 — File Planner, Atomic Writes, Undo Log
 
-## Phase 5 — File Planner & Atomic Writes
+**Goal**  
+Guarantee safe writes using temp+rename+fsync and record a JSONL operation log enabling undo.
 
-**Objective:** Ensure safe disk writes and enable undo functionality.
+**Description**  
+Define `FilePlan` for Create/Edit with pure transforms. Implement atomic executor with per-op logging and basic undo that restores pre-change content where possible.
 
-**Description:**  
-This phase handles file mutations through a transaction-like mechanism using temporary files, atomic renames, and fsync.  
-Every change is logged to a JSONL file for recovery and auditability.
-
-**Deliverables:**
-- `FilePlan` abstraction (Create/Edit)
-- Atomic write executor
-- Operation log with undo support
+**Deliverables**  
+- `FilePlan`, `FileOp`, `Transform`, executor  
+- JSONL op log and `undo` scaffolding  
+- Crash-safety tests
 
 ```mermaid
 classDiagram
   direction LR
-  class FileOp {
-    Create(path, bytes, if_exists)
-    Edit(path, transform)
-  }
+  class FileOp { <<enum>> Create | Edit }
+  class Transform { +apply(input): String }
   class FilePlan { +ops: FileOp[] }
-  class Executor {
-    +execute(plan): ExecReport
-  }
-  class OpLog {
-    +append(entry)
-  }
-  Executor --> FilePlan
+  class Executor { +execute(plan): ExecReport }
+  class OpLog { +append(entry) +read(id): Entry }
+  class ExecReport { +ops +bytes +duration }
+  FilePlan o--> FileOp
+  FileOp o--> Transform
   Executor --> OpLog
 ```
 
 ```mermaid
 sequenceDiagram
-  participant Plan
-  participant Exec
-  participant FS
-  participant Log
-
-  Plan->>Exec: FilePlan
+  participant Coord as Coordinator
+  participant Plan as FilePlan
+  participant Exec as Executor
+  participant FS as Filesystem
+  participant Log as OpLog
+  Coord->>Exec: execute(plan)
   Exec->>FS: write temp
   Exec->>FS: fsync(temp)
-  Exec->>FS: rename(temp->target)
+  Exec->>FS: rename(temp->final)
   Exec->>FS: fsync(parent)
   Exec->>Log: append(entry)
+  Exec-->>Coord: report
 ```
 
+Filesystem snapshot
+```
+markadd/
+├─ crates/core/src/planner/
+│  ├─ plan.rs
+│  ├─ exec.rs
+│  ├─ oplog.rs
+│  └─ tests/atomic_tests.rs
+└─ docs/WRITES.md
+```
 
+## Phase 6 — Minimal CLI Wiring
 
-## Phase 6 — Minimal CLI
+**Goal**  
+Expose working commands: `template`, `capture`, `macro`, `list`, `preview`, `doctor`, `undo` with human/JSON output.
 
-**Objective:** Deliver a working CLI exposing all key commands: `template`, `capture`, `macro`, and utilities.
+**Description**  
+Introduce a `Coordinator` facade in the CLI that wires config, content, vars, template engine, AST, and planner. Keep CLI thin; errors are categorised and surfaced cleanly.
 
-**Description:**  
-The CLI acts as a lightweight coordinator calling the pure `core` modules.  
-It supports structured (`--json`) and human-readable output modes, and will handle global options like `--dry-run` and `--trust`.
-
-**Deliverables:**
-- `Coordinator` facade in CLI
-- Subcommands: template, capture, macro, list, preview, doctor, undo
-- Error taxonomy
+**Deliverables**  
+- CLI subcommands with shared options (`--config`, `--profile`, `--var`, `--dry-run`, `--json`, `--trust`)  
+- Integration tests for template/capture end-to-end  
+- Stable JSON report structs
 
 ```mermaid
 classDiagram
@@ -353,12 +364,9 @@ classDiagram
     +run_template()
     +run_capture()
     +run_macro()
+    +undo(id)
   }
-  class CLI {
-    +main()
-    -parseArgs()
-  }
-
+  class CLI { +main() -parseArgs() -print() }
   CLI --> Coordinator
   Coordinator --> ConfigLoader
   Coordinator --> ContentLoader
@@ -379,49 +387,55 @@ sequenceDiagram
   participant TPL
   participant AST
   participant EXE
-
   User->>CLI: markadd capture inbox --var text="Review PR #42"
   CLI->>Coord: run_capture
-  Coord->>CFG: load config
+  Coord->>CFG: load
   Coord->>CTL: load_capture
-  Coord->>RES: resolve vars
+  Coord->>RES: resolve
   RES-->>Coord: Context
   Coord->>TPL: render strings
-  Coord->>AST: insert fragment
-  Coord->>EXE: execute(FilePlan)
+  Coord->>AST: insert
+  Coord->>EXE: execute(plan)
   EXE-->>Coord: report
   Coord-->>CLI: result
   CLI-->>User: output
 ```
 
-
+Filesystem snapshot
+```
+markadd/
+├─ crates/cli/src/
+│  ├─ main.rs
+│  └─ cmd/
+│     ├─ doctor.rs
+│     ├─ list.rs
+│     ├─ preview.rs
+│     ├─ template.rs
+│     ├─ capture.rs
+│     ├─ macro.rs
+│     └─ undo.rs
+└─ docs/CLI.md
+```
 
 ## Phase 7 — Macro Runner & Security Gates
 
-**Objective:** Enable multi-step workflows and enforce trust-based access for shell/network operations.
+**Goal**  
+Support multi-step workflows with shared context and enforce trust for shell (and, later, HTTP).
 
-**Description:**  
-The macro runner executes a series of actions, maintaining a shared context and respecting per-step policies (abort/continue).  
-The security module ensures no untrusted code (e.g. shell) executes without explicit `--trust`.
+**Description**  
+Implement `MacroRunner` executing steps sequentially, merging `with:` into the shared context. Gate shell actions via `SecurityGate` requiring config permission and `--trust`. Provide clear per-step logs and error policies.
 
-**Deliverables:**
-- Macro runner
-- Security gate system
-- Shell execution layer with sanitised commands
+**Deliverables**  
+- Macro runner with `abort`/`continue` error handling  
+- Security gate and safe shell execution wrapper  
+- Integration tests covering trust and failure modes
 
 ```mermaid
 classDiagram
   direction LR
-  class MacroRunner {
-    +run(spec, ctx): RunReport
-  }
-  class SecurityGate {
-    +allow_shell(trustFlag)
-  }
-  class ShellExec {
-    +run(cmd, args): ShellResult
-  }
-
+  class MacroRunner { +run(spec, ctx): RunReport }
+  class SecurityGate { +allow_shell(trustFlag) }
+  class ShellExec { +run(cmd, args): ShellResult }
   MacroRunner --> SecurityGate
   SecurityGate --> ShellExec
 ```
@@ -430,10 +444,9 @@ classDiagram
 sequenceDiagram
   participant User
   participant CLI
-  participant Macro
-  participant Gate
+  participant Macro as MacroRunner
+  participant Gate as Security
   participant Shell
-
   User->>CLI: markadd macro weekly-review --trust
   CLI->>Macro: run(spec, ctx)
   loop steps
@@ -443,42 +456,41 @@ sequenceDiagram
       Macro->>Shell: run(cmd)
     end
   end
-  Macro-->>CLI: report
+  Macro-->>CLI: run report
+  CLI-->>User: summary
 ```
 
+Filesystem snapshot
+```
+markadd/
+├─ crates/core/src/macro/
+│  ├─ runner.rs
+│  └─ types.rs
+├─ crates/core/src/security/
+│  ├─ gate.rs
+│  └─ shell.rs
+└─ tests/integration_macro.rs
+```
 
+## Phase 8 — Lua Hooks (Optional)
 
-## Phase 8 — Lua Hook Integration (Optional)
+**Goal**  
+Offer a sandboxed scripting escape hatch for programmable captures/macros, without compromising safety or determinism.
 
-**Objective:** Provide a scripting escape hatch for advanced templating and macros.
+**Description**  
+Embed Lua via `mlua` in safe mode. Expose a tiny API to call template/capture actions and pure helpers. Disallow OS/IO by default; shell and network remain gated and require `--trust`. Provide an evaluator for CI/dry runs.
 
-**Description:**  
-Expose a minimal, sandboxed Lua API (via `mlua`) to script dynamic captures and macros.  
-Restrict IO and system calls, enforce instruction/time limits, and integrate with the same trust model.
-
-**Deliverables:**
-- Safe `LuaEngine`
-- `api.*` bindings (render, template, capture, now, uuid)
-- Trust enforcement (`--trust` + config flags)
-- `markadd eval-lua` for debugging
+**Deliverables**  
+- `LuaEngine` with `api` bindings and sandbox  
+- `markadd eval-lua` command  
+- Tests for sandbox limits and trust gates
 
 ```mermaid
 classDiagram
   direction LR
-  class LuaEngine {
-    +run_capture(file, ctx)
-    +run_macro(file, ctx)
-  }
-  class LuaApi {
-    +template()
-    +capture()
-    +sh()
-  }
-  class Sandbox {
-    +limits(cpu, mem)
-    -no_os_io
-  }
-
+  class LuaEngine { +run_capture(file, ctx) +run_macro(file, ctx) }
+  class LuaApi { +template() +capture() +render_string() +now() +uuid() +sh()~gated }
+  class Sandbox { +limits(cpu,mem,steps) -no_os_io_debug }
   LuaEngine --> LuaApi
   LuaEngine --> Sandbox
   LuaApi --> Coordinator
@@ -492,45 +504,43 @@ sequenceDiagram
   participant API
   participant Coord
   participant Gate
-
   User->>CLI: markadd macro lua:macros/plan.lua --trust
   CLI->>Lua: run_macro(file, ctx)
   Lua->>API: template()/capture()
   API->>Coord: run_template/capture
-  API->>Gate: allow_shell(trust) when needed
-  Lua-->>CLI: result
-  CLI-->>User: report
+  API->>Gate: allow_shell(trust) when sh()
+  Lua-->>CLI: report
+  CLI-->>User: results
 ```
 
-
+Filesystem snapshot
+```
+markadd/
+├─ crates/core/src/lua/
+│  ├─ engine.rs
+│  ├─ api.rs
+│  └─ sandbox.rs
+└─ examples/.markadd/macros/plan.lua
+```
 
 ## Phase 9 — TUI Palette (Optional)
 
-**Objective:** Offer a terminal UI for interactive note creation, with fuzzy search and live previews.
+**Goal**  
+Provide an interactive palette with fuzzy search, live previews, typed prompts, and one-keystroke execution.
 
-**Description:**  
-A TUI built with Ratatui or Iocraft exposes a palette where users can select templates or macros, fill variables, preview rendered output, and confirm execution—all without leaving the terminal.
+**Description**  
+Build a Ratatui/Iocraft TUI that lists templates/captures/macros, previews the rendered output or diff, and collects variables interactively. The TUI delegates all work to the same core coordinator.
 
-**Deliverables:**
-- Palette UI
-- Preview pane with live rendering
-- Input prompts for variables
-- `doctor` and `list` accessible in TUI
+**Deliverables**  
+- TUI app with palette, preview, prompts  
+- Non-blocking engine calls; cancellable prompts  
+- Snapshot tests for screens
 
 ```mermaid
 classDiagram
   direction LR
-  class TuiApp {
-    +run()
-    -palette
-    -preview
-    -prompts
-  }
-  class EngineFacade {
-    +preview()
-    +execute()
-  }
-
+  class TuiApp { +run() -palette -preview -prompts }
+  class EngineFacade { +preview() +execute() }
   TuiApp --> EngineFacade
   EngineFacade --> Coordinator
 ```
@@ -541,47 +551,49 @@ sequenceDiagram
   participant TUI
   participant Eng
   participant Coord
-
   User->>TUI: open palette
-  TUI->>Eng: preview(template)
-  Eng->>Coord: dry-run render
-  Coord-->>Eng: rendered content
+  TUI->>Eng: preview(template/capture/macro)
+  Eng->>Coord: dry-run
+  Coord-->>Eng: rendered content/diff
   Eng-->>TUI: show preview
-  User->>TUI: confirm execution
+  User->>TUI: confirm
   TUI->>Eng: execute
-  Eng->>Coord: apply plan
+  Eng->>Coord: run
   Coord-->>Eng: report
-  Eng-->>User: done
+  Eng-->>User: status
 ```
 
+Filesystem snapshot
+```
+markadd/
+├─ crates/tui/src/
+│  ├─ main.rs
+│  ├─ app.rs
+│  ├─ palette.rs
+│  ├─ preview.rs
+│  └─ prompts.rs
+└─ assets/theme.toml
+```
 
+## Phase 10 — Documentation, Packaging, Release
 
-## Phase 10 — Documentation, Packaging, and Release
+**Goal**  
+Publish binaries and comprehensive docs; ensure reproducible builds and a friendly onboarding experience.
 
-**Objective:** Finalise documentation, distribute binaries, and ensure reproducibility.
+**Description**  
+Write user and authoring guides, security and CLI references. Automate release builds for macOS/Linux. Provide Homebrew tap and `cargo install` paths. Keep `doctor` guidance up to date for self-service troubleshooting.
 
-**Description:**  
-Document every command and authoring guideline, provide installation instructions (Cargo and Homebrew), and include `doctor`-based diagnostics for user self-support.
-
-**Deliverables:**
-- Markdown documentation under `docs/`
-- User and developer guides
-- Homebrew formula and Cargo packaging
-- Automated builds in CI
+**Deliverables**  
+- Docs: CONFIG, TEMPLATES, CAPTURE, MACROS, SECURITY, CLI  
+- Release CI with signed artifacts  
+- Homebrew formula and crate publication  
+- Changelog and versioning policy
 
 ```mermaid
 classDiagram
   direction LR
-  class Docs {
-    +UserGuide()
-    +TemplateAuthoring()
-    +SecurityModel()
-  }
-  class Release {
-    +build()
-    +publish()
-  }
-
+  class Docs { +UserGuide +Authoring +Security +CLIRef }
+  class Release { +build() +sign() +publish() }
   Docs ..> CLI
   Release ..> CI
 ```
@@ -592,23 +604,27 @@ sequenceDiagram
   participant CI
   participant Release
   participant Users
-
   Maintainer->>CI: tag v0.1.0
-  CI->>Release: build + sign binaries
-  Release-->>Users: publish (brew/cargo)
-  Maintainer-->>Users: announce + docs update
+  CI->>Release: build artifacts
+  Release-->>Users: brew/cargo availability
+  Maintainer-->>Users: docs site update
+```
+
+Filesystem snapshot
+```
+markadd/
+├─ .github/workflows/release.yml
+├─ docs/
+│  ├─ README.md
+│  ├─ CONFIG.md
+│  ├─ TEMPLATES.md
+│  ├─ CAPTURE.md
+│  ├─ MACROS.md
+│  ├─ SECURITY.md
+│  └─ CLI.md
+├─ dist/               # CI artifacts
+└─ Formula/markadd.rb  # Homebrew tap (optional)
 ```
 
 
-
-## Final Notes
-
-- Each phase ends with a **usable subset** of markadd (buildable, testable).
-- The system stays modular; each module is unit-testable in isolation.
-- Security defaults are conservative—nothing runs shell code without explicit consent.
-- YAML and TOML remain human-first formats.
-- Lua scripting is opt-in and sandboxed.
-
-After **Phase 5**, the system already provides a functional QuickAdd alternative for the terminal.  
-Phases 7–9 progressively extend it into a flexible, scriptable, and interactive knowledge-capture tool.
 
