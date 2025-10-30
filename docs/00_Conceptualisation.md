@@ -148,7 +148,7 @@ steps:
 
 ```mermaid
 flowchart TD
-    A[CLI / TUI Invocation\n(e.g., markadd template meeting-note)] --> B{Resolve Config Path}
+    A[CLI / TUI Invocation\ne.g., markadd template meeting-note] --> B{Resolve Config Path}
     B -->|MARKADD_CONFIG or default| C[Load ~/.config/markadd/config.toml]
     C --> D{Parse & Validate}
     D --> E[Select active profile]
@@ -164,7 +164,7 @@ flowchart TD
     K --> L{Command kind?}
     L -->|template| M[Render & create new file]
     L -->|capture| N[Insert rendered fragment\nvia Markdown AST]
-    L -->|macro| O[Run composed steps\n(template/capture/shell)]
+    L -->|macro| O[Run composed steps\ntemplate/capture/shell]
     M --> P[Atomic write + log]
     N --> P
     O --> P
