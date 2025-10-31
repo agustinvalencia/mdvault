@@ -16,6 +16,21 @@ It is designed to be deterministic, safe by default, and easily extensible throu
 - **Optional Lua scripting**: define programmable captures or macros with a sandboxed API  
 - **TUI mode**: (planned) an interactive palette for selecting templates and filling variables  
 
+---
+
+## Current Development Phase : 0
+
+Terminal-first Markdown automation. Phase 0: workspace + CI + doctor stub.
+
+### Quick start
+```shell
+cargo build -p markadd
+cargo run -p markadd -- --version
+cargo run -p markadd -- doctor
+```
+
+---
+
 ## Getting Started
 
 ### Installation
