@@ -1,11 +1,11 @@
 #![deny(clippy::all, clippy::pedantic)]
-#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::module_name_repetitions, clippy::must_use_candidate)]
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-pub rustc_version() -> String {
+pub fn rustc_version() -> String {
     std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".into())
 }
 
@@ -17,4 +17,3 @@ pub fn doctor_stub() -> String {
         std::env::consts::OS
     )
 }
-
