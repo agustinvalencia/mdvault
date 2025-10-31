@@ -1,1 +1,2 @@
 allow-exact-repetitions = true
+cognitive-complexity-threshold = 25

@@ -1,4 +1,4 @@
-max_width = 100
+max_width = 90
 hard_tabs = false
 tab_spaces = 4
 use_small_heuristics = "max"

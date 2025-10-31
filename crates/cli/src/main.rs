@@ -2,14 +2,13 @@
 #![allow(clippy::module_name_repetitions, clippy::must_use_candidate)]
 #![allow(clippy::print_stdout, clippy::missing_errors_doc, clippy::missing_panics_doc)]
 
-use markadd_core::doctor_stub;
+mod cmd;
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    match args.get(1).map(String::as_str) {
+    let mut args = std::env::args().skip(1);
+    match args.next().as_deref() {
         Some("doctor") => {
-            println!("markadd v{} | doctor", env!("CARGO_PKG_VERSION"));
-            println!("{}", doctor_stub());
+            cmd::doctor::run(args.collect());
         }
         Some("--version" | "-V") => {
             println!("markadd v{}", env!("CARGO_PKG_VERSION"));
