@@ -1,8 +1,11 @@
-[package]
-name = "markadd"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = ["crates/core", "crates/cli", "crates/tui"]
+resolver = "2"
 
-[dependencies]
-anyhow = "1.0.100"
-comrak = "0.46.0"
+[workspace.package]
+edition = "2025"
+license = "MIT"
+authors = ["Agustin Valencia <aguvalenciag@gmail.com>"]
+repository = "https://github.com/agustinvalencia/markadd"
+homepage = "https://github.com/agustinvalencia/markadd"
+readme = "README.md"

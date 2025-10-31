@@ -1,0 +1,10 @@
+[package]
+name = "markadd-core"
+version = "0.0.1"
+edition = "2025"
+
+[lib]
+name = "markadd_core"
+path = "src/lib.rs"
+
+[dependencies]
