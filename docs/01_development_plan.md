@@ -268,7 +268,10 @@ Add `Resolver` with precedence: providers → YAML defaults → `with:` → CLI 
 classDiagram
   direction LR
   class Resolver { +resolve(vars, inputs, providers): Context }
-  class Provider <<interface>> { +enrich(ctx) }
+  class Provider  { 
+    +enrich(ctx) 
+    <<interface>>
+  }
   class TimeProvider
   class UuidProvider
   class GitProvider
