@@ -1,0 +1,11 @@
+[package]
+name = "markadd"
+version = "0.0.1"
+edition = "2025"
+
+[[bin]]
+name = "markadd"
+path = "src/main.rs"
+
+[dependencies]
+markadd-core = { path = "../core" }

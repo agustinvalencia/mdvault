@@ -1,0 +1,10 @@
+[package]
+name = "markadd-tui"
+version = "0.0.1"
+edition = "2025"
+
+[[bin]]
+name = "markadd-tui"
+path = "src/main.rs"
+
+[dependencies]
