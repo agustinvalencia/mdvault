@@ -1,5 +1,7 @@
 # markadd
 
+[![Build Status](https://github.com/agustinvalencia/markadd/actions/workflows/ci.yml/badge.svg)](https://github.com/agustinvalencia/markadd/actions)
+
 **markadd** is a terminal-first Markdown automation tool inspired by Obsidian’s QuickAdd plugin.  
 It provides a composable, scriptable way to create, capture, and organise Markdown notes directly from the command line.
 
