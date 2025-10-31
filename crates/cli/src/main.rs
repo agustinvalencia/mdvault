@@ -1,10 +1,6 @@
 #![deny(clippy::all, clippy::pedantic)]
 #![allow(clippy::module_name_repetitions, clippy::must_use_candidate)]
-#![allow(
-    clippy::print_stdout,
-    clippy::missing_errors_doc,
-    clippy::missing_panics_doc
-)]
+#![allow(clippy::print_stdout, clippy::missing_errors_doc, clippy::missing_panics_doc)]
 
 use markadd_core::doctor_stub;
 
