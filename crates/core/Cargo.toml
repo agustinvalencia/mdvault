@@ -8,3 +8,8 @@ name = "markadd_core"
 path = "src/lib.rs"
 
 [dependencies]
+dirs = "6.0.0"
+serde = { version = "1.0.228", features = ["derive"] }
+shellexpand = "3.1.1"
+thiserror = "2.0.17"
+toml = "0.9.8"
