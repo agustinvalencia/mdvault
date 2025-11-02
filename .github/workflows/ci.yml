@@ -12,31 +12,52 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CARGO_TERM_COLOR: always
-      RUST_VERSION: stable
+      INSTA_UPDATE: never  # never auto-update snapshots in CI
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          profile: minimal
-          override: true
+          components: rustfmt, clippy
 
-      - name: Cache cargo 
+      - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: fmt
-        run: cargo fmt --all -- --check 
+      - name: Format check
+        run: cargo fmt --all -- --check
 
-      - name: clippy
+      - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-      - name: test
+      - name: Tests
         run: cargo test --all --all-features -- --nocapture
 
       - name: Install cargo-tarpaulin
         run: cargo install cargo-tarpaulin
 
-      - name: Coverage
-        run: cargo tarpaulin --out Xml
+      - name: Coverage (Tarpaulin)
+        run: |
+          cargo tarpaulin \
+            --workspace \
+            --all-features \
+            --timeout 120 \
+            --out Xml --out Lcov
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            tarpaulin-report.xml
+            tarpaulin-report.lcov
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./tarpaulin-report.xml
+          disable_search: true
+          fail_ci_if_error: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
