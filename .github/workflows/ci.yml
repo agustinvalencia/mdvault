@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CARGO_TERM_COLOR: always
-      INSTA_UPDATE: never  # never auto-update snapshots in CI
+      INSTA_UPDATE: no  # never auto-update snapshots in CI
 
     steps:
       - uses: actions/checkout@v4
