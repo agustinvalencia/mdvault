@@ -56,11 +56,12 @@ jobs:
             tarpaulin-report.xml
             tarpaulin-report.lcov
 
-      - name: Upload to Codecov (OIDC)
+      - name: Upload to Codecov 
         uses: codecov/codecov-action@v4
         with:
           files: ./tarpaulin-report.xml
           disable_search: true
-          use_oidc: true        # <-- key line
-          fail_ci_if_error: true
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
