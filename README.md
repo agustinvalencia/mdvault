@@ -1,71 +1,66 @@
-# markadd
+# `markadd`
 
-[![Build Status](https://github.com/agustinvalencia/markadd/actions/workflows/ci.yml/badge.svg)](https://github.com/agustinvalencia/markadd/actions)
-[![codecov](https://codecov.io/gh/agustinvalencia/markadd/branch/main/graph/badge.svg)](https://codecov.io/gh/agustinvalencia/markadd)
+`markadd` is a Rust-powered Markdown automation tool inspired by Obsidian’s QuickAdd plugin, designed for terminal-first workflows.  
+It allows you to create files from templates, insert content into existing Markdown sections, and eventually define higher-level macros that combine templating and capture logic.
 
-**markadd** is a terminal-first Markdown automation tool inspired by Obsidian’s QuickAdd plugin.  
-It provides a composable, scriptable way to create, capture, and organise Markdown notes directly from the command line.
+The project is in active development.  
+This README documents the current implemented capabilities and the roadmap.
 
-`markadd` lets you render templates, insert captures into existing notes, and compose multi-step macros for automated workflows.  
-It is designed to be deterministic, safe by default, and easily extensible through YAML and Lua hooks.
+## Status
 
-## Key Features
+### Completed so far (Phases 0–1)
+- Workspace structure with `core`, `cli`, and `tui` crates.
+- Rust 2024 edition across the workspace.
+- Robust configuration system using TOML with support for:
+  - multiple profiles
+  - directory interpolation
+  - XDG directory support
+  - vault/templating/capture/macro directories
+  - security flags (not yet enforced)
+- `markadd doctor` command for inspecting and validating configuration.
+- Comprehensive test suite:
+  - core unit tests
+  - CLI integration tests
+  - snapshot tests using `insta`
+- Deterministic snapshot behaviour:
+  - local: snapshots can be updated manually
+  - CI: snapshot updates are forbidden (`INSTA_UPDATE=no`)
+- GitHub Actions CI pipeline:
+  - fmt, clippy, tests
+  - coverage using `cargo tarpaulin`
 
-- **Template generation**: create Markdown files from reusable templates with variable prompts  
-- **Capture actions**: insert text or rendered fragments into existing sections  
-- **Macro workflows**: combine multiple actions and optional shell commands in declarative YAML  
-- **Atomic file operations**: always write safely, with undo support  
-- **Trust model**: shell and network access disabled by default, gated by explicit `--trust` flag  
-- **Optional Lua scripting**: define programmable captures or macros with a sandboxed API  
-- **TUI mode**: (planned) an interactive palette for selecting templates and filling variables  
+This foundation sets the stage for templating, capture, section insertion, macro scripting, and eventually a TUI.
 
----
+## Repository Structure
 
-## Current Development Phase : 0
-
-Terminal-first Markdown automation. Phase 0: workspace + CI + doctor stub.
-
-### Quick start
-```shell
-cargo build -p markadd
-cargo run -p markadd -- --version
-cargo run -p markadd -- doctor
+```
+markadd/
+├─ .clippy.toml
+├─ .github/workflows/ci.yml
+├─ crates/
+│  ├─ core/         # configuration loader, error types, upcoming template/capture engines
+│  ├─ cli/          # markadd binary, doctor command, upcoming commands
+│  └─ tui/          # future interactive interface
+├─ docs/
+│  └─ CONFIG.md
+└─ Cargo.toml       # workspace root
 ```
 
----
+# Configuration
 
-## Getting Started
+`markadd` loads configuration from:
+ - `$XDG_CONFIG_HOME/markadd/config.toml`
+ - `~/.config/markadd/config.toml`
+ - or via `--config <path>` in the CLI
 
-### Installation
-
-For now, clone and build locally (Cargo):
-
-```shell
-git clone https://github.com/<yourname>/markadd.git
-cd markadd
-cargo install --path crates/cli
-```
-
-Later releases will be available via Homebrew and `cargo install markadd`.
-
-### First Run
-
-```shell
-markadd doctor
-```
-
-This command checks for your configuration file and prints the active profile, directories, and security settings.
-
-### Configuration
-
-Create the main config file at `~/.config/markadd/config.toml`:
+A complete example:
 
 ```toml
 version = 1
 profile = "default"
 
 [profiles.default]
-vault_root = "~/Documents/Obsidian/Vault"
+vault_root = "~/Notes"
 templates_dir = "{{vault_root}}/.markadd/templates"
 captures_dir  = "{{vault_root}}/.markadd/captures"
 macros_dir    = "{{vault_root}}/.markadd/macros"
@@ -75,158 +70,106 @@ allow_shell = false
 allow_http  = false
 ```
 
-This file defines where `markadd` looks for templates, captures, and macros.  
-Security settings control which features require explicit trust.
+Path interpolation rules:
+ - `~` is expanded to the user’s home
+ - environment variables are expanded
+ - `{{vault_root}}` is expanded inside directory paths
 
-### Directory Layout
+# CLI
 
-```
-.markadd/
-  templates/   → Markdown templates with YAML front-matter
-  captures/    → YAML capture recipes
-  macros/      → YAML macro definitions
-```
+Currently implemented:
 
-### Example Template
+## markadd doctor
 
-```markdown
----
-name: meeting-note
-description: Meeting notes template
-vars:
-  - id: title
-    prompt: "Title"
-    type: string
-  - id: date
-    prompt: "Date"
-    type: date
-    default: "{{ now | date('%Y-%m-%d') }}"
-target:
-  path: "notes/{{ date }}/{{ title | slugify }}.md"
-  if_exists: append
----
+Validates the configuration and prints the resolved profile, paths, and security flags.
 
-# {{ title }}
+Usage:
 
-**Date:** {{ date }}
-
-## Agenda
-
-- 
-
-## Notes
-
-- 
+```shell
+markadd doctor
+markadd doctor --config path/to/config.toml
+markadd doctor --profile work
 ```
 
-### Example Capture
 
-```yaml
-name: inbox
-target:
-  path: "Daily/{{ now | date('%Y-%m-%d') }}.md"
-  section: "Inbox"
-  position: begin
-content: "- [ ] {{ text }}"
-vars:
-  - id: text
-    prompt: "What to capture?"
-    type: string
+Example output:
+
+```shell
+OK   markadd doctor
+path: ~/.config/markadd/config.toml
+profile: default
+vault_root: /home/user/Notes
+templates_dir: /home/user/Notes/.markadd/templates
+captures_dir: /home/user/Notes/.markadd/captures
+macros_dir: /home/user/Notes/.markadd/macros
+security.allow_shell: false
+security.allow_http:  false
 ```
 
-### Example Macro
 
-```yaml
-name: weekly-review
-steps:
-  - template:
-      use: "weekly-note.md"
-      with:
-        date: "{{ now | date('%Y-%m-%d') }}"
-  - capture:
-      use: "inbox"
-      with:
-        text: "Plan next week"
-  - shell:
-      run: "git add . && git commit -m 'notes: weekly review'"
-      on_error: continue
+# Tests
+
+Run all tests:
+
+```shell
+cargo test --all
 ```
 
-## Command Overview
+Snapshot tests (locally, allow updates):
 
-| Command | Description |
-|----------|--------------|
-| `markadd template <name>` | Create a new file from a template |
-| `markadd capture <name>` | Insert content into an existing file |
-| `markadd macro <name>` | Run a multi-step workflow |
-| `markadd list` | List available templates, captures, or macros |
-| `markadd preview` | Render a template or capture without writing |
-| `markadd doctor` | Validate configuration and environment |
-| `markadd undo <id>` | Revert a recent file operation |
-| `markadd eval-lua` | (optional) Evaluate Lua script for debugging |
-
-All commands accept global flags:
-- `--config` to specify a custom config file  
-- `--profile` to override the active profile  
-- `--var key=value` to provide variable values  
-- `--dry-run` to preview actions without writing  
-- `--trust` to allow shell/network operations
-
-## Variable Resolution
-
-Variables are resolved in a fixed, deterministic order:
-
-1. Automatic providers (now, uuid, cwd, git, env)  
-2. Defaults defined in the template or capture YAML  
-3. Values passed through `with:` in a macro step  
-4. CLI arguments (`--var key=value`)  
-5. Interactive prompts (CLI or TUI mode)
-
-## Security Model
-
-`markadd` is secure by default.  
-Shell and HTTP features are disabled unless explicitly allowed in your `config.toml`.  
-Even then, they require the `--trust` flag at runtime.
-
-All operations are logged to:
-
-```
-~/.config/markadd/.ops.jsonl
+```shell
+INSTA_UPDATE=auto cargo test -p markadd
 ```
 
-This log allows inspection and undoing of past file edits.
 
-## Development Roadmap
+Snapshot behaviour is deterministic in CI (`INSTA_UPDATE=no`).
 
-`markadd` is built in clearly defined phases:
+# Continuous Integration
 
-1. **Config Loader** – deterministic config via TOML  
-2. **Content Parsers** – strict YAML/MD parsing  
-3. **Variable Resolution & Rendering** – using Tera  
-4. **Markdown AST Insertions** – via Comrak  
-5. **File Planner** – atomic writes + undo  
-6. **CLI Commands** – template, capture, macro, list  
-7. **Macro Runner & Security** – gated shell steps  
-8. **Lua Hooks** – optional scripting extension  
-9. **TUI Interface** – fuzzy palette, preview, prompts  
-10. **Documentation & Packaging** – user guides, binaries  
+The CI pipeline performs:
+- `rustfmt check`
+- `clippy with -D warnings`
+- unit, integration, and snapshot tests
+- `tarpaulin` coverage
 
-## Contributing
 
-1. Fork the repository  
-2. Create a feature branch  
-3. Run `cargo fmt && cargo clippy` before committing  
-4. Add tests for new logic  
-5. Submit a pull request
+# Development Roadmap
 
-Use `cargo test --all` to run the full suite.  
-Each phase must pass CI and maintain stable APIs.
+The following phases describe where markadd is heading.
 
-## License
+## Phase 2 — Template Discovery
+ - Read templates from configured directory.
+ - CLI: `markadd list-templates`.
 
-MIT License. See the `LICENSE` file for details.
+## Phase 3 — Template Engine MVP
+ - Basic variable substitution: date, vault paths, file metadata.
+ - CLI: `markadd new --template <name> --output <path>`.
 
-## Acknowledgements
+## Phase 4 — Markdown Section Insertion
+ - Markdown parsing using comrak.
+ - Insert text at section boundaries.
+ - CLI: `markadd insert --section "<header>" --position start|end --text "<content>"`.
 
-Inspired by Obsidian’s QuickAdd plugin and the Unix philosophy of composable tools.  
-Built with Rust, Tera, Comrak, and an unreasonable fondness for deterministic workflows.
+## Phase 5 — Capture Definitions
+ - YAML-based capture definitions in the vault.
+ - Filling in fields from user input or variables.
+ - Optional scripting hooks (Lua or Rust plugins).
+
+## Phase 6 — Macro System
+ - Combine templates, captures, scripts into high-level actions.
+
+## Phase 7 — TUI
+ - Browse templates
+ - Quick selection and filling
+ - Preview before writing
+
+# Goals
+
+`markadd` aims to be:
+ - a terminal-native QuickAdd alternative
+ - fully scriptable, predictable, and versioned
+ - designed around reproducible workflows and automation
+ - tightly testable and CI-friendly
+ - extensible (TUI, scripting, macros, plugins)
+
+
