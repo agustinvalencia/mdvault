@@ -10,9 +10,12 @@ jobs:
   rust:
     name: Rust (stable)
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write     # <-- for OIDC
+      contents: read
     env:
       CARGO_TERM_COLOR: always
-      INSTA_UPDATE: no  # never auto-update snapshots in CI
+      INSTA_UPDATE: no
 
     steps:
       - uses: actions/checkout@v4
@@ -53,11 +56,11 @@ jobs:
             tarpaulin-report.xml
             tarpaulin-report.lcov
 
-      - name: Upload to Codecov
+      - name: Upload to Codecov (OIDC)
         uses: codecov/codecov-action@v4
         with:
           files: ./tarpaulin-report.xml
           disable_search: true
+          use_oidc: true        # <-- key line
           fail_ci_if_error: true
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
