@@ -302,6 +302,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
+ "walkdir",
 ]
 
 [[package]]
