@@ -54,7 +54,8 @@ pub fn discover_templates(
 }
 
 fn is_markdown_file(path: &Path) -> bool {
-    path.extension().and_then(|s| s.to_str()).map(|ext| ext == "md").unwrap_or(false)
+    let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    name.ends_with(".md") && !(name.ends_with(".tpl.md") || name.ends_with(".tmpl.md"))
 }
 
 fn logical_name_from_relative(rel: &Path) -> String {
