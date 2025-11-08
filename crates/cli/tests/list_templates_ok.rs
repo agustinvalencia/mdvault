@@ -68,15 +68,3 @@ macros_dir    = "{{{{vault_root}}}}/.markadd/macros"
         // `not_contains` doesn't exist; use `contains(...).not()` from PredicateBooleanExt
         .stdout(predicates::str::contains("ignore").not());
 }
-
-
-
-
-
-
-
-
-
-
-
-

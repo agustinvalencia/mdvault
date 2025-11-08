@@ -26,11 +26,11 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Doctor => cmd::doctor::run(cli.config.as_deref(), cli.profile.as_deref()),
+        Commands::Doctor => {
+            cmd::doctor::run(cli.config.as_deref(), cli.profile.as_deref())
+        }
         Commands::ListTemplates => {
             cmd::list_templates::run(cli.config.as_deref(), cli.profile.as_deref())
         }
     }
 }
-
-

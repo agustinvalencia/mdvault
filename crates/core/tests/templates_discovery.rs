@@ -1,4 +1,4 @@
-use markadd_core::templates::discovery::{discover_templates};
+use markadd_core::templates::discovery::discover_templates;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::tempdir;
@@ -30,11 +30,5 @@ fn discovers_only_md_templates() {
     let got = discover_templates(&root).expect("discover ok");
     let names: Vec<String> = got.into_iter().map(|t| t.logical_name).collect();
 
-    assert_eq!(
-        names,
-        vec![
-            "blog/post".to_string(),
-            "daily".to_string(),
-        ]
-    );
+    assert_eq!(names, vec!["blog/post".to_string(), "daily".to_string(),]);
 }
