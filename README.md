@@ -16,8 +16,8 @@ The project is written in Rust with emphasis on speed, determinism, and testabil
 
 For extended documentation and development logs:
 
-`docs/index.md`  
-`docs/devlogs/`
+[`docs/index.md`](./docs/index.md) 
+[`docs/devlogs/`](.docs/devlogs)
 
 
 ## Status
@@ -41,7 +41,6 @@ For extended documentation and development logs:
 **Phase 2 — Template Discovery**  
 - Recursive search in `templates_dir`  
 - Only `.md` files treated as templates  
-- Excludes `*.tpl.md`, `*.tmpl.md`, `.markdown`, `.mdx`  
 - Logical names from relative paths  
 - Command: `markadd list-templates`
 
