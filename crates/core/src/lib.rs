@@ -16,3 +16,4 @@ pub fn doctor_stub() -> String {
 }
 
 pub mod config;
+pub mod templates;
