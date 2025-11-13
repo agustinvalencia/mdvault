@@ -1,5 +1,8 @@
 # markadd
 
+[![Build Status](https://github.com/agustinvalencia/markadd/actions/workflows/ci.yml/badge.svg)](https://github.com/agustinvalencia/markadd/actions)
+[![codecov](https://codecov.io/gh/agustinvalencia/markadd/branch/main/graph/badge.svg)](https://codecov.io/gh/agustinvalencia/markadd)
+
 `markadd` is a terminal-first Markdown automation tool inspired by Obsidian’s QuickAdd plugin.  
 It allows you to:
 
