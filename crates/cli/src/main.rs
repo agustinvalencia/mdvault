@@ -1,24 +1,36 @@
 mod cmd;
 
+use clap::{Parser, Subcommand};
+use std::path::PathBuf;
+
+#[derive(Debug, Parser)]
+#[command(name = "markadd", version, about = "Terminal-first Markdown automation")]
+struct Cli {
+    #[arg(long, global = true)]
+    config: Option<PathBuf>,
+
+    #[arg(long, global = true)]
+    profile: Option<String>,
+
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    Doctor,
+    ListTemplates,
+}
+
 fn main() {
-    let mut args = std::env::args().skip(1);
-    match args.next().as_deref() {
-        Some("doctor") => {
-            cmd::doctor::run(args.collect());
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Doctor => {
+            cmd::doctor::run(cli.config.as_deref(), cli.profile.as_deref())
         }
-        Some("--version" | "-V") => {
-            println!("markadd v{}", env!("CARGO_PKG_VERSION"));
-        }
-        Some(cmd) => {
-            eprintln!("unknown command: {cmd}");
-            eprintln!("try: `markadd doctor` or `markadd --version`");
-            std::process::exit(2);
-        }
-        None => {
-            println!("markadd v{}", env!("CARGO_PKG_VERSION"));
-            println!("usage:");
-            println!("  markadd doctor       # print build & health info");
-            println!("  markadd --version    # print version");
+        Commands::ListTemplates => {
+            cmd::list_templates::run(cli.config.as_deref(), cli.profile.as_deref())
         }
     }
 }
