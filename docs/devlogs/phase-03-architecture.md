@@ -317,10 +317,4 @@ This MVP architecture allows us to extend the engine without breaking the mental
 - Add Lua or other scripting hooks around render events.
 - Replace the simple substitution engine with a more powerful, yet controlled, templating backend if needed.
 
-The important part: CLI → Config → Repository → Context → Engine is a stable chain we can hang more features on.
 
-If you want, next steps could be:
-
-- designing the concrete Rust API signatures for `TemplateEngine` and `TemplateRepository`
-- sketching the CLI `new` command `NewArgs` struct and clap definition
-- planning the first set of core tests for Phase 03 before writing any implementation code.
