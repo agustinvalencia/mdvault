@@ -1,6 +1,6 @@
 mod cmd;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -18,8 +18,25 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Validate configuration and print resolved paths
     Doctor,
+
+    /// List logical template names discovered under templates_dir
     ListTemplates,
+
+    /// Render a template into a new file
+    New(NewArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct NewArgs {
+    /// Logical template name (e.g. "daily" or "blog/post")
+    #[arg(long)]
+    pub template: String,
+
+    /// Output file path to create
+    #[arg(long)]
+    pub output: PathBuf,
 }
 
 fn main() {
@@ -31,6 +48,14 @@ fn main() {
         }
         Commands::ListTemplates => {
             cmd::list_templates::run(cli.config.as_deref(), cli.profile.as_deref())
+        }
+        Commands::New(args) => {
+            cmd::new::run(
+                cli.config.as_deref(),
+                cli.profile.as_deref(),
+                &args.template,
+                &args.output,
+            );
         }
     }
 }
