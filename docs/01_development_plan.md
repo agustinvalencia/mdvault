@@ -979,3 +979,43 @@ markadd/
 ├─ dist/ *                        # CI artifacts (ignored in VCS)
 └─ Formula/markadd.rb *           # Homebrew tap (optional)
 ```
+
+
+
+---
+
+## Addendum: Progressive TUI Integration (Proposed)
+
+> **Status**: Under consideration
+> **Full proposal**: [`devlogs/tui-integration-proposal.md`](./devlogs/tui-integration-proposal.md)
+
+The original plan defers all TUI work to Phase 9. An alternative approach integrates TUI development progressively starting from Phase 5, after the core engine stabilizes.
+
+### Summary of Changes
+
+| Phase | Original Focus | With Progressive TUI |
+|-------|---------------|---------------------|
+| 0-4 | CLI only | *unchanged* |
+| 5 | File planner, undo | + TUI foundation (palette, preview) |
+| 6 | CLI wiring, Coordinator | + TUI execution (run templates) |
+| 7 | Macro runner, security | + TUI multi-step workflows |
+| 8 | Lua hooks | + TUI script preview |
+| 9 | Full TUI build | TUI polish only (reduced scope) |
+| 10 | Docs & release | *unchanged* |
+
+### Rationale
+
+1. **Validate UX early** - Interactive experience tested as features land
+2. **Cleaner APIs** - Core naturally becomes TUI-friendly
+3. **Reduced Phase 9 risk** - No monolithic TUI integration
+4. **Earlier prototype** - Visual feedback sooner
+
+### TUI Scope Per Phase (if adopted)
+
+**Phase 5**: App shell, template palette, read-only preview
+**Phase 6**: Execute templates, variable prompts, status feedback
+**Phase 7**: Macro palette, step progress, trust dialogs
+**Phase 8**: Lua preview, sandbox indicator
+**Phase 9**: Theming, accessibility, final polish
+
+See the full proposal for implementation details, risks, and mitigations.
