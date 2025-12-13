@@ -1,0 +1,29 @@
+# Changelog
+
+## Unreleased
+
+### Added
+
+- Feature with `inline code`
+- Feature with [link](https://example.com)
+
+### Changed
+
+```rust
+// Code block that should be preserved
+fn example() {
+    println!("# This is not a heading");
+}
+```
+
+### Deprecated
+
+- Old API
+
+## 2.0.0 - 2024-06-01
+
+### Breaking Changes
+
+| Old | New |
+|-----|-----|
+| foo | bar |

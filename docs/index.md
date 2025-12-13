@@ -32,6 +32,7 @@ For development progress, see:
 - [devlogs/phase-01.md](./devlogs/phase-01.md)
 - [devlogs/phase-02.md](./devlogs/phase-02.md)
 - [devlogs/phase-03-architecture.md](./devlogs/phase-03-architecture.md)
+- [devlogs/phase-04.md](./devlogs/phase-04.md)
 
 ### Proposals
 - [devlogs/tui-integration-proposal.md](./devlogs/tui-integration-proposal.md) — Progressive TUI integration
@@ -39,7 +40,7 @@ For development progress, see:
 ### Source Layout
 
 ```
-crates/core   – configuration, template discovery, template engine
+crates/core   – configuration, template discovery, template engine, markdown AST
 crates/cli    – command-line interface
 crates/tui    – terminal UI (in development)
 ```
