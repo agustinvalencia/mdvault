@@ -3,75 +3,35 @@
 [![Build Status](https://github.com/agustinvalencia/markadd/actions/workflows/ci.yml/badge.svg)](https://github.com/agustinvalencia/markadd/actions)
 [![codecov](https://codecov.io/gh/agustinvalencia/markadd/branch/main/graph/badge.svg)](https://codecov.io/gh/agustinvalencia/markadd)
 
-`markadd` is a terminal-first Markdown automation tool inspired by Obsidian’s QuickAdd plugin.  
+`markadd` is a terminal-first Markdown automation tool inspired by Obsidian's QuickAdd plugin.
+
 It allows you to:
 
-- generate Markdown files from templates  
-- list templates available in your vault  
-- validate configuration profiles  
-- (soon) insert content into Markdown sections  
-- (later) run capture workflows and programmable macros  
+- generate Markdown files from templates
+- list templates available in your vault
+- validate configuration profiles
+- (soon) insert content into Markdown sections
+- (later) run capture workflows and programmable macros
 
-The project is written in Rust with emphasis on speed, determinism, and testability.
+## Installation
 
-For extended documentation and development logs:
-
-[`docs/index.md`](./docs/index.md) 
-[`docs/devlogs/`](.docs/devlogs)
-
-
-## Status
-
-### Completed
-
-**Phase 0 — Workspace, Tooling, CI**  
-- Workspace crates: `core`, `cli`, `tui`  
-- Rust 2024 edition  
-- Strict linting via `.clippy.toml`  
-- GitHub Actions: fmt, clippy, unit/integration/snapshot tests, coverage  
-- Deterministic snapshot rules in CI
-
-**Phase 1 — Configuration System**  
-- `config.toml` with profile support  
-- XDG discovery, `~` expansion, environment variable expansion  
-- Interpolation (`{{vault_root}}`, etc.)  
-- Directory structure for templates / captures / macros  
-- Command: `markadd doctor`
-
-**Phase 2 — Template Discovery**  
-- Recursive search in `templates_dir`  
-- Only `.md` files treated as templates  
-- Logical names from relative paths  
-- Command: `markadd list-templates`
-
-
-## Repository Structure
-
-```text
-markadd/
-├─ crates/
-│  ├─ core/        # config loader, template discovery, future engines
-│  ├─ cli/         # command-line interface (doctor, list-templates)
-│  └─ tui/         # placeholder for future TUI
-├─ docs/
-│  ├─ CONFIG.md
-│  └─ devlogs/
-├─ .clippy.toml
-└─ Cargo.toml
+```bash
+cargo install --path crates/cli
 ```
 
+Or build from source:
 
-## Configuration
+```bash
+cargo build --release
+```
 
-`markadd` loads configuration from one of:
+## Quick Start
 
-- `$XDG_CONFIG_HOME/markadd/config.toml`
-- `~/.config/markadd/config.toml`
-- `--config <path>`
+1. Create a configuration file:
 
-Example:
-
-```toml
+```bash
+mkdir -p ~/.config/markadd
+cat > ~/.config/markadd/config.toml << 'EOF'
 version = 1
 profile = "default"
 
@@ -84,66 +44,147 @@ macros_dir    = "{{vault_root}}/.markadd/macros"
 [security]
 allow_shell = false
 allow_http  = false
+EOF
 ```
 
-## CLI
+2. Create a template:
 
-Validate and inspect configuration.
+```bash
+mkdir -p ~/Notes/.markadd/templates
+cat > ~/Notes/.markadd/templates/daily.md << 'EOF'
+# {{date}}
+
+## Tasks
+
+- [ ]
+
+## Notes
+
+EOF
+```
+
+3. Generate a file from the template:
+
+```bash
+markadd new --template daily --output ~/Notes/2025-01-15.md
+```
+
+## Commands
+
+### doctor
+
+Validate configuration and print resolved paths.
+
 ```bash
 markadd doctor
 ```
 
-Recursively list Markdown templates found in the active profile.
+### list-templates
+
+List available templates in the active profile.
+
 ```bash
 markadd list-templates
 ```
 
+### new
 
-## Testing
-
-Run full test suite:
-
-```bash
-cargo test --all
-```
-
-Update snapshots locally:
+Generate a new file from a template.
 
 ```bash
-INSTA_UPDATE=auto cargo test -p markadd
+markadd new --template <name> --output <path>
 ```
-Snapshots are immutable in CI.
 
+Options:
+- `--template` — Logical template name (e.g., `daily` or `blog/post`)
+- `--output` — Output file path to create
 
-## Roadmap
+## Configuration
 
-*Phase 3* — Template Engine MVP (next)
-Minimal variable substitution and file generation.
+`markadd` loads configuration from:
 
-*Phase 4* — Markdown Section Insertion
-Use *comrak` to insert content into specific headers.
+1. `--config <path>` (if provided)
+2. `$XDG_CONFIG_HOME/markadd/config.toml`
+3. `~/.config/markadd/config.toml`
 
-*Phase 5* — Capture Definitions (YAML)
+### Example Configuration
 
-*Phase 6* — Macro System
+```toml
+version = 1
+profile = "default"
 
-*Phase 7* — TUI
+[profiles.default]
+vault_root = "~/Notes"
+templates_dir = "{{vault_root}}/.markadd/templates"
+captures_dir  = "{{vault_root}}/.markadd/captures"
+macros_dir    = "{{vault_root}}/.markadd/macros"
 
-## Vision
+[profiles.work]
+vault_root = "~/Work/notes"
+templates_dir = "{{vault_root}}/templates"
+captures_dir  = "{{vault_root}}/captures"
+macros_dir    = "{{vault_root}}/macros"
 
-`markadd` aims to be a focused, scriptable, deterministic Markdown automation toolkit for people who prefer working in terminals and integrating with existing vaults or note-management systems.
+[security]
+allow_shell = false
+allow_http  = false
+```
 
+Use `--profile` to switch profiles:
 
+```bash
+markadd --profile work list-templates
+```
 
+For full configuration reference, see [`docs/CONFIG.md`](./docs/CONFIG.md).
 
+## Templates
 
+Templates are Markdown files stored in your `templates_dir`. They support variable substitution using `{{variable}}` syntax.
 
+### Built-in Variables
 
+| Variable | Description |
+|----------|-------------|
+| `{{date}}` | Current date (YYYY-MM-DD) |
+| `{{time}}` | Current time (HH:MM) |
+| `{{datetime}}` | ISO 8601 datetime |
+| `{{vault_root}}` | Configured vault root path |
+| `{{template_name}}` | Logical name of the template |
+| `{{output_path}}` | Full output file path |
+| `{{output_filename}}` | Output filename only |
 
+### Example Template
 
+```markdown
+# Meeting: {{date}}
 
+**Time**: {{time}}
+**File**: {{output_filename}}
 
+## Attendees
 
+-
 
+## Agenda
 
+1.
 
+## Notes
+
+## Action Items
+
+- [ ]
+```
+
+For more on templates, see [`docs/templates.md`](./docs/templates.md).
+
+## Documentation
+
+- [Configuration Reference](./docs/CONFIG.md)
+- [Template Authoring](./docs/templates.md)
+- [Development Guide](./docs/DEVELOPMENT.md)
+
+## License
+
+See [LICENSE](./LICENSE).

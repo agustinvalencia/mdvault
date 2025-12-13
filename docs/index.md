@@ -19,29 +19,38 @@ For development progress, see:
 
 ## Contents
 
-### Configuration
-docs/CONFIG.md
+### User Documentation
+- [CONFIG.md](./CONFIG.md) — Configuration reference
+- [templates.md](./templates.md) — Template authoring guide
+
+### Developer Documentation
+- [DEVELOPMENT.md](./DEVELOPMENT.md) — Repository structure, testing, contributing
+- [01_development_plan.md](./01_development_plan.md) — Full phase plan with UML diagrams
 
 ### Development Logs
-docs/devlogs/phase-01-dev-log.md  
-docs/devlogs/phase-02-dev-log.md  
-(and future phases)
+- [devlogs/phase-00.md](./devlogs/phase-00.md)
+- [devlogs/phase-01.md](./devlogs/phase-01.md)
+- [devlogs/phase-02.md](./devlogs/phase-02.md)
+- [devlogs/phase-03-architecture.md](./devlogs/phase-03-architecture.md)
+
+### Proposals
+- [devlogs/tui-integration-proposal.md](./devlogs/tui-integration-proposal.md) — Progressive TUI integration
 
 ### Source Layout
 
-crates/core   – configuration, template discovery, engines  
-crates/cli    – command-line interface  
-crates/tui    – reserved for future terminal UI
+```
+crates/core   – configuration, template discovery, template engine
+crates/cli    – command-line interface
+crates/tui    – terminal UI (in development)
+```
 
 ## Philosophy
 
 `markadd` aims to be:
 
-- deterministic and testable  
-- terminal-native  
-- Markdown-first  
-- extensible through templates, captures, and macros  
+- deterministic and testable
+- terminal-native
+- Markdown-first
+- extensible through templates, captures, and macros
 
-Return to project root:
-
-../README.md
+Return to project root: [README.md](../README.md)
