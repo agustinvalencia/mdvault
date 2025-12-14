@@ -13,9 +13,10 @@ markadd/
 │  ├─ cli/         # command-line interface
 │  └─ tui/         # terminal UI (in development)
 ├─ docs/
-│  ├─ CONFIG.md          # configuration reference
+│  ├─ config.md          # configuration reference
 │  ├─ templates.md       # template authoring guide
-│  ├─ DEVELOPMENT.md     # this file
+│  ├─ capture.md         # captures reference
+│  ├─ development.md     # this file
 │  ├─ 00_Conceptualisation.md
 │  ├─ 01_development_plan.md
 │  └─ devlogs/           # per-phase development logs

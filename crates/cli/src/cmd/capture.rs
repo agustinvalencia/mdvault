@@ -1,13 +1,101 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-use markadd_core::captures::{CaptureRepoError, CaptureRepository};
+use markadd_core::captures::{CaptureRepoError, CaptureRepository, CaptureSpec};
 use markadd_core::config::loader::{ConfigLoader, default_config_path};
 use markadd_core::markdown_ast::{MarkdownAstError, MarkdownEditor, SectionMatch};
 
 use chrono::Local;
 use regex::Regex;
+
+/// Built-in variables that are automatically provided
+const BUILTIN_VARS: &[&str] = &[
+    "date",
+    "time",
+    "datetime",
+    "vault_root",
+    "templates_dir",
+    "captures_dir",
+    "macros_dir",
+];
+
+pub fn run_list(config: Option<&Path>, profile: Option<&str>) {
+    let cfg = match ConfigLoader::load(config, profile) {
+        Ok(rc) => rc,
+        Err(e) => {
+            eprintln!("FAIL markadd capture --list");
+            eprintln!("{e}");
+            if config.is_none() {
+                eprintln!("looked for: {}", default_config_path().display());
+            }
+            std::process::exit(1);
+        }
+    };
+
+    let repo = match CaptureRepository::new(&cfg.captures_dir) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("FAIL markadd capture --list");
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    };
+
+    let captures = repo.list_all();
+    if captures.is_empty() {
+        println!("(no captures found)");
+        return;
+    }
+
+    for info in captures {
+        // Try to load the capture to get its variables
+        match repo.get_by_name(&info.logical_name) {
+            Ok(loaded) => {
+                let user_vars = extract_user_variables(&loaded.spec);
+                if user_vars.is_empty() {
+                    println!("{}", info.logical_name);
+                } else {
+                    let vars_str = user_vars.join(", ");
+                    println!("{}  [{}]", info.logical_name, vars_str);
+                }
+            }
+            Err(_) => {
+                // If we can't load it, just show the name
+                println!("{}  (error loading)", info.logical_name);
+            }
+        }
+    }
+    println!("-- {} captures --", captures.len());
+}
+
+/// Extract user-defined variables from a capture spec (excludes built-ins)
+fn extract_user_variables(spec: &CaptureSpec) -> Vec<String> {
+    let re = Regex::new(r"\{\{([a-zA-Z0-9_]+)\}\}").unwrap();
+    let builtin: HashSet<&str> = BUILTIN_VARS.iter().copied().collect();
+
+    let mut vars = HashSet::new();
+
+    // Extract from content
+    for cap in re.captures_iter(&spec.content) {
+        let var = cap.get(1).unwrap().as_str();
+        if !builtin.contains(var) {
+            vars.insert(var.to_string());
+        }
+    }
+
+    // Extract from target file path
+    for cap in re.captures_iter(&spec.target.file) {
+        let var = cap.get(1).unwrap().as_str();
+        if !builtin.contains(var) {
+            vars.insert(var.to_string());
+        }
+    }
+
+    let mut sorted: Vec<_> = vars.into_iter().collect();
+    sorted.sort();
+    sorted
+}
 
 pub fn run(
     config: Option<&Path>,
