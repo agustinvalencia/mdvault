@@ -342,19 +342,13 @@ fn find_headings_preserves_order() {
 #[test]
 fn section_exists_returns_true_for_existing() {
     let input = "# Existing\n\nContent\n";
-    assert!(MarkdownEditor::section_exists(
-        input,
-        &SectionMatch::new("Existing")
-    ));
+    assert!(MarkdownEditor::section_exists(input, &SectionMatch::new("Existing")));
 }
 
 #[test]
 fn section_exists_returns_false_for_missing() {
     let input = "# Existing\n\nContent\n";
-    assert!(!MarkdownEditor::section_exists(
-        input,
-        &SectionMatch::new("Missing")
-    ));
+    assert!(!MarkdownEditor::section_exists(input, &SectionMatch::new("Missing")));
 }
 
 // === Setext headings ===

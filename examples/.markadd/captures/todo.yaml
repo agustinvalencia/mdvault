@@ -1,0 +1,9 @@
+name: todo
+description: Add a task to the TODO section
+
+target:
+  file: "tasks.md"
+  section: "TODO"
+  position: end
+
+content: "- [ ] {{task}} (added {{date}})"

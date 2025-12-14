@@ -4,4 +4,6 @@ pub mod types;
 
 // Re-export primary API
 pub use editor::MarkdownEditor;
-pub use types::{HeadingInfo, InsertPosition, InsertResult, MarkdownAstError, SectionMatch};
+pub use types::{
+    HeadingInfo, InsertPosition, InsertResult, MarkdownAstError, SectionMatch,
+};

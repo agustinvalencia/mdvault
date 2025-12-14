@@ -21,10 +21,7 @@ pub struct SectionMatch {
 
 impl SectionMatch {
     pub fn new(title: impl Into<String>) -> Self {
-        Self {
-            title: title.into(),
-            case_sensitive: false,
-        }
+        Self { title: title.into(), case_sensitive: false }
     }
 
     pub fn case_sensitive(mut self, value: bool) -> Self {

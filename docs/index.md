@@ -22,6 +22,7 @@ For development progress, see:
 ### User Documentation
 - [CONFIG.md](./CONFIG.md) — Configuration reference
 - [templates.md](./templates.md) — Template authoring guide
+- [CAPTURE.md](./CAPTURE.md) — Captures reference
 
 ### Developer Documentation
 - [DEVELOPMENT.md](./DEVELOPMENT.md) — Repository structure, testing, contributing
@@ -33,6 +34,7 @@ For development progress, see:
 - [devlogs/phase-02.md](./devlogs/phase-02.md)
 - [devlogs/phase-03-architecture.md](./devlogs/phase-03-architecture.md)
 - [devlogs/phase-04.md](./devlogs/phase-04.md)
+- [devlogs/phase-04-mvp.md](./devlogs/phase-04-mvp.md)
 
 ### Proposals
 - [devlogs/tui-integration-proposal.md](./devlogs/tui-integration-proposal.md) — Progressive TUI integration

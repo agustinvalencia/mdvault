@@ -9,7 +9,7 @@ For usage documentation, see the main [README](../README.md).
 ```text
 markadd/
 ├─ crates/
-│  ├─ core/        # config loader, template discovery, template engine, markdown AST
+│  ├─ core/        # config loader, templates, captures, markdown AST
 │  ├─ cli/         # command-line interface
 │  └─ tui/         # terminal UI (in development)
 ├─ docs/
@@ -73,6 +73,12 @@ markadd/
 - Case-insensitive section matching (configurable)
 - Support for ATX and Setext headings
 - Golden/snapshot tests for complex documents
+
+**Phase 4 MVP — Captures**
+- Capture specs (YAML) with target file, section, position
+- Variable substitution in file paths and content
+- Command: `markadd capture <name> --var key=value`
+- Integration tests for capture workflows
 
 ### Roadmap
 

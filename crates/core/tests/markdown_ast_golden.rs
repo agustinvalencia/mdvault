@@ -66,10 +66,8 @@ fn golden_find_headings_complex() {
     let input = include_str!("fixtures/changelog_complex.md");
 
     let headings = MarkdownEditor::find_headings(input);
-    let headings_str: Vec<String> = headings
-        .iter()
-        .map(|h| format!("L{}: {}", h.level, h.title))
-        .collect();
+    let headings_str: Vec<String> =
+        headings.iter().map(|h| format!("L{}: {}", h.level, h.title)).collect();
 
     assert_snapshot!(headings_str.join("\n"));
 }

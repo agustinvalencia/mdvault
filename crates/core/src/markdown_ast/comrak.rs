@@ -1,5 +1,5 @@
 use comrak::nodes::{AstNode, NodeValue};
-use comrak::{format_commonmark, parse_document, Arena, Options};
+use comrak::{Arena, Options, format_commonmark, parse_document};
 
 use crate::markdown_ast::types::*;
 
@@ -23,10 +23,7 @@ pub fn insert_into_section(
             .find(|h| matches_title(&h.title, &section.title, section.case_sensitive))
             .ok_or_else(|| MarkdownAstError::SectionNotFound(section.title.clone()))?;
 
-        return Ok(InsertResult {
-            content: input.to_string(),
-            matched_heading: matched,
-        });
+        return Ok(InsertResult { content: input.to_string(), matched_heading: matched });
     }
 
     let arena = Arena::new();
@@ -53,10 +50,7 @@ pub fn insert_into_section(
     // Render back to markdown
     let content = render_to_string(root, &options)?;
 
-    Ok(InsertResult {
-        content,
-        matched_heading: heading_info,
-    })
+    Ok(InsertResult { content, matched_heading: heading_info })
 }
 
 /// Find all headings in the document
@@ -71,10 +65,7 @@ pub fn find_headings(input: &str) -> Vec<HeadingInfo> {
         if let NodeValue::Heading(ref heading) = node.data.borrow().value {
             let title = collect_text(node);
 
-            headings.push(HeadingInfo {
-                title,
-                level: heading.level,
-            });
+            headings.push(HeadingInfo { title, level: heading.level });
         }
     }
 
@@ -115,11 +106,7 @@ fn matches_title(heading_title: &str, search_title: &str, case_sensitive: bool) 
     let h = heading_title.trim();
     let s = search_title.trim();
 
-    if case_sensitive {
-        h == s
-    } else {
-        h.eq_ignore_ascii_case(s)
-    }
+    if case_sensitive { h == s } else { h.eq_ignore_ascii_case(s) }
 }
 
 fn collect_text<'a>(node: &'a AstNode<'a>) -> String {
@@ -140,10 +127,7 @@ fn find_heading_node<'a>(
         if let NodeValue::Heading(ref heading) = node.data.borrow().value {
             let title = collect_text(node);
             if matches_title(&title, &section.title, section.case_sensitive) {
-                let info = HeadingInfo {
-                    title,
-                    level: heading.level,
-                };
+                let info = HeadingInfo { title, level: heading.level };
                 return Ok((node, info));
             }
         }
@@ -177,7 +161,10 @@ fn find_section_end<'a>(heading_node: &'a AstNode<'a>) -> Option<&'a AstNode<'a>
     last_content_node
 }
 
-fn insert_after_heading<'a>(heading_node: &'a AstNode<'a>, fragment_root: &'a AstNode<'a>) {
+fn insert_after_heading<'a>(
+    heading_node: &'a AstNode<'a>,
+    fragment_root: &'a AstNode<'a>,
+) {
     // Insert fragment children after the heading
     // We need to insert in reverse order because insert_after puts the new node
     // immediately after, so the last child should be inserted first
@@ -188,7 +175,10 @@ fn insert_after_heading<'a>(heading_node: &'a AstNode<'a>, fragment_root: &'a As
     }
 }
 
-fn insert_before_section_end<'a>(heading_node: &'a AstNode<'a>, fragment_root: &'a AstNode<'a>) {
+fn insert_before_section_end<'a>(
+    heading_node: &'a AstNode<'a>,
+    fragment_root: &'a AstNode<'a>,
+) {
     if let Some(last_node) = find_section_end(heading_node) {
         // Insert after the last node in the section
         let children: Vec<_> = fragment_root.children().collect();
@@ -202,7 +192,10 @@ fn insert_before_section_end<'a>(heading_node: &'a AstNode<'a>, fragment_root: &
     }
 }
 
-fn render_to_string<'a>(root: &'a AstNode<'a>, options: &Options) -> Result<String, MarkdownAstError> {
+fn render_to_string<'a>(
+    root: &'a AstNode<'a>,
+    options: &Options,
+) -> Result<String, MarkdownAstError> {
     let mut output = Vec::new();
     format_commonmark(root, options, &mut output)
         .map_err(|e| MarkdownAstError::RenderError(e.to_string()))?;
