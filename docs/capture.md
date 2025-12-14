@@ -5,6 +5,9 @@ Captures allow you to quickly append content to specific sections of existing Ma
 ## Quick Start
 
 ```bash
+# List available captures
+markadd capture --list
+
 # Capture a task to your inbox
 markadd capture inbox --var text="Review PR #42"
 ```
@@ -233,5 +236,5 @@ Available captures:
 
 ## Related
 
-- [CONFIG.md](./CONFIG.md) - Configuration reference
+- [config.md](./config.md) - Configuration reference
 - [templates.md](./templates.md) - Template authoring guide

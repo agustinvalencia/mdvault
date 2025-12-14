@@ -104,20 +104,18 @@ Options:
 Insert content into an existing Markdown file using a capture workflow.
 
 ```bash
-markadd capture --name <capture-name>
+markadd capture <capture-name>
+```
+
+List available captures:
+
+```bash
+markadd capture --list
 ```
 
 Options:
-- `--name` — Name of the capture to run
-- `--dry-run` — Preview changes without writing to file
-
-### list-captures
-
-List available captures in the active profile.
-
-```bash
-markadd list-captures
-```
+- `--list`, `-l` — List available captures
+- `--var KEY=VALUE` — Pass variables to the capture (can be repeated)
 
 ## Configuration
 

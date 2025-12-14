@@ -256,3 +256,61 @@ content: "test"
         .stderr(predicate::str::contains("Capture not found: nonexistent"))
         .stderr(predicate::str::contains("inbox"));
 }
+
+#[test]
+fn capture_list_shows_variables() {
+    let tmp = tempdir().unwrap();
+    let root = tmp.path();
+    let vault = root.join("vault");
+
+    write(root, "config.toml", make_config(&vault.to_string_lossy()));
+
+    write(
+        root,
+        "vault/captures/inbox.yaml",
+        r#"
+name: inbox
+target:
+  file: "notes.md"
+  section: "Inbox"
+  position: begin
+content: "- {{text}}"
+"#,
+    );
+
+    write(
+        root,
+        "vault/captures/todo.yaml",
+        r#"
+name: todo
+target:
+  file: "tasks.md"
+  section: "TODO"
+  position: end
+content: "- [ ] {{task}} ({{priority}})"
+"#,
+    );
+
+    write(
+        root,
+        "vault/captures/simple.yaml",
+        r#"
+name: simple
+target:
+  file: "log.md"
+  section: "Log"
+  position: end
+content: "Entry at {{date}}"
+"#,
+    );
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    cmd.arg("--config").arg(root.join("config.toml")).arg("capture").arg("--list");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("inbox  [text]"))
+        .stdout(predicate::str::contains("todo  [priority, task]"))
+        .stdout(predicate::str::contains("simple\n")) // no variables
+        .stdout(predicate::str::contains("-- 3 captures --"));
+}
