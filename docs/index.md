@@ -11,7 +11,7 @@ This documentation includes:
 
 If you're new, begin with:
 
-`docs/CONFIG.md`
+`docs/config.md`
 
 For development progress, see:
 
@@ -20,11 +20,12 @@ For development progress, see:
 ## Contents
 
 ### User Documentation
-- [CONFIG.md](./CONFIG.md) — Configuration reference
+- [config.md](./config.md) — Configuration reference
 - [templates.md](./templates.md) — Template authoring guide
+- [capture.md](./capture.md) — Captures reference
 
 ### Developer Documentation
-- [DEVELOPMENT.md](./DEVELOPMENT.md) — Repository structure, testing, contributing
+- [development.md](./development.md) — Repository structure, testing, contributing
 - [01_development_plan.md](./01_development_plan.md) — Full phase plan with UML diagrams
 
 ### Development Logs
@@ -32,6 +33,8 @@ For development progress, see:
 - [devlogs/phase-01.md](./devlogs/phase-01.md)
 - [devlogs/phase-02.md](./devlogs/phase-02.md)
 - [devlogs/phase-03-architecture.md](./devlogs/phase-03-architecture.md)
+- [devlogs/phase-04.md](./devlogs/phase-04.md)
+- [devlogs/phase-04-mvp.md](./devlogs/phase-04-mvp.md)
 
 ### Proposals
 - [devlogs/tui-integration-proposal.md](./devlogs/tui-integration-proposal.md) — Progressive TUI integration
@@ -39,7 +42,7 @@ For development progress, see:
 ### Source Layout
 
 ```
-crates/core   – configuration, template discovery, template engine
+crates/core   – configuration, template discovery, template engine, markdown AST
 crates/cli    – command-line interface
 crates/tui    – terminal UI (in development)
 ```

@@ -26,6 +26,9 @@ enum Commands {
 
     /// Render a template into a new file
     New(NewArgs),
+
+    /// Capture content into an existing file's section
+    Capture(CaptureArgs),
 }
 
 #[derive(Debug, Args)]
@@ -37,6 +40,22 @@ pub struct NewArgs {
     /// Output file path to create
     #[arg(long)]
     pub output: PathBuf,
+}
+
+#[derive(Debug, Args)]
+pub struct CaptureArgs {
+    /// Logical capture name (e.g. "inbox" or "todo")
+    pub name: String,
+
+    /// Variables to pass to the capture (e.g. --var text="My note")
+    #[arg(long = "var", value_parser = parse_key_val)]
+    pub vars: Vec<(String, String)>,
+}
+
+fn parse_key_val(s: &str) -> Result<(String, String), String> {
+    let pos =
+        s.find('=').ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
+    Ok((s[..pos].to_string(), s[pos + 1..].to_string()))
 }
 
 fn main() {
@@ -55,6 +74,14 @@ fn main() {
                 cli.profile.as_deref(),
                 &args.template,
                 &args.output,
+            );
+        }
+        Commands::Capture(args) => {
+            cmd::capture::run(
+                cli.config.as_deref(),
+                cli.profile.as_deref(),
+                &args.name,
+                &args.vars,
             );
         }
     }

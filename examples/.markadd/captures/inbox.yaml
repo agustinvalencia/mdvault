@@ -1,0 +1,9 @@
+name: inbox
+description: Add a quick note to today's inbox
+
+target:
+  file: "daily/{{date}}.md"
+  section: "Inbox"
+  position: begin
+
+content: "- [ ] {{text}}"

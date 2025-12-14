@@ -1,0 +1,11 @@
+---
+source: crates/core/tests/markdown_ast_golden.rs
+expression: "headings_str.join(\"\\n\")"
+---
+L1: Changelog
+L2: Unreleased
+L3: Added
+L3: Changed
+L3: Deprecated
+L2: 2.0.0 - 2024-06-01
+L3: Breaking Changes
