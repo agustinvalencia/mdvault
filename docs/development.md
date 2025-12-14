@@ -9,7 +9,7 @@ For usage documentation, see the main [README](../README.md).
 ```text
 markadd/
 ├─ crates/
-│  ├─ core/        # config loader, template discovery, template engine
+│  ├─ core/        # config loader, templates, captures, markdown AST
 │  ├─ cli/         # command-line interface
 │  └─ tui/         # terminal UI (in development)
 ├─ docs/
@@ -32,6 +32,7 @@ markadd/
 - **CLI parsing**: clap
 - **Error handling**: thiserror
 - **Template engine**: regex-based (MVP), with path to Tera
+- **Markdown AST**: comrak (CommonMark parser)
 - **Testing**: cargo test, insta (snapshots), assert_cmd (CLI integration)
 - **CI**: GitHub Actions (fmt, clippy, test, coverage)
 
@@ -65,10 +66,21 @@ markadd/
 - Built-in context variables (date, time, vault_root, etc.)
 - Command: `markadd new --template <name> --output <path>`
 
-### Roadmap
+**Phase 4 — Markdown AST Insertions**
+- `MarkdownEditor` API for section-based insertions
+- Comrak-based AST parsing (not regex)
+- Insert at beginning or end of named sections
+- Case-insensitive section matching (configurable)
+- Support for ATX and Setext headings
+- Golden/snapshot tests for complex documents
 
-**Phase 4** — Markdown Section Insertion
-Use Comrak to insert content into specific headers.
+**Phase 4 MVP — Captures**
+- Capture specs (YAML) with target file, section, position
+- Variable substitution in file paths and content
+- Command: `markadd capture <name> --var key=value`
+- Integration tests for capture workflows
+
+### Roadmap
 
 **Phase 5** — File Planner, Atomic Writes, Undo Log
 
@@ -104,9 +116,9 @@ Snapshots are immutable in CI.
 
 ### Test Categories
 
-- **Unit tests**: Core logic (config parsing, template rendering)
+- **Unit tests**: Core logic (config parsing, template rendering, markdown AST)
 - **Integration tests**: CLI commands with real filesystems (tempdir)
-- **Snapshot tests**: Stable output format verification
+- **Snapshot tests**: Stable output format verification (CLI output, markdown transformations)
 
 ## Code Style
 

@@ -8,10 +8,10 @@
 It allows you to:
 
 - generate Markdown files from templates
-- list templates available in your vault
+- insert content into Markdown sections via captures
+- list templates and captures available in your vault
 - validate configuration profiles
-- (soon) insert content into Markdown sections
-- (later) run capture workflows and programmable macros
+- (coming soon) programmable macros
 
 ## Installation
 
@@ -99,6 +99,26 @@ Options:
 - `--template` — Logical template name (e.g., `daily` or `blog/post`)
 - `--output` — Output file path to create
 
+### capture
+
+Insert content into an existing Markdown file using a capture workflow.
+
+```bash
+markadd capture --name <capture-name>
+```
+
+Options:
+- `--name` — Name of the capture to run
+- `--dry-run` — Preview changes without writing to file
+
+### list-captures
+
+List available captures in the active profile.
+
+```bash
+markadd list-captures
+```
+
 ## Configuration
 
 `markadd` loads configuration from:
@@ -136,7 +156,7 @@ Use `--profile` to switch profiles:
 markadd --profile work list-templates
 ```
 
-For full configuration reference, see [`docs/CONFIG.md`](./docs/CONFIG.md).
+For full configuration reference, see [`docs/config.md`](./docs/config.md).
 
 ## Templates
 
@@ -179,11 +199,41 @@ Templates are Markdown files stored in your `templates_dir`. They support variab
 
 For more on templates, see [`docs/templates.md`](./docs/templates.md).
 
+## Captures
+
+Captures are YAML files that define workflows for inserting content into existing Markdown files. They're stored in your `captures_dir`.
+
+### Example Capture
+
+```yaml
+name: inbox-item
+description: Add an item to inbox
+
+target:
+  file: "{{vault_root}}/inbox.md"
+  section: Inbox
+  position: end
+
+content: |
+  - [ ] {{item}}
+```
+
+Run a capture:
+
+```bash
+markadd capture --name inbox-item
+```
+
+This will prompt for the `{{item}}` variable and insert the content at the end of the "Inbox" section.
+
+For more on captures, see [`docs/capture.md`](./docs/capture.md).
+
 ## Documentation
 
-- [Configuration Reference](./docs/CONFIG.md)
+- [Configuration Reference](./docs/config.md)
 - [Template Authoring](./docs/templates.md)
-- [Development Guide](./docs/DEVELOPMENT.md)
+- [Captures Reference](./docs/capture.md)
+- [Development Guide](./docs/development.md)
 
 ## License
 
