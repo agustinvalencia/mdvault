@@ -43,9 +43,20 @@ pub struct NewArgs {
 }
 
 #[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  markadd capture --list
+  markadd capture inbox --var text=\"Buy milk\"
+  markadd capture todo --var task=\"Review PR\" --var priority=high
+")]
 pub struct CaptureArgs {
     /// Logical capture name (e.g. "inbox" or "todo")
-    pub name: String,
+    #[arg(required_unless_present = "list")]
+    pub name: Option<String>,
+
+    /// List available captures and their expected variables
+    #[arg(long, short)]
+    pub list: bool,
 
     /// Variables to pass to the capture (e.g. --var text="My note")
     #[arg(long = "var", value_parser = parse_key_val)]
@@ -77,12 +88,16 @@ fn main() {
             );
         }
         Commands::Capture(args) => {
-            cmd::capture::run(
-                cli.config.as_deref(),
-                cli.profile.as_deref(),
-                &args.name,
-                &args.vars,
-            );
+            if args.list {
+                cmd::capture::run_list(cli.config.as_deref(), cli.profile.as_deref());
+            } else {
+                cmd::capture::run(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    args.name.as_ref().unwrap(),
+                    &args.vars,
+                );
+            }
         }
     }
 }
