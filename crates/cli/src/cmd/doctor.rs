@@ -1,4 +1,4 @@
-use markadd_core::config::loader::{ConfigLoader, default_config_path};
+use markadd_core::config::loader::{default_config_path, ConfigLoader};
 use std::path::Path;
 
 pub fn run(config: Option<&Path>, profile: Option<&str>) {

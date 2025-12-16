@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use thiserror::Error;
 
+use crate::frontmatter::FrontmatterOps;
 use crate::markdown_ast::InsertPosition;
 
 /// A capture specification loaded from a YAML file
@@ -18,7 +19,13 @@ pub struct CaptureSpec {
     pub target: CaptureTarget,
 
     /// Content template to insert (supports {{var}} placeholders)
-    pub content: String,
+    /// Optional: capture may only modify frontmatter without adding content
+    #[serde(default)]
+    pub content: Option<String>,
+
+    /// Frontmatter operations to apply to the target file
+    #[serde(default)]
+    pub frontmatter: Option<FrontmatterOps>,
 }
 
 /// Target configuration for where to insert captured content
@@ -27,8 +34,9 @@ pub struct CaptureTarget {
     /// Path to the target file (supports {{var}} placeholders)
     pub file: String,
 
-    /// Section heading to insert into
-    pub section: String,
+    /// Section heading to insert into (optional: not needed for frontmatter-only captures)
+    #[serde(default)]
+    pub section: Option<String>,
 
     /// Where in the section to insert (begin or end)
     #[serde(default)]

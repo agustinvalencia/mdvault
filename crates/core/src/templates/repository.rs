@@ -3,9 +3,8 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::templates::discovery::{
-    TemplateDiscoveryError, TemplateInfo, discover_templates,
-};
+use crate::frontmatter::{parse_template_frontmatter, FrontmatterParseError, TemplateFrontmatter};
+use crate::templates::discovery::{discover_templates, TemplateDiscoveryError, TemplateInfo};
 
 #[derive(Debug, Error)]
 pub enum TemplateRepoError {
@@ -21,13 +20,25 @@ pub enum TemplateRepoError {
         #[source]
         source: std::io::Error,
     },
+
+    #[error("failed to parse frontmatter in {path}: {source}")]
+    FrontmatterParse {
+        path: PathBuf,
+        #[source]
+        source: FrontmatterParseError,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub struct LoadedTemplate {
     pub logical_name: String,
     pub path: PathBuf,
+    /// Raw content (includes frontmatter if present).
     pub content: String,
+    /// Parsed template frontmatter (if present).
+    pub frontmatter: Option<TemplateFrontmatter>,
+    /// Body content (excludes frontmatter).
+    pub body: String,
 }
 
 pub struct TemplateRepository {
@@ -51,12 +62,20 @@ impl TemplateRepository {
             .iter()
             .find(|t| t.logical_name == name)
             .ok_or_else(|| TemplateRepoError::NotFound(name.to_lowercase()))?;
+
         let content = fs::read_to_string(&info.path)
             .map_err(|e| TemplateRepoError::Io { path: info.path.clone(), source: e })?;
+
+        let (frontmatter, body) = parse_template_frontmatter(&content).map_err(|e| {
+            TemplateRepoError::FrontmatterParse { path: info.path.clone(), source: e }
+        })?;
+
         Ok(LoadedTemplate {
             logical_name: info.logical_name.clone(),
             path: info.path.clone(),
             content,
+            frontmatter,
+            body,
         })
     }
 }

@@ -18,11 +18,11 @@ pub enum TemplateRenderError {
 
 pub type RenderContext = HashMap<String, String>;
 
-pub fn build_render_context(
-    cfg: &ResolvedConfig,
-    template: &TemplateInfo,
-    output_path: &Path,
-) -> RenderContext {
+/// Build a minimal render context with date/time and config variables.
+///
+/// This is useful for resolving template output paths from frontmatter
+/// before the actual output path is known.
+pub fn build_minimal_context(cfg: &ResolvedConfig, template: &TemplateInfo) -> RenderContext {
     let mut ctx = RenderContext::new();
 
     // Date/time
@@ -40,6 +40,16 @@ pub fn build_render_context(
     // Template info
     ctx.insert("template_name".into(), template.logical_name.clone());
     ctx.insert("template_path".into(), template.path.to_string_lossy().to_string());
+
+    ctx
+}
+
+pub fn build_render_context(
+    cfg: &ResolvedConfig,
+    template: &TemplateInfo,
+    output_path: &Path,
+) -> RenderContext {
+    let mut ctx = build_minimal_context(cfg, template);
 
     // Output info
     let output_abs = absolutize(output_path);
@@ -64,15 +74,39 @@ fn absolutize(path: &Path) -> PathBuf {
 
 pub fn render(
     template: &LoadedTemplate,
-    ctx: RenderContext,
+    ctx: &RenderContext,
 ) -> Result<String, TemplateRenderError> {
+    render_string(&template.body, ctx)
+}
+
+/// Render a string template with variable substitution.
+pub fn render_string(template: &str, ctx: &RenderContext) -> Result<String, TemplateRenderError> {
     let re = Regex::new(r"\{\{([a-zA-Z0-9_]+)\}\}")
         .map_err(|e| TemplateRenderError::Regex(e.to_string()))?;
 
-    let result = re.replace_all(&template.content, |caps: &regex::Captures<'_>| {
+    let result = re.replace_all(template, |caps: &regex::Captures<'_>| {
         let key = &caps[1];
         ctx.get(key).cloned().unwrap_or_else(|| caps[0].to_string())
     });
 
     Ok(result.into_owned())
+}
+
+/// Resolve the output path for a template.
+///
+/// If the template has frontmatter with an `output` field, render it with the context.
+/// Otherwise, return None.
+pub fn resolve_template_output_path(
+    template: &LoadedTemplate,
+    cfg: &ResolvedConfig,
+    ctx: &RenderContext,
+) -> Result<Option<PathBuf>, TemplateRenderError> {
+    if let Some(ref fm) = template.frontmatter {
+        if let Some(ref output) = fm.output {
+            let rendered = render_string(output, ctx)?;
+            let path = cfg.vault_root.join(&rendered);
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
 }

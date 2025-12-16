@@ -3,7 +3,9 @@ use std::fs;
 use std::path::Path;
 
 use markadd_core::captures::{CaptureRepoError, CaptureRepository, CaptureSpec};
-use markadd_core::config::loader::{ConfigLoader, default_config_path};
+use markadd_core::config::loader::{default_config_path, ConfigLoader};
+use markadd_core::config::types::ResolvedConfig;
+use markadd_core::frontmatter::{apply_ops, parse, serialize};
 use markadd_core::markdown_ast::{MarkdownAstError, MarkdownEditor, SectionMatch};
 
 use chrono::Local;
@@ -76,11 +78,13 @@ fn extract_user_variables(spec: &CaptureSpec) -> Vec<String> {
 
     let mut vars = HashSet::new();
 
-    // Extract from content
-    for cap in re.captures_iter(&spec.content) {
-        let var = cap.get(1).unwrap().as_str();
-        if !builtin.contains(var) {
-            vars.insert(var.to_string());
+    // Extract from content (if present)
+    if let Some(content) = &spec.content {
+        for cap in re.captures_iter(content) {
+            let var = cap.get(1).unwrap().as_str();
+            if !builtin.contains(var) {
+                vars.insert(var.to_string());
+            }
         }
     }
 
@@ -89,6 +93,16 @@ fn extract_user_variables(spec: &CaptureSpec) -> Vec<String> {
         let var = cap.get(1).unwrap().as_str();
         if !builtin.contains(var) {
             vars.insert(var.to_string());
+        }
+    }
+
+    // Extract from section (if present)
+    if let Some(section) = &spec.target.section {
+        for cap in re.captures_iter(section) {
+            let var = cap.get(1).unwrap().as_str();
+            if !builtin.contains(var) {
+                vars.insert(var.to_string());
+            }
         }
     }
 
@@ -157,10 +171,7 @@ pub fn run(
     let target_file_raw = render_string(&loaded.spec.target.file, &ctx);
     let target_file = resolve_target_path(&cfg.vault_root, &target_file_raw);
 
-    // 6. Render content
-    let rendered_content = render_string(&loaded.spec.content, &ctx);
-
-    // 7. Read existing file
+    // 6. Read existing file
     let existing_content = match fs::read_to_string(&target_file) {
         Ok(content) => content,
         Err(e) => {
@@ -170,39 +181,21 @@ pub fn run(
         }
     };
 
-    // 8. Insert content using MarkdownEditor
-    let section = SectionMatch::new(&loaded.spec.target.section);
-    let position = loaded.spec.target.position.clone().into();
-
-    let result = match MarkdownEditor::insert_into_section(
+    // 7. Execute capture (frontmatter + content insertion)
+    let (result_content, section_info) = match execute_capture_operations(
         &existing_content,
-        &section,
-        &rendered_content,
-        position,
+        &loaded.spec,
+        &ctx,
     ) {
         Ok(r) => r,
         Err(e) => {
-            match &e {
-                MarkdownAstError::SectionNotFound(s) => {
-                    eprintln!("Section not found: '{s}'");
-                    eprintln!("Available sections in {}:", target_file.display());
-                    for h in MarkdownEditor::find_headings(&existing_content) {
-                        eprintln!("  - {} (level {})", h.title, h.level);
-                    }
-                }
-                MarkdownAstError::EmptyDocument => {
-                    eprintln!("Target file is empty: {}", target_file.display());
-                }
-                MarkdownAstError::RenderError(msg) => {
-                    eprintln!("Markdown render error: {msg}");
-                }
-            }
+            eprintln!("{e}");
             std::process::exit(1);
         }
     };
 
-    // 9. Write back to file
-    if let Err(e) = fs::write(&target_file, &result.content) {
+    // 8. Write back to file
+    if let Err(e) = fs::write(&target_file, &result_content) {
         eprintln!("Failed to write to {}: {e}", target_file.display());
         std::process::exit(1);
     }
@@ -210,15 +203,64 @@ pub fn run(
     println!("OK   markadd capture");
     println!("capture: {}", capture_name);
     println!("target:  {}", target_file.display());
-    println!(
-        "section: {} (level {})",
-        result.matched_heading.title, result.matched_heading.level
-    );
+    if let Some((title, level)) = section_info {
+        println!("section: {} (level {})", title, level);
+    }
+    if loaded.spec.frontmatter.is_some() {
+        println!("frontmatter: modified");
+    }
 }
 
-fn build_capture_context(
-    cfg: &markadd_core::config::types::ResolvedConfig,
-) -> HashMap<String, String> {
+/// Execute capture operations: frontmatter modification and/or content insertion.
+/// Returns the modified content and optional section info (title, level).
+fn execute_capture_operations(
+    existing_content: &str,
+    spec: &CaptureSpec,
+    ctx: &HashMap<String, String>,
+) -> Result<(String, Option<(String, u8)>), String> {
+    // Parse frontmatter from existing content first
+    let mut parsed = parse(existing_content).map_err(|e| format!("Failed to parse frontmatter: {e}"))?;
+    let mut section_info = None;
+
+    // Apply frontmatter operations if specified
+    if let Some(fm_ops) = &spec.frontmatter {
+        parsed = apply_ops(parsed, fm_ops, ctx).map_err(|e| format!("Failed to apply frontmatter ops: {e}"))?;
+    }
+
+    // Insert content if specified - operate on body only to preserve frontmatter
+    if let Some(content_template) = &spec.content {
+        let section = spec.target.section.as_ref().ok_or_else(|| {
+            "Capture has content but no target section specified".to_string()
+        })?;
+
+        let rendered_content = render_string(content_template, ctx);
+        let section_match = SectionMatch::new(section);
+        let position = spec.target.position.clone().into();
+
+        let result = MarkdownEditor::insert_into_section(&parsed.body, &section_match, &rendered_content, position)
+            .map_err(|e| match &e {
+                MarkdownAstError::SectionNotFound(s) => {
+                    let headings = MarkdownEditor::find_headings(&parsed.body);
+                    let mut msg = format!("Section not found: '{s}'\nAvailable sections:\n");
+                    for h in headings {
+                        msg.push_str(&format!("  - {} (level {})\n", h.title, h.level));
+                    }
+                    msg
+                }
+                MarkdownAstError::EmptyDocument => "Target file is empty".to_string(),
+                MarkdownAstError::RenderError(msg) => format!("Markdown render error: {msg}"),
+            })?;
+
+        section_info = Some((result.matched_heading.title, result.matched_heading.level));
+        parsed.body = result.content;
+    }
+
+    // Serialize the document (frontmatter + body)
+    let final_content = serialize(&parsed);
+    Ok((final_content, section_info))
+}
+
+fn build_capture_context(cfg: &ResolvedConfig) -> HashMap<String, String> {
     let mut ctx = HashMap::new();
 
     // Date/time
@@ -247,5 +289,9 @@ fn render_string(template: &str, ctx: &HashMap<String, String>) -> String {
 
 fn resolve_target_path(vault_root: &Path, target: &str) -> std::path::PathBuf {
     let path = std::path::Path::new(target);
-    if path.is_absolute() { path.to_path_buf() } else { vault_root.join(path) }
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        vault_root.join(path)
+    }
 }

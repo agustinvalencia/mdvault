@@ -1,4 +1,5 @@
 mod cmd;
+mod tui;
 
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
@@ -13,7 +14,7 @@ struct Cli {
     profile: Option<String>,
 
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -37,9 +38,9 @@ pub struct NewArgs {
     #[arg(long)]
     pub template: String,
 
-    /// Output file path to create
+    /// Output file path to create (optional if template defines output in frontmatter)
     #[arg(long)]
-    pub output: PathBuf,
+    pub output: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -73,21 +74,28 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Doctor => {
+        // No command provided - launch TUI
+        None => {
+            if let Err(e) = tui::run(cli.config.as_deref(), cli.profile.as_deref()) {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Doctor) => {
             cmd::doctor::run(cli.config.as_deref(), cli.profile.as_deref())
         }
-        Commands::ListTemplates => {
+        Some(Commands::ListTemplates) => {
             cmd::list_templates::run(cli.config.as_deref(), cli.profile.as_deref())
         }
-        Commands::New(args) => {
+        Some(Commands::New(args)) => {
             cmd::new::run(
                 cli.config.as_deref(),
                 cli.profile.as_deref(),
                 &args.template,
-                &args.output,
+                args.output.as_deref(),
             );
         }
-        Commands::Capture(args) => {
+        Some(Commands::Capture(args)) => {
             if args.list {
                 cmd::capture::run_list(cli.config.as_deref(), cli.profile.as_deref());
             } else {
