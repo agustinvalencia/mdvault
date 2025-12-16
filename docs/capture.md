@@ -39,9 +39,10 @@ content: "- [ ] {{text}}"
 | `name` | Yes | Logical name for the capture |
 | `description` | No | Human-readable description |
 | `target.file` | Yes | Path to target file (relative to vault_root) |
-| `target.section` | Yes | Heading text to find |
+| `target.section` | No* | Heading text to find (*required if `content` is set) |
 | `target.position` | No | `begin` (default) or `end` of section |
-| `content` | Yes | Content template to insert |
+| `content` | No | Content template to insert |
+| `frontmatter` | No | Frontmatter operations to apply |
 
 ## Variables
 
@@ -116,6 +117,100 @@ Inserts at the end of the section, before the next heading:
 - NEW ITEM        <- Inserted here
 
 ## Done
+```
+
+## Frontmatter Operations
+
+Captures can modify YAML frontmatter in the target file. This is useful for updating metadata like tags, status, or counters.
+
+### Simple Form
+
+Use a map to set field values:
+
+```yaml
+name: mark-reviewed
+description: Mark a document as reviewed
+
+target:
+  file: "{{vault_root}}/docs/{{doc}}.md"
+
+frontmatter:
+  reviewed: true
+  reviewer: "{{user}}"
+  review_date: "{{date}}"
+```
+
+### Operations Form
+
+Use explicit operations for more control:
+
+```yaml
+name: increment-views
+description: Increment view counter
+
+target:
+  file: "{{vault_root}}/pages/{{page}}.md"
+
+frontmatter:
+  - field: views
+    op: increment
+  - field: last_viewed
+    op: set
+    value: "{{datetime}}"
+```
+
+### Available Operations
+
+| Operation | Description | Example |
+|-----------|-------------|---------|
+| `set` | Set field to value (creates if missing) | `op: set, value: "draft"` |
+| `toggle` | Toggle boolean field | `op: toggle` |
+| `increment` | Increment numeric field by 1 | `op: increment` |
+| `append` | Append value to list field | `op: append, value: "{{tag}}"` |
+
+### Frontmatter-Only Captures
+
+Captures can modify frontmatter without inserting content:
+
+```yaml
+name: publish
+description: Mark document as published
+
+target:
+  file: "{{vault_root}}/posts/{{post}}.md"
+
+frontmatter:
+  status: published
+  published_date: "{{datetime}}"
+```
+
+Usage:
+```bash
+markadd capture publish --var post="my-article"
+```
+
+### Combined Captures
+
+Captures can modify frontmatter AND insert content:
+
+```yaml
+name: add-comment
+description: Add a comment and update metadata
+
+target:
+  file: "{{vault_root}}/docs/{{doc}}.md"
+  section: "Comments"
+  position: end
+
+content: |
+  - {{date}} ({{author}}): {{comment}}
+
+frontmatter:
+  - field: comment_count
+    op: increment
+  - field: last_comment
+    op: set
+    value: "{{date}}"
 ```
 
 ## Examples

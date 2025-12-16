@@ -7,6 +7,8 @@ fn loaded(contents: &str) -> LoadedTemplate {
         logical_name: "test".into(),
         path: PathBuf::from("test.md"),
         content: contents.to_string(),
+        frontmatter: None,
+        body: contents.to_string(),
     }
 }
 
@@ -16,7 +18,7 @@ fn render_replaces_known_variables() {
     let mut ctx = RenderContext::new();
     ctx.insert("name".into(), "Agustin".into());
 
-    let out = render(&tpl, ctx).expect("render ok");
+    let out = render(&tpl, &ctx).expect("render ok");
     assert_eq!(out, "Hello Agustin!");
 }
 
@@ -26,6 +28,6 @@ fn render_leaves_unknown_variables_intact() {
     let mut ctx = RenderContext::new();
     ctx.insert("name".into(), "Agustin".into());
 
-    let out = render(&tpl, ctx).expect("render ok");
+    let out = render(&tpl, &ctx).expect("render ok");
     assert_eq!(out, "Hello Agustin and {{unknown}}!");
 }

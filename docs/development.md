@@ -9,9 +9,8 @@ For usage documentation, see the main [README](../README.md).
 ```text
 markadd/
 ├─ crates/
-│  ├─ core/        # config loader, templates, captures, markdown AST
-│  ├─ cli/         # command-line interface
-│  └─ tui/         # terminal UI (in development)
+│  ├─ core/        # config loader, templates, captures, markdown AST, frontmatter
+│  └─ cli/         # command-line interface and TUI
 ├─ docs/
 │  ├─ config.md          # configuration reference
 │  ├─ templates.md       # template authoring guide
@@ -31,9 +30,10 @@ markadd/
 
 - **Language**: Rust (2024 edition)
 - **CLI parsing**: clap
-- **Error handling**: thiserror
+- **Error handling**: thiserror, color-eyre (TUI)
 - **Template engine**: regex-based (MVP), with path to Tera
 - **Markdown AST**: comrak (CommonMark parser)
+- **TUI**: ratatui, crossterm
 - **Testing**: cargo test, insta (snapshots), assert_cmd (CLI integration)
 - **CI**: GitHub Actions (fmt, clippy, test, coverage)
 
@@ -42,7 +42,7 @@ markadd/
 ### Completed
 
 **Phase 0 — Workspace, Tooling, CI**
-- Workspace crates: `core`, `cli`, `tui`
+- Workspace crates: `core`, `cli`
 - Rust 2024 edition
 - Strict linting via `.clippy.toml`
 - GitHub Actions: fmt, clippy, unit/integration/snapshot tests, coverage
@@ -81,6 +81,19 @@ markadd/
 - Command: `markadd capture <name> --var key=value`
 - Integration tests for capture workflows
 
+**Frontmatter System**
+- YAML frontmatter parsing and serialization
+- Frontmatter modification operations (set, toggle, increment, append)
+- Template frontmatter with `output` field for default output paths
+- Capture frontmatter operations for modifying target file frontmatter
+- Frontmatter-only captures (no content insertion required)
+
+**TUI Integration**
+- TUI integrated into CLI crate (ratatui + crossterm)
+- Launch TUI by running `markadd` without subcommand
+- Template and capture browsing
+- Elm-inspired architecture (App state, Message, update loop)
+
 ### Roadmap
 
 **Phase 5** — File Planner, Atomic Writes, Undo Log
@@ -91,7 +104,7 @@ markadd/
 
 **Phase 8** — Lua Hooks (optional)
 
-**Phase 9** — TUI Polish
+**Phase 9** — TUI Polish (variable input, execution feedback)
 
 **Phase 10** — Documentation & Release
 

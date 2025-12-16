@@ -1,26 +1,25 @@
 # Templates in markadd
 
-This document describes how templates work in `markadd`:  
-how they are discovered, how they are named, and how they will be rendered once the Template Engine MVP (Phase 03) arrives.
-
-Currently (after Phase 02), templates are **discovered only**, not yet rendered.  
-This guide covers both current behaviour and upcoming features.
+This document describes how templates work in `markadd`:
+how they are discovered, named, and rendered.
 
 
 
 ## Overview
 
-A *template* in `markadd` is a Markdown file stored inside the profile’s configured `templates_dir`.  
+A *template* in `markadd` is a Markdown file stored inside the profile's configured `templates_dir`.
 Templates are discovered recursively and exposed through the CLI:
 
+```bash
 markadd list-templates
+```
 
 Each template has:
 
-- a **physical path** (inside your vault)  
-- a **logical name** (used in CLI commands)  
-
-In later phases, templates will also support **variables**, **built-in functions**, and **output rendering**.
+- a **physical path** (inside your vault)
+- a **logical name** (used in CLI commands)
+- optional **frontmatter** with metadata and output path
+- **variables** that are substituted at render time
 
 
 
@@ -52,7 +51,7 @@ draft.md
 
 
 
-## What Counts as a Template (Phase 02)
+## What Counts as a Template
 
 A template is any file whose name ends **exactly** in:
 
@@ -139,83 +138,135 @@ markadd –profile work list-templates
 
 
 
-## Template Engine (Phase 03 Preview)
+## Template Frontmatter
 
-Although template *rendering* is not implemented yet, here is what Phase 03 will introduce.
+Templates can include YAML frontmatter to define metadata and default output paths.
 
-### 1. Variable Substitution
+### Output Path in Frontmatter
 
-Templates will eventually support variable placeholders:
+The `output` field defines where the rendered file will be created:
 
-```
-Title: {{title}}
-Date: {{date}}
-```
+```markdown
+---
+output: "daily/{{date}}.md"
+---
+# Daily Note: {{date}}
 
-These will be replaced at render-time using:
+## Tasks
 
-- built-in variables (date, time, vault paths)  
-- file-based variables (output filename, directory)  
-- user-supplied variables via CLI prompts  
+- [ ]
 
-### 2. Built-In Variables (planned)
-
-Examples (names tentative):
+## Notes
 
 ```
-{{date}}
-{{time}}
-{{datetime}}
-{{vault_root}}
-{{template_name}}
-{{output_path}}
-{{output_filename}}
+
+When using a template with an `output` field, the `--output` flag becomes optional:
+
+```bash
+# Uses output path from frontmatter
+markadd new --template daily
+
+# CLI flag overrides frontmatter
+markadd new --template daily --output ~/Notes/custom.md
 ```
 
-### 3. Rendering via CLI
+The output path supports variable substitution (`{{date}}`, `{{vault_root}}`, etc.) and is resolved relative to `vault_root`.
 
-The first CLI command of the Template Engine MVP:
+### Extra Frontmatter Fields
 
+Other frontmatter fields are passed through to the rendered output:
+
+```markdown
+---
+output: "posts/{{date}}-draft.md"
+tags: [draft]
+author: "{{user}}"
+---
+# New Post
 ```
-markadd new –template  –output 
+
+## Variable Substitution
+
+Templates support `{{variable}}` placeholders that are replaced at render time.
+
+### Built-In Variables
+
+| Variable | Example | Description |
+|----------|---------|-------------|
+| `{{date}}` | `2024-01-15` | Current date (YYYY-MM-DD) |
+| `{{time}}` | `14:30` | Current time (HH:MM) |
+| `{{datetime}}` | `2024-01-15T14:30:00+00:00` | ISO 8601 datetime |
+| `{{vault_root}}` | `/home/user/vault` | Vault root path |
+| `{{template_name}}` | `daily` | Logical name of the template |
+| `{{template_path}}` | `/vault/.markadd/templates/daily.md` | Full path to template |
+| `{{output_path}}` | `/vault/daily/2024-01-15.md` | Full output path |
+| `{{output_filename}}` | `2024-01-15.md` | Output filename only |
+| `{{output_dir}}` | `/vault/daily` | Output directory |
+
+### Example Template
+
+```markdown
+---
+output: "meetings/{{date}}.md"
+---
+# Meeting Notes: {{date}}
+
+**Time**: {{time}}
+**File**: {{output_filename}}
+
+## Attendees
+
+-
+
+## Agenda
+
+1.
+
+## Notes
+
+## Action Items
+
+- [ ]
 ```
 
-Example:
+## Rendering via CLI
 
+Generate a new file from a template:
+
+```bash
+markadd new --template <name> --output <path>
 ```
-markadd new –template daily –output ~/Notes/2025-06-10.md
+
+Examples:
+
+```bash
+# Specify output path
+markadd new --template daily --output ~/Notes/2025-01-15.md
+
+# Use output path from template frontmatter
+markadd new --template daily
+
+# Use nested template
+markadd new --template blog/post --output ~/Notes/posts/my-post.md
 ```
 
-### 4. Future: User Prompts
+## Future: User Prompts
 
-Later, templates may declare variables that require user input, e.g.:
+Templates may eventually declare variables that require user input:
 
 ```
 {{prompt:meeting_subject}}
 ```
 
-Running a template containing prompts will ask:
+## Future: Scripting Hooks
 
-```
-Enter meeting_subject:
+If security flags allow (`allow_shell = true`), templates may embed:
 
-```
-### 5. Future: Scripting Hooks
+- pre-render hooks
+- post-render hooks
+- transformations
 
-If security flags allow it:
-
-```
-[security]
-allow_shell = true
-```
-
-templates may eventually embed:
-
-- pre-render hooks  
-- post-render hooks  
-- transformations  
-
-These features belong to later phases (captures and macros).
+These features belong to later phases.
 
 
 
@@ -273,21 +324,25 @@ Because templates are plain Markdown:
 
 ## Interaction with Other markadd Features
 
-### Captures (Phase 5)
+### Captures
 
-Templates and captures are separate:
+Templates and captures are complementary:
 
-- **templates** generate *new files*  
-- **captures** insert content into *existing files*  
-- later, **macros** will combine both  
+- **templates** generate *new files*
+- **captures** insert content into *existing files*
+- later, **macros** will combine both
 
-### Macros (Phase 6)
+A common workflow:
+1. Use `markadd new` to create a daily note from a template
+2. Use `markadd capture` throughout the day to add content
+
+### Macros (Future)
 
 Macros will orchestrate:
 
-1. running a template  
-2. inserting structured text  
-3. executing optional hooks  
+1. running a template
+2. inserting structured text
+3. executing optional hooks
 
 Templates become building blocks for higher-level automation.
 
@@ -295,12 +350,12 @@ Templates become building blocks for higher-level automation.
 
 ## Summary
 
-- Templates are Markdown files inside `templates_dir`.  
-- Only `.md` files are treated as templates.  
-- Nested folders produce namespaced logical names.  
-- `markadd list-templates` shows what’s available.  
-- Template rendering begins in Phase 03.  
-- Future phases extend templates with variables, prompts, and scripting hooks.  
-
-This system is intentionally simple now to support predictable growth later.
+- Templates are Markdown files inside `templates_dir`
+- Only `.md` files are treated as templates
+- Nested folders produce namespaced logical names
+- Templates support `{{variable}}` substitution with built-in and custom variables
+- Optional frontmatter with `output` field defines default output path
+- `markadd list-templates` shows what's available
+- `markadd new --template <name>` renders a template to a file
+- Future phases will add user prompts and scripting hooks
 
