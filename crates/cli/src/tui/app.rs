@@ -6,7 +6,9 @@ use std::path::PathBuf;
 use markadd_core::captures::CaptureInfo;
 use markadd_core::config::types::ResolvedConfig;
 use markadd_core::templates::discovery::TemplateInfo;
-use markadd_core::templates::engine::{build_minimal_context, resolve_template_output_path};
+use markadd_core::templates::engine::{
+    build_minimal_context, resolve_template_output_path,
+};
 use markadd_core::templates::repository::TemplateRepository;
 
 /// Unified item that can be either a template or capture.
@@ -271,8 +273,9 @@ impl App {
         let repo = TemplateRepository::new(&self.config.templates_dir)
             .map_err(|e| format!("Failed to load templates: {e}"))?;
 
-        let loaded =
-            repo.get_by_name(name).map_err(|e| format!("Failed to load template: {e}"))?;
+        let loaded = repo
+            .get_by_name(name)
+            .map_err(|e| format!("Failed to load template: {e}"))?;
 
         let info = TemplateInfo {
             logical_name: loaded.logical_name.clone(),

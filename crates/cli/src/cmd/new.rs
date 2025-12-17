@@ -63,7 +63,9 @@ pub fn run(
         match resolve_template_output_path(&loaded, &cfg, &minimal_ctx) {
             Ok(Some(path)) => path,
             Ok(None) => {
-                eprintln!("Error: --output is required (template has no output in frontmatter)");
+                eprintln!(
+                    "Error: --output is required (template has no output in frontmatter)"
+                );
                 std::process::exit(1);
             }
             Err(e) => {

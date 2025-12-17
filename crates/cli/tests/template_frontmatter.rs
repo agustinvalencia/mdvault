@@ -56,11 +56,7 @@ output: daily/{{date}}.md
     );
 
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
-    cmd.arg("--config")
-        .arg(&config_path)
-        .arg("new")
-        .arg("--template")
-        .arg("daily");
+    cmd.arg("--config").arg(&config_path).arg("new").arg("--template").arg("daily");
     // Note: no --output flag
 
     cmd.assert()
@@ -109,16 +105,10 @@ Content here.
     );
 
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
-    cmd.arg("--config")
-        .arg(&config_path)
-        .arg("new")
-        .arg("--template")
-        .arg("simple");
+    cmd.arg("--config").arg(&config_path).arg("new").arg("--template").arg("simple");
     // Note: no --output flag
 
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("--output is required"));
+    cmd.assert().failure().stderr(predicate::str::contains("--output is required"));
 }
 
 #[test]
@@ -158,12 +148,13 @@ Content
         .arg("--output")
         .arg(&custom_output);
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("my-note.md"));
+    cmd.assert().success().stdout(predicate::str::contains("my-note.md"));
 
     assert!(custom_output.exists(), "custom output should be created");
 
     // The frontmatter output path should not be used
-    assert!(!vault.join("daily").exists(), "frontmatter output dir should not be created");
+    assert!(
+        !vault.join("daily").exists(),
+        "frontmatter output dir should not be created"
+    );
 }

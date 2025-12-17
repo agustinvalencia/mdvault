@@ -1,6 +1,8 @@
 //! Frontmatter modification operations.
 
-use super::types::{Frontmatter, FrontmatterOp, FrontmatterOpType, FrontmatterOps, ParsedDocument};
+use super::types::{
+    Frontmatter, FrontmatterOp, FrontmatterOpType, FrontmatterOps, ParsedDocument,
+};
 use regex::Regex;
 use serde_yaml::Value;
 use std::collections::HashMap;
@@ -79,12 +81,10 @@ fn apply_single_op(
             match current {
                 Some(Value::Number(n)) => {
                     let new_val = n.as_i64().unwrap_or(0) + increment;
-                    fm.fields
-                        .insert(op.field.clone(), Value::Number(new_val.into()));
+                    fm.fields.insert(op.field.clone(), Value::Number(new_val.into()));
                 }
                 None => {
-                    fm.fields
-                        .insert(op.field.clone(), Value::Number(increment.into()));
+                    fm.fields.insert(op.field.clone(), Value::Number(increment.into()));
                 }
                 _ => return Err(FrontmatterModifyError::NotNumber(op.field.clone())),
             }
@@ -103,8 +103,7 @@ fn apply_single_op(
                     fm.fields.insert(op.field.clone(), Value::Sequence(seq));
                 }
                 None => {
-                    fm.fields
-                        .insert(op.field.clone(), Value::Sequence(vec![append_val]));
+                    fm.fields.insert(op.field.clone(), Value::Sequence(vec![append_val]));
                 }
                 _ => return Err(FrontmatterModifyError::NotList(op.field.clone())),
             }
@@ -122,10 +121,8 @@ fn render_value(value: &Value, ctx: &HashMap<String, String>) -> Value {
         }
         // Recursively handle nested structures
         Value::Mapping(map) => {
-            let rendered_map: serde_yaml::Mapping = map
-                .iter()
-                .map(|(k, v)| (k.clone(), render_value(v, ctx)))
-                .collect();
+            let rendered_map: serde_yaml::Mapping =
+                map.iter().map(|(k, v)| (k.clone(), render_value(v, ctx))).collect();
             Value::Mapping(rendered_map)
         }
         Value::Sequence(seq) => {
@@ -170,10 +167,7 @@ mod tests {
         let result = apply_ops(doc, &ops, &make_ctx()).unwrap();
 
         let fm = result.frontmatter.unwrap();
-        assert_eq!(
-            fm.fields.get("title").and_then(|v| v.as_str()),
-            Some("New")
-        );
+        assert_eq!(fm.fields.get("title").and_then(|v| v.as_str()), Some("New"));
         assert_eq!(fm.fields.get("added").and_then(|v| v.as_bool()), Some(true));
     }
 
@@ -300,10 +294,8 @@ mod tests {
 
     #[test]
     fn test_creates_frontmatter_if_missing() {
-        let doc = ParsedDocument {
-            frontmatter: None,
-            body: "# No frontmatter".to_string(),
-        };
+        let doc =
+            ParsedDocument { frontmatter: None, body: "# No frontmatter".to_string() };
 
         let mut ops_map = HashMap::new();
         ops_map.insert("new_field".to_string(), Value::Bool(true));
@@ -313,9 +305,6 @@ mod tests {
 
         assert!(result.frontmatter.is_some());
         let fm = result.frontmatter.unwrap();
-        assert_eq!(
-            fm.fields.get("new_field").and_then(|v| v.as_bool()),
-            Some(true)
-        );
+        assert_eq!(fm.fields.get("new_field").and_then(|v| v.as_bool()), Some(true));
     }
 }

@@ -13,5 +13,5 @@ fmt:
     cargo fmt
 
 lint:
-    cargo check .
+    cargo check
 

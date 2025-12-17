@@ -13,7 +13,7 @@ expression: result.content
 
 ### Changed
 
-``` rust
+```rust
 // Code block that should be preserved
 fn example() {
     println!("# This is not a heading");
@@ -21,7 +21,6 @@ fn example() {
 ```
 
 - New change entry
-
 ### Deprecated
 
 - Old API
@@ -31,5 +30,5 @@ fn example() {
 ### Breaking Changes
 
 | Old | New |
-| --- | --- |
+|-----|-----|
 | foo | bar |

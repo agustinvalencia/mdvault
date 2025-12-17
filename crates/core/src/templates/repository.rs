@@ -3,8 +3,12 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::frontmatter::{parse_template_frontmatter, FrontmatterParseError, TemplateFrontmatter};
-use crate::templates::discovery::{discover_templates, TemplateDiscoveryError, TemplateInfo};
+use crate::frontmatter::{
+    FrontmatterParseError, TemplateFrontmatter, parse_template_frontmatter,
+};
+use crate::templates::discovery::{
+    TemplateDiscoveryError, TemplateInfo, discover_templates,
+};
 
 #[derive(Debug, Error)]
 pub enum TemplateRepoError {

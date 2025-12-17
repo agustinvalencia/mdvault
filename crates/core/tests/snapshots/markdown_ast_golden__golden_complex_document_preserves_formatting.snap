@@ -11,13 +11,10 @@ expression: result.content
 - Feature with `inline code`
 - Feature with [link](https://example.com)
 
-<!-- end list -->
-
 - Complex item with `code` and **bold**
-
 ### Changed
 
-``` rust
+```rust
 // Code block that should be preserved
 fn example() {
     println!("# This is not a heading");
@@ -33,5 +30,5 @@ fn example() {
 ### Breaking Changes
 
 | Old | New |
-| --- | --- |
+|-----|-----|
 | foo | bar |

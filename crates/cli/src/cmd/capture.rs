@@ -182,17 +182,14 @@ pub fn run(
     };
 
     // 7. Execute capture (frontmatter + content insertion)
-    let (result_content, section_info) = match execute_capture_operations(
-        &existing_content,
-        &loaded.spec,
-        &ctx,
-    ) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("{e}");
-            std::process::exit(1);
-        }
-    };
+    let (result_content, section_info) =
+        match execute_capture_operations(&existing_content, &loaded.spec, &ctx) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        };
 
     // 8. Write back to file
     if let Err(e) = fs::write(&target_file, &result_content) {
@@ -219,12 +216,14 @@ fn execute_capture_operations(
     ctx: &HashMap<String, String>,
 ) -> Result<(String, Option<(String, u8)>), String> {
     // Parse frontmatter from existing content first
-    let mut parsed = parse(existing_content).map_err(|e| format!("Failed to parse frontmatter: {e}"))?;
+    let mut parsed = parse(existing_content)
+        .map_err(|e| format!("Failed to parse frontmatter: {e}"))?;
     let mut section_info = None;
 
     // Apply frontmatter operations if specified
     if let Some(fm_ops) = &spec.frontmatter {
-        parsed = apply_ops(parsed, fm_ops, ctx).map_err(|e| format!("Failed to apply frontmatter ops: {e}"))?;
+        parsed = apply_ops(parsed, fm_ops, ctx)
+            .map_err(|e| format!("Failed to apply frontmatter ops: {e}"))?;
     }
 
     // Insert content if specified - operate on body only to preserve frontmatter
@@ -237,19 +236,24 @@ fn execute_capture_operations(
         let section_match = SectionMatch::new(section);
         let position = spec.target.position.clone().into();
 
-        let result = MarkdownEditor::insert_into_section(&parsed.body, &section_match, &rendered_content, position)
-            .map_err(|e| match &e {
-                MarkdownAstError::SectionNotFound(s) => {
-                    let headings = MarkdownEditor::find_headings(&parsed.body);
-                    let mut msg = format!("Section not found: '{s}'\nAvailable sections:\n");
-                    for h in headings {
-                        msg.push_str(&format!("  - {} (level {})\n", h.title, h.level));
-                    }
-                    msg
+        let result = MarkdownEditor::insert_into_section(
+            &parsed.body,
+            &section_match,
+            &rendered_content,
+            position,
+        )
+        .map_err(|e| match &e {
+            MarkdownAstError::SectionNotFound(s) => {
+                let headings = MarkdownEditor::find_headings(&parsed.body);
+                let mut msg = format!("Section not found: '{s}'\nAvailable sections:\n");
+                for h in headings {
+                    msg.push_str(&format!("  - {} (level {})\n", h.title, h.level));
                 }
-                MarkdownAstError::EmptyDocument => "Target file is empty".to_string(),
-                MarkdownAstError::RenderError(msg) => format!("Markdown render error: {msg}"),
-            })?;
+                msg
+            }
+            MarkdownAstError::EmptyDocument => "Target file is empty".to_string(),
+            MarkdownAstError::RenderError(msg) => format!("Markdown render error: {msg}"),
+        })?;
 
         section_info = Some((result.matched_heading.title, result.matched_heading.level));
         parsed.body = result.content;

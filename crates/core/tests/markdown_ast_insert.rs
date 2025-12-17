@@ -399,3 +399,62 @@ Original content.
 
     assert!(result.content.contains("New content"));
 }
+
+// === Wikilinks and special character preservation ===
+
+#[test]
+fn preserves_wikilinks_in_existing_content() {
+    let input = r#"# Notes
+
+- [[wikilink]]
+- [[page#section]]
+- Regular text
+
+# Other
+"#;
+
+    let result = MarkdownEditor::insert_into_section(
+        input,
+        &SectionMatch::new("Notes"),
+        "- New item\n",
+        InsertPosition::End,
+    )
+    .unwrap();
+
+    // Wikilinks should NOT be escaped
+    assert!(
+        result.content.contains("[[wikilink]]"),
+        "Wikilinks should be preserved, got: {}",
+        result.content
+    );
+    assert!(
+        result.content.contains("[[page#section]]"),
+        "Wikilinks with sections should be preserved, got: {}",
+        result.content
+    );
+}
+
+#[test]
+fn preserves_wikilinks_in_inserted_content() {
+    let input = r#"# Notes
+
+- Existing item
+
+# Other
+"#;
+
+    let result = MarkdownEditor::insert_into_section(
+        input,
+        &SectionMatch::new("Notes"),
+        "- [[new wikilink]]\n",
+        InsertPosition::End,
+    )
+    .unwrap();
+
+    // Inserted wikilinks should NOT be escaped
+    assert!(
+        result.content.contains("[[new wikilink]]"),
+        "Inserted wikilinks should be preserved, got: {}",
+        result.content
+    );
+}

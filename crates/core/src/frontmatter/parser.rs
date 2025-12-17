@@ -24,23 +24,17 @@ pub fn parse(content: &str) -> Result<ParsedDocument, FrontmatterParseError> {
 
     // Check if document starts with frontmatter delimiter
     if !trimmed.starts_with("---") {
-        return Ok(ParsedDocument {
-            frontmatter: None,
-            body: content.to_string(),
-        });
+        return Ok(ParsedDocument { frontmatter: None, body: content.to_string() });
     }
 
     // Find the closing ---
     let after_first = &trimmed[3..];
 
     // Skip the newline after opening ---
-    let after_newline = if after_first.starts_with('\n') {
-        &after_first[1..]
-    } else if after_first.starts_with("\r\n") {
-        &after_first[2..]
-    } else {
-        after_first
-    };
+    let after_newline = after_first
+        .strip_prefix('\n')
+        .or_else(|| after_first.strip_prefix("\r\n"))
+        .unwrap_or(after_first);
 
     // Find closing delimiter
     if let Some(end_pos) = find_closing_delimiter(after_newline) {
@@ -48,13 +42,11 @@ pub fn parse(content: &str) -> Result<ParsedDocument, FrontmatterParseError> {
 
         // Calculate body start (skip closing --- and following newline)
         let after_closing = &after_newline[end_pos + 3..];
-        let body = if after_closing.starts_with('\n') {
-            after_closing[1..].to_string()
-        } else if after_closing.starts_with("\r\n") {
-            after_closing[2..].to_string()
-        } else {
-            after_closing.to_string()
-        };
+        let body = after_closing
+            .strip_prefix('\n')
+            .or_else(|| after_closing.strip_prefix("\r\n"))
+            .unwrap_or(after_closing)
+            .to_string();
 
         // Parse YAML
         let frontmatter: Frontmatter = if yaml_content.trim().is_empty() {
@@ -63,16 +55,10 @@ pub fn parse(content: &str) -> Result<ParsedDocument, FrontmatterParseError> {
             serde_yaml::from_str(yaml_content.trim())?
         };
 
-        Ok(ParsedDocument {
-            frontmatter: Some(frontmatter),
-            body,
-        })
+        Ok(ParsedDocument { frontmatter: Some(frontmatter), body })
     } else {
         // No closing ---, treat as no frontmatter
-        Ok(ParsedDocument {
-            frontmatter: None,
-            body: content.to_string(),
-        })
+        Ok(ParsedDocument { frontmatter: None, body: content.to_string() })
     }
 }
 
@@ -129,23 +115,18 @@ mod tests {
         let result = parse(content).unwrap();
         assert!(result.frontmatter.is_some());
         let fm = result.frontmatter.unwrap();
-        assert_eq!(
-            fm.fields.get("title").and_then(|v| v.as_str()),
-            Some("Hello")
-        );
+        assert_eq!(fm.fields.get("title").and_then(|v| v.as_str()), Some("Hello"));
         assert_eq!(result.body, "# Content");
     }
 
     #[test]
     fn parse_frontmatter_with_multiple_fields() {
-        let content = "---\ntitle: Test\ndate: 2024-01-15\ntags:\n  - rust\n  - cli\n---\n\nBody";
+        let content =
+            "---\ntitle: Test\ndate: 2024-01-15\ntags:\n  - rust\n  - cli\n---\n\nBody";
         let result = parse(content).unwrap();
         assert!(result.frontmatter.is_some());
         let fm = result.frontmatter.unwrap();
-        assert_eq!(
-            fm.fields.get("title").and_then(|v| v.as_str()),
-            Some("Test")
-        );
+        assert_eq!(fm.fields.get("title").and_then(|v| v.as_str()), Some("Test"));
         assert!(fm.fields.get("tags").is_some());
         assert_eq!(result.body, "\nBody");
     }

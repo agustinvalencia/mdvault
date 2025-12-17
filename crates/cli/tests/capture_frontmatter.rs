@@ -68,10 +68,7 @@ Some content here.
     );
 
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
-    cmd.arg("--config")
-        .arg(root.join("config.toml"))
-        .arg("capture")
-        .arg("mark-done");
+    cmd.arg("--config").arg(root.join("config.toml")).arg("capture").arg("mark-done");
 
     cmd.assert()
         .success()
@@ -125,10 +122,7 @@ Content here.
     );
 
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
-    cmd.arg("--config")
-        .arg(root.join("config.toml"))
-        .arg("capture")
-        .arg("toggle-flag");
+    cmd.arg("--config").arg(root.join("config.toml")).arg("capture").arg("toggle-flag");
 
     cmd.assert().success();
 
@@ -353,10 +347,7 @@ This file has no frontmatter.
     );
 
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
-    cmd.arg("--config")
-        .arg(root.join("config.toml"))
-        .arg("capture")
-        .arg("add-metadata");
+    cmd.arg("--config").arg(root.join("config.toml")).arg("capture").arg("add-metadata");
 
     cmd.assert().success();
 

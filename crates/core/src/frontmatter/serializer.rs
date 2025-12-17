@@ -6,22 +6,18 @@ use std::collections::HashMap;
 
 /// Serialize a parsed document back to markdown string.
 pub fn serialize(doc: &ParsedDocument) -> String {
-    if let Some(fm) = &doc.frontmatter {
-        if !fm.fields.is_empty() {
-            let yaml = serialize_frontmatter(&fm.fields);
-            return format!("---\n{}---\n\n{}", yaml, doc.body);
-        }
+    if let Some(fm) = &doc.frontmatter
+        && !fm.fields.is_empty()
+    {
+        let yaml = serialize_frontmatter(&fm.fields);
+        return format!("---\n{}---\n\n{}", yaml, doc.body);
     }
     doc.body.clone()
 }
 
 /// Serialize frontmatter fields to YAML string.
 fn serialize_frontmatter(fields: &HashMap<String, Value>) -> String {
-    // Use serde_yaml for serialization
-    match serde_yaml::to_string(fields) {
-        Ok(yaml) => yaml,
-        Err(_) => String::new(),
-    }
+    serde_yaml::to_string(fields).unwrap_or_default()
 }
 
 /// Serialize a Frontmatter struct to YAML string (without delimiters).
@@ -36,10 +32,8 @@ mod tests {
 
     #[test]
     fn serialize_document_without_frontmatter() {
-        let doc = ParsedDocument {
-            frontmatter: None,
-            body: "# Hello\n\nWorld".to_string(),
-        };
+        let doc =
+            ParsedDocument { frontmatter: None, body: "# Hello\n\nWorld".to_string() };
         assert_eq!(serialize(&doc), "# Hello\n\nWorld");
     }
 
@@ -69,10 +63,7 @@ mod tests {
         let reparsed = parse(&serialized).unwrap();
         assert!(reparsed.frontmatter.is_some());
         let fm = reparsed.frontmatter.unwrap();
-        assert_eq!(
-            fm.fields.get("title").and_then(|v| v.as_str()),
-            Some("Hello")
-        );
+        assert_eq!(fm.fields.get("title").and_then(|v| v.as_str()), Some("Hello"));
         assert_eq!(fm.fields.get("count").and_then(|v| v.as_i64()), Some(42));
         assert!(reparsed.body.contains("# Body"));
     }

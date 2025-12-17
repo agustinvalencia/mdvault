@@ -22,7 +22,10 @@ pub type RenderContext = HashMap<String, String>;
 ///
 /// This is useful for resolving template output paths from frontmatter
 /// before the actual output path is known.
-pub fn build_minimal_context(cfg: &ResolvedConfig, template: &TemplateInfo) -> RenderContext {
+pub fn build_minimal_context(
+    cfg: &ResolvedConfig,
+    template: &TemplateInfo,
+) -> RenderContext {
     let mut ctx = RenderContext::new();
 
     // Date/time
@@ -80,7 +83,10 @@ pub fn render(
 }
 
 /// Render a string template with variable substitution.
-pub fn render_string(template: &str, ctx: &RenderContext) -> Result<String, TemplateRenderError> {
+pub fn render_string(
+    template: &str,
+    ctx: &RenderContext,
+) -> Result<String, TemplateRenderError> {
     let re = Regex::new(r"\{\{([a-zA-Z0-9_]+)\}\}")
         .map_err(|e| TemplateRenderError::Regex(e.to_string()))?;
 
@@ -101,12 +107,12 @@ pub fn resolve_template_output_path(
     cfg: &ResolvedConfig,
     ctx: &RenderContext,
 ) -> Result<Option<PathBuf>, TemplateRenderError> {
-    if let Some(ref fm) = template.frontmatter {
-        if let Some(ref output) = fm.output {
-            let rendered = render_string(output, ctx)?;
-            let path = cfg.vault_root.join(&rendered);
-            return Ok(Some(path));
-        }
+    if let Some(ref fm) = template.frontmatter
+        && let Some(ref output) = fm.output
+    {
+        let rendered = render_string(output, ctx)?;
+        let path = cfg.vault_root.join(&rendered);
+        return Ok(Some(path));
     }
     Ok(None)
 }
