@@ -127,7 +127,7 @@ mod tests {
         assert!(result.frontmatter.is_some());
         let fm = result.frontmatter.unwrap();
         assert_eq!(fm.fields.get("title").and_then(|v| v.as_str()), Some("Test"));
-        assert!(fm.fields.get("tags").is_some());
+        assert!(fm.fields.contains_key("tags"));
         assert_eq!(result.body, "\nBody");
     }
 
