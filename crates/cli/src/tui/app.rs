@@ -7,10 +7,9 @@ use markadd_core::captures::CaptureInfo;
 use markadd_core::config::types::ResolvedConfig;
 use markadd_core::macros::{requires_trust, MacroInfo};
 use markadd_core::templates::discovery::TemplateInfo;
-use markadd_core::templates::engine::{
-    build_minimal_context, resolve_template_output_path,
-};
+use markadd_core::templates::engine::build_minimal_context;
 use markadd_core::templates::repository::TemplateRepository;
+use markadd_core::vars::collect_all_variables;
 
 /// Unified item that can be either a template, capture, or macro.
 #[derive(Debug, Clone)]
@@ -271,18 +270,23 @@ impl App {
         let item = &self.items[self.selected];
         match item {
             PaletteItem::Template(info) => {
-                // Try to resolve output path from frontmatter
-                match self.resolve_template_output(&info.logical_name) {
-                    Ok(Some(path)) => {
-                        // Template has frontmatter output, execute directly
-                        self.resolved_output_path = Some(path);
-                        self.execute_template();
-                    }
-                    Ok(None) => {
-                        // No frontmatter output, prompt user
-                        self.resolved_output_path = None;
-                        self.input_buffer.clear();
-                        self.mode = Mode::OutputPath;
+                // Load template variables first
+                match self.load_template_var_infos(&info.logical_name) {
+                    Ok(var_infos) => {
+                        self.required_var_infos = var_infos;
+                        self.var_values.clear();
+                        if self.required_var_infos.is_empty() {
+                            // No vars needed, proceed to output path resolution
+                            self.proceed_to_template_output();
+                        } else {
+                            // Pre-fill with default if available
+                            if let Some(default) = &self.required_var_infos[0].default {
+                                self.input_buffer = default.clone();
+                            } else {
+                                self.input_buffer.clear();
+                            }
+                            self.mode = Mode::Input { var_index: 0 };
+                        }
                     }
                     Err(e) => {
                         self.status = Some(StatusMessage { text: e, is_error: true });
@@ -354,6 +358,8 @@ impl App {
 
     /// Try to resolve template output path from frontmatter.
     fn resolve_template_output(&self, name: &str) -> Result<Option<PathBuf>, String> {
+        use markadd_core::templates::engine::render_string;
+
         let repo = TemplateRepository::new(&self.config.templates_dir)
             .map_err(|e| format!("Failed to load templates: {e}"))?;
 
@@ -366,10 +372,48 @@ impl App {
             path: loaded.path.clone(),
         };
 
-        let ctx = build_minimal_context(&self.config, &info);
+        // Build context with user variables for output path resolution
+        let mut ctx = build_minimal_context(&self.config, &info);
+        for (k, v) in &self.var_values {
+            ctx.insert(k.clone(), v.clone());
+        }
 
-        resolve_template_output_path(&loaded, &self.config, &ctx)
-            .map_err(|e| format!("Failed to resolve output path: {e}"))
+        // Check if template has output path in frontmatter
+        if let Some(ref fm) = loaded.frontmatter {
+            if let Some(ref output) = fm.output {
+                let rendered = render_string(output, &ctx)
+                    .map_err(|e| format!("Failed to render output path: {e}"))?;
+                let path = self.config.vault_root.join(&rendered);
+                return Ok(Some(path));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Proceed to output path resolution after collecting variables.
+    fn proceed_to_template_output(&mut self) {
+        let Some(PaletteItem::Template(info)) = self.items.get(self.selected) else {
+            return;
+        };
+
+        match self.resolve_template_output(&info.logical_name) {
+            Ok(Some(path)) => {
+                // Template has frontmatter output, execute directly
+                self.resolved_output_path = Some(path);
+                self.execute_template();
+            }
+            Ok(None) => {
+                // No frontmatter output, prompt user
+                self.resolved_output_path = None;
+                self.input_buffer.clear();
+                self.mode = Mode::OutputPath;
+            }
+            Err(e) => {
+                self.status = Some(StatusMessage { text: e, is_error: true });
+                self.mode = Mode::Result;
+            }
+        }
     }
 
     /// Submit current input and advance to next step.
@@ -410,7 +454,8 @@ impl App {
                         // All vars collected, execute based on item type
                         self.input_buffer.clear();
                         match &self.items[self.selected] {
-                            PaletteItem::Template(_) => self.execute_template(),
+                            // Templates need output path resolution after vars
+                            PaletteItem::Template(_) => self.proceed_to_template_output(),
                             PaletteItem::Capture(_) => self.execute_capture(),
                             PaletteItem::Macro(_) => self.execute_macro(),
                         }
@@ -505,6 +550,48 @@ impl App {
         Ok((var_infos, needs_trust))
     }
 
+    /// Load template and extract user-defined variables with metadata.
+    fn load_template_var_infos(&self, name: &str) -> Result<Vec<VarInfo>, String> {
+        let repo = TemplateRepository::new(&self.config.templates_dir)
+            .map_err(|e| format!("Failed to load templates: {e}"))?;
+
+        let loaded = repo
+            .get_by_name(name)
+            .map_err(|e| format!("Failed to load template: {e}"))?;
+
+        // Collect variables from frontmatter vars and body content
+        let all_vars = collect_all_variables(
+            loaded.frontmatter.as_ref().and_then(|fm| fm.vars.as_ref()),
+            &loaded.body,
+        );
+
+        // Convert to VarInfo with metadata
+        let var_infos: Vec<VarInfo> = all_vars
+            .into_iter()
+            .map(|(name, spec_opt)| {
+                if let Some(spec) = spec_opt {
+                    let prompt_text = spec.prompt();
+                    let prompt_opt = if prompt_text.is_empty() {
+                        None
+                    } else {
+                        Some(prompt_text.to_string())
+                    };
+                    VarInfo {
+                        name,
+                        prompt: prompt_opt,
+                        description: spec.description().map(|s| s.to_string()),
+                        default: spec.default().map(|s| s.to_string()),
+                    }
+                } else {
+                    // Variable found in content but not declared in frontmatter
+                    VarInfo { name, prompt: None, description: None, default: None }
+                }
+            })
+            .collect();
+
+        Ok(var_infos)
+    }
+
     /// Execute template creation.
     fn execute_template(&mut self) {
         let Some(PaletteItem::Template(info)) = self.items.get(self.selected) else {
@@ -524,6 +611,7 @@ impl App {
             &self.config,
             &info.logical_name,
             &output_path,
+            &self.var_values,
         ) {
             Ok(msg) => {
                 self.status = Some(StatusMessage { text: msg, is_error: false });

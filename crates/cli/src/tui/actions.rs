@@ -74,6 +74,7 @@ pub fn execute_template(
     config: &ResolvedConfig,
     template_name: &str,
     output_path: &Path,
+    vars: &HashMap<String, String>,
 ) -> Result<String, String> {
     // Check output doesn't exist
     if output_path.exists() {
@@ -87,13 +88,17 @@ pub fn execute_template(
     let loaded =
         repo.get_by_name(template_name).map_err(|e| format!("Template error: {e}"))?;
 
-    // Build context and render
+    // Build context with user variables
     let info = TemplateInfo {
         logical_name: loaded.logical_name.clone(),
         path: loaded.path.clone(),
     };
 
-    let ctx = build_render_context(config, &info, output_path);
+    let mut ctx = build_render_context(config, &info, output_path);
+    // Add user-provided variables to context
+    for (k, v) in vars {
+        ctx.insert(k.clone(), v.clone());
+    }
 
     let rendered = render(&loaded, &ctx).map_err(|e| format!("Render error: {e}"))?;
 
@@ -271,7 +276,8 @@ pub fn execute_macro(
             ctx: &RunContext,
         ) -> Result<StepResult, MacroRunError> {
             use markadd_core::templates::engine::{
-                build_minimal_context, render_string, resolve_template_output_path,
+                build_minimal_context, render, render_string,
+                resolve_template_output_path,
             };
 
             let step_vars = ctx.with_step_vars(&step.vars_with);
@@ -318,8 +324,8 @@ pub fn execute_macro(
                 )));
             }
 
-            // Render template
-            let rendered = render_string(&loaded.body, &step_vars)
+            // Render template (includes frontmatter extra fields)
+            let rendered = render(&loaded, &step_vars)
                 .map_err(|e| MacroRunError::TemplateError(e.to_string()))?;
 
             // Create parent directories
