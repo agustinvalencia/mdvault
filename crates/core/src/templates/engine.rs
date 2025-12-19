@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
+use serde_yaml::Value;
 use thiserror::Error;
 
 use crate::config::types::ResolvedConfig;
@@ -83,7 +84,63 @@ pub fn render(
     template: &LoadedTemplate,
     ctx: &RenderContext,
 ) -> Result<String, TemplateRenderError> {
-    render_string(&template.body, ctx)
+    let rendered_body = render_string(&template.body, ctx)?;
+
+    // Check if template has extra frontmatter fields to include in output
+    // Note: can't use let chains (Rust 2024) so we nest the if statements
+    #[allow(clippy::collapsible_if)]
+    if let Some(ref fm) = template.frontmatter {
+        if !fm.extra.is_empty() {
+            // Render variable placeholders in frontmatter values
+            let rendered_fm = render_frontmatter_values(&fm.extra, ctx)?;
+            // Serialize as YAML frontmatter
+            let yaml = serde_yaml::to_string(&rendered_fm).unwrap_or_default();
+            return Ok(format!("---\n{}---\n\n{}", yaml, rendered_body));
+        }
+    }
+
+    Ok(rendered_body)
+}
+
+/// Render variable placeholders in frontmatter values.
+fn render_frontmatter_values(
+    fields: &HashMap<String, Value>,
+    ctx: &RenderContext,
+) -> Result<HashMap<String, Value>, TemplateRenderError> {
+    let mut rendered = HashMap::new();
+    for (key, value) in fields {
+        let rendered_value = render_yaml_value(value, ctx)?;
+        rendered.insert(key.clone(), rendered_value);
+    }
+    Ok(rendered)
+}
+
+/// Recursively render variable placeholders in a YAML value.
+fn render_yaml_value(
+    value: &Value,
+    ctx: &RenderContext,
+) -> Result<Value, TemplateRenderError> {
+    match value {
+        Value::String(s) => {
+            let rendered = render_string(s, ctx)?;
+            Ok(Value::String(rendered))
+        }
+        Value::Sequence(seq) => {
+            let rendered: Result<Vec<Value>, _> =
+                seq.iter().map(|v| render_yaml_value(v, ctx)).collect();
+            Ok(Value::Sequence(rendered?))
+        }
+        Value::Mapping(map) => {
+            let mut rendered_map = serde_yaml::Mapping::new();
+            for (k, v) in map {
+                let rendered_v = render_yaml_value(v, ctx)?;
+                rendered_map.insert(k.clone(), rendered_v);
+            }
+            Ok(Value::Mapping(rendered_map))
+        }
+        // Other types (numbers, bools, null) pass through unchanged
+        _ => Ok(value.clone()),
+    }
 }
 
 /// Render a string template with variable substitution.

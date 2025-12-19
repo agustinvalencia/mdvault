@@ -2,7 +2,7 @@ use crate::prompt::{collect_variables, PromptOptions};
 use markadd_core::config::loader::{default_config_path, ConfigLoader};
 use markadd_core::templates::discovery::TemplateInfo;
 use markadd_core::templates::engine::{
-    build_minimal_context, render_string, resolve_template_output_path,
+    build_minimal_context, render, resolve_template_output_path,
 };
 use markadd_core::templates::repository::{TemplateRepoError, TemplateRepository};
 use std::collections::HashMap;
@@ -132,7 +132,7 @@ pub fn run(
         std::process::exit(1);
     }
 
-    let rendered = match render_string(&loaded.body, &ctx) {
+    let rendered = match render(&loaded, &ctx) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to render template: {e}");
