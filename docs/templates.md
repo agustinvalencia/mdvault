@@ -194,7 +194,9 @@ Templates support `{{variable}}` placeholders that are replaced at render time.
 | Variable | Example | Description |
 |----------|---------|-------------|
 | `{{date}}` | `2024-01-15` | Current date (YYYY-MM-DD) |
+| `{{today}}` | `2024-01-15` | Alias for `{{date}}` |
 | `{{time}}` | `14:30` | Current time (HH:MM) |
+| `{{now}}` | `2024-01-15T14:30:00+00:00` | Alias for `{{datetime}}` |
 | `{{datetime}}` | `2024-01-15T14:30:00+00:00` | ISO 8601 datetime |
 | `{{vault_root}}` | `/home/user/vault` | Vault root path |
 | `{{template_name}}` | `daily` | Logical name of the template |
@@ -202,6 +204,46 @@ Templates support `{{variable}}` placeholders that are replaced at render time.
 | `{{output_path}}` | `/vault/daily/2024-01-15.md` | Full output path |
 | `{{output_filename}}` | `2024-01-15.md` | Output filename only |
 | `{{output_dir}}` | `/vault/daily` | Output directory |
+
+### Date Math Expressions
+
+Date math allows you to calculate relative dates:
+
+```markdown
+Tomorrow: {{today + 1d}}
+Yesterday: {{today - 1d}}
+Next week: {{today + 1w}}
+Next month: {{today + 1M}}
+Next year: {{today + 1y}}
+In 2 hours: {{now + 2h}}
+30 minutes ago: {{now - 30m}}
+```
+
+**Weekday navigation:**
+
+```markdown
+Next Monday: {{today + monday}}
+Last Friday: {{today - friday}}
+```
+
+**Custom formatting:**
+
+```markdown
+Day name: {{today | %A}}
+Month name: {{today | %B}}
+Full date: {{today | %Y-%m-%d}}
+ISO week: {{today | %G-W%V}}
+```
+
+Supported units:
+- `d` - days
+- `w` - weeks
+- `M` - months
+- `y` - years
+- `h` - hours
+- `m` - minutes
+
+Supported weekdays: `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`, `sunday`
 
 ### Example Template
 
@@ -250,12 +292,66 @@ markadd new --template daily
 markadd new --template blog/post --output ~/Notes/posts/my-post.md
 ```
 
-## Future: User Prompts
+## Variable Metadata
 
-Templates may eventually declare variables that require user input:
+Templates can define variables with prompts, defaults, and descriptions in the frontmatter.
 
+### Simple Form
+
+Just specify the prompt text:
+
+```yaml
+---
+output: "notes/{{title}}.md"
+vars:
+  title: "Note title"
+---
 ```
-{{prompt:meeting_subject}}
+
+### Full Form
+
+Specify complete metadata:
+
+```yaml
+---
+output: "meetings/{{title}}.md"
+vars:
+  title:
+    prompt: "Meeting title"
+    required: true
+  attendees:
+    prompt: "Who's attending?"
+    default: "TBD"
+    description: "Comma-separated list of names"
+  due:
+    prompt: "Due date"
+    default: "{{today + 7d}}"
+---
+```
+
+### Metadata Fields
+
+| Field | Description |
+|-------|-------------|
+| `prompt` | Text shown when prompting user for input |
+| `default` | Default value if not provided (supports date math expressions) |
+| `required` | If `true`, template fails in batch mode without this variable |
+| `description` | Help text shown in interactive mode |
+
+### Interactive vs Batch Mode
+
+By default, markadd prompts for missing variables:
+
+```bash
+# Interactive - prompts for title if not provided
+markadd new --template meeting
+```
+
+Use `--batch` to fail on missing required variables:
+
+```bash
+# Batch mode - uses defaults, fails if required vars missing
+markadd new --template meeting --batch
 ```
 
 ## Future: Scripting Hooks
@@ -354,8 +450,11 @@ Templates become building blocks for higher-level automation.
 - Only `.md` files are treated as templates
 - Nested folders produce namespaced logical names
 - Templates support `{{variable}}` substitution with built-in and custom variables
+- Date math expressions like `{{today + 1d}}` and `{{today | %A}}` are supported
 - Optional frontmatter with `output` field defines default output path
+- Variable metadata (prompts, defaults, descriptions) can be defined in frontmatter
+- Interactive mode prompts for missing variables; `--batch` mode fails on missing required variables
 - `markadd list-templates` shows what's available
 - `markadd new --template <name>` renders a template to a file
-- Future phases will add user prompts and scripting hooks
+- Future phases will add scripting hooks
 

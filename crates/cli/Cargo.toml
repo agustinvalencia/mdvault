@@ -12,6 +12,7 @@ chrono = { version = "0.4.42", features = ["clock"] }
 clap = { version = "4.5.51", features = ["derive"] }
 color-eyre = "0.6"
 crossterm = "0.28"
+dialoguer = "0.11"
 markadd-core = { path = "../core" }
 ratatui = "0.29"
 regex = "1.12.2"

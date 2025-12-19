@@ -53,9 +53,32 @@ Both `target.file` and `content` support variable substitution using `{{variable
 | Variable | Example | Description |
 |----------|---------|-------------|
 | `{{date}}` | `2024-01-15` | Current date (YYYY-MM-DD) |
+| `{{today}}` | `2024-01-15` | Alias for `{{date}}` |
 | `{{time}}` | `14:30` | Current time (HH:MM) |
+| `{{now}}` | `2024-01-15T14:30:00+00:00` | Alias for `{{datetime}}` |
 | `{{datetime}}` | `2024-01-15T14:30:00+00:00` | ISO 8601 datetime |
 | `{{vault_root}}` | `/home/user/vault` | Vault root path |
+
+### Date Math Expressions
+
+Calculate relative dates using date math:
+
+```yaml
+content: |
+  Due: {{today + 7d}}
+  Started: {{today - 1w}}
+  Review by: {{today + monday}}
+```
+
+Supported units: `d` (days), `w` (weeks), `M` (months), `y` (years), `h` (hours), `m` (minutes)
+
+Weekday navigation: `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`, `sunday`
+
+Custom formatting with pipe syntax:
+
+```yaml
+content: "Day: {{today | %A}}, Month: {{today | %B}}"
+```
 
 ### User Variables
 
@@ -68,6 +91,55 @@ markadd capture inbox --var text="My note" --var priority=high
 In the capture spec:
 ```yaml
 content: "- [ ] [{{priority}}] {{text}}"
+```
+
+### Variable Metadata
+
+Define variables with prompts, defaults, and descriptions:
+
+**Simple form** (just the prompt):
+
+```yaml
+vars:
+  text: "What to capture?"
+```
+
+**Full form** (with metadata):
+
+```yaml
+vars:
+  text:
+    prompt: "What to capture?"
+    required: true
+  priority:
+    prompt: "Priority level"
+    default: "normal"
+    description: "One of: low, normal, high"
+```
+
+Variable metadata fields:
+
+| Field | Description |
+|-------|-------------|
+| `prompt` | Text shown when prompting user for input |
+| `default` | Default value if not provided (supports date math) |
+| `required` | If `true`, capture fails in batch mode without this variable |
+| `description` | Help text shown in interactive mode |
+
+### Interactive vs Batch Mode
+
+By default, markadd prompts for missing variables:
+
+```bash
+# Interactive - prompts for text if not provided
+markadd capture inbox
+```
+
+Use `--batch` to fail on missing required variables:
+
+```bash
+# Batch mode - fails if text is required and not provided
+markadd capture inbox --batch
 ```
 
 ## Section Matching
@@ -333,3 +405,4 @@ Available captures:
 
 - [config.md](./config.md) - Configuration reference
 - [templates.md](./templates.md) - Template authoring guide
+- [macros.md](./macros.md) - Macros reference
