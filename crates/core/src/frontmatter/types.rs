@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use std::collections::HashMap;
 
+use crate::vars::VarsMap;
+
 /// Represents parsed YAML frontmatter from a markdown document.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Frontmatter {
@@ -26,6 +28,11 @@ pub struct ParsedDocument {
 pub struct TemplateFrontmatter {
     /// Output path template (supports {{var}} placeholders).
     pub output: Option<String>,
+
+    /// Variable specifications with prompts and defaults.
+    #[serde(default)]
+    pub vars: Option<VarsMap>,
+
     /// Other fields are passed through to output.
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,

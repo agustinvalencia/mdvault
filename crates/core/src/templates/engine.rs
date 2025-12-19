@@ -3,9 +3,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
+use serde_yaml::Value;
 use thiserror::Error;
 
 use crate::config::types::ResolvedConfig;
+use crate::vars::datemath::{evaluate_date_expr, is_date_expr, parse_date_expr};
 
 use super::discovery::TemplateInfo;
 use super::repository::LoadedTemplate;
@@ -28,11 +30,14 @@ pub fn build_minimal_context(
 ) -> RenderContext {
     let mut ctx = RenderContext::new();
 
-    // Date/time
+    // Date/time (basic versions - date math expressions are handled separately)
     let now = Local::now();
     ctx.insert("date".into(), now.format("%Y-%m-%d").to_string());
     ctx.insert("time".into(), now.format("%H:%M").to_string());
     ctx.insert("datetime".into(), now.to_rfc3339());
+    // Add today/now as aliases
+    ctx.insert("today".into(), now.format("%Y-%m-%d").to_string());
+    ctx.insert("now".into(), now.to_rfc3339());
 
     // From config
     ctx.insert("vault_root".into(), cfg.vault_root.to_string_lossy().to_string());
@@ -79,20 +84,91 @@ pub fn render(
     template: &LoadedTemplate,
     ctx: &RenderContext,
 ) -> Result<String, TemplateRenderError> {
-    render_string(&template.body, ctx)
+    let rendered_body = render_string(&template.body, ctx)?;
+
+    // Check if template has extra frontmatter fields to include in output
+    // Note: can't use let chains (Rust 2024) so we nest the if statements
+    #[allow(clippy::collapsible_if)]
+    if let Some(ref fm) = template.frontmatter {
+        if !fm.extra.is_empty() {
+            // Render variable placeholders in frontmatter values
+            let rendered_fm = render_frontmatter_values(&fm.extra, ctx)?;
+            // Serialize as YAML frontmatter
+            let yaml = serde_yaml::to_string(&rendered_fm).unwrap_or_default();
+            return Ok(format!("---\n{}---\n\n{}", yaml, rendered_body));
+        }
+    }
+
+    Ok(rendered_body)
+}
+
+/// Render variable placeholders in frontmatter values.
+fn render_frontmatter_values(
+    fields: &HashMap<String, Value>,
+    ctx: &RenderContext,
+) -> Result<HashMap<String, Value>, TemplateRenderError> {
+    let mut rendered = HashMap::new();
+    for (key, value) in fields {
+        let rendered_value = render_yaml_value(value, ctx)?;
+        rendered.insert(key.clone(), rendered_value);
+    }
+    Ok(rendered)
+}
+
+/// Recursively render variable placeholders in a YAML value.
+fn render_yaml_value(
+    value: &Value,
+    ctx: &RenderContext,
+) -> Result<Value, TemplateRenderError> {
+    match value {
+        Value::String(s) => {
+            let rendered = render_string(s, ctx)?;
+            Ok(Value::String(rendered))
+        }
+        Value::Sequence(seq) => {
+            let rendered: Result<Vec<Value>, _> =
+                seq.iter().map(|v| render_yaml_value(v, ctx)).collect();
+            Ok(Value::Sequence(rendered?))
+        }
+        Value::Mapping(map) => {
+            let mut rendered_map = serde_yaml::Mapping::new();
+            for (k, v) in map {
+                let rendered_v = render_yaml_value(v, ctx)?;
+                rendered_map.insert(k.clone(), rendered_v);
+            }
+            Ok(Value::Mapping(rendered_map))
+        }
+        // Other types (numbers, bools, null) pass through unchanged
+        _ => Ok(value.clone()),
+    }
 }
 
 /// Render a string template with variable substitution.
+///
+/// Supports:
+/// - Simple variables: `{{var_name}}`
+/// - Date math expressions: `{{today + 1d}}`, `{{now - 2h}}`, `{{today | %Y-%m-%d}}`
 pub fn render_string(
     template: &str,
     ctx: &RenderContext,
 ) -> Result<String, TemplateRenderError> {
-    let re = Regex::new(r"\{\{([a-zA-Z0-9_]+)\}\}")
+    // Match both simple vars and date math expressions
+    // Captures everything between {{ and }} that looks like a valid expression
+    let re = Regex::new(r"\{\{([^{}]+)\}\}")
         .map_err(|e| TemplateRenderError::Regex(e.to_string()))?;
 
     let result = re.replace_all(template, |caps: &regex::Captures<'_>| {
-        let key = &caps[1];
-        ctx.get(key).cloned().unwrap_or_else(|| caps[0].to_string())
+        let expr = caps[1].trim();
+
+        // First, check if it's a date math expression
+        if is_date_expr(expr)
+            && let Ok(parsed) = parse_date_expr(expr)
+        {
+            return evaluate_date_expr(&parsed);
+        }
+
+        // Otherwise, try simple variable lookup
+        ctx.get(expr).cloned().unwrap_or_else(|| caps[0].to_string())
     });
 
     Ok(result.into_owned())
