@@ -6,6 +6,7 @@ use chrono::Local;
 use thiserror::Error;
 
 use crate::config::types::ResolvedConfig;
+use crate::vars::datemath::{evaluate_date_expr, is_date_expr, parse_date_expr};
 
 use super::discovery::TemplateInfo;
 use super::repository::LoadedTemplate;
@@ -28,11 +29,14 @@ pub fn build_minimal_context(
 ) -> RenderContext {
     let mut ctx = RenderContext::new();
 
-    // Date/time
+    // Date/time (basic versions - date math expressions are handled separately)
     let now = Local::now();
     ctx.insert("date".into(), now.format("%Y-%m-%d").to_string());
     ctx.insert("time".into(), now.format("%H:%M").to_string());
     ctx.insert("datetime".into(), now.to_rfc3339());
+    // Add today/now as aliases
+    ctx.insert("today".into(), now.format("%Y-%m-%d").to_string());
+    ctx.insert("now".into(), now.to_rfc3339());
 
     // From config
     ctx.insert("vault_root".into(), cfg.vault_root.to_string_lossy().to_string());
@@ -83,16 +87,31 @@ pub fn render(
 }
 
 /// Render a string template with variable substitution.
+///
+/// Supports:
+/// - Simple variables: `{{var_name}}`
+/// - Date math expressions: `{{today + 1d}}`, `{{now - 2h}}`, `{{today | %Y-%m-%d}}`
 pub fn render_string(
     template: &str,
     ctx: &RenderContext,
 ) -> Result<String, TemplateRenderError> {
-    let re = Regex::new(r"\{\{([a-zA-Z0-9_]+)\}\}")
+    // Match both simple vars and date math expressions
+    // Captures everything between {{ and }} that looks like a valid expression
+    let re = Regex::new(r"\{\{([^{}]+)\}\}")
         .map_err(|e| TemplateRenderError::Regex(e.to_string()))?;
 
     let result = re.replace_all(template, |caps: &regex::Captures<'_>| {
-        let key = &caps[1];
-        ctx.get(key).cloned().unwrap_or_else(|| caps[0].to_string())
+        let expr = caps[1].trim();
+
+        // First, check if it's a date math expression
+        if is_date_expr(expr)
+            && let Ok(parsed) = parse_date_expr(expr)
+        {
+            return evaluate_date_expr(&parsed);
+        }
+
+        // Otherwise, try simple variable lookup
+        ctx.get(expr).cloned().unwrap_or_else(|| caps[0].to_string())
     });
 
     Ok(result.into_owned())

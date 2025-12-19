@@ -21,6 +21,7 @@ use ratatui::prelude::*;
 
 use markadd_core::captures::CaptureRepository;
 use markadd_core::config::loader::ConfigLoader;
+use markadd_core::macros::MacroRepository;
 use markadd_core::templates::repository::TemplateRepository;
 
 use app::App;
@@ -53,8 +54,17 @@ pub fn run(config_path: Option<&Path>, profile: Option<&str>) -> Result<()> {
         }
     };
 
+    // Discover macros
+    let macros = match MacroRepository::new(&config.macros_dir) {
+        Ok(repo) => repo.list_all().to_vec(),
+        Err(e) => {
+            eprintln!("Warning: Failed to load macros: {e}");
+            Vec::new()
+        }
+    };
+
     // Initialize app
-    let app = App::new(config, templates, captures);
+    let app = App::new(config, templates, captures, macros);
 
     // Setup terminal
     let mut terminal = setup_terminal()?;

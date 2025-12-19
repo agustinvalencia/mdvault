@@ -4,6 +4,7 @@ use thiserror::Error;
 
 use crate::frontmatter::FrontmatterOps;
 use crate::markdown_ast::InsertPosition;
+use crate::vars::VarsMap;
 
 /// A capture specification loaded from a YAML file
 #[derive(Debug, Clone, Deserialize)]
@@ -14,6 +15,10 @@ pub struct CaptureSpec {
     /// Human-readable description
     #[serde(default)]
     pub description: String,
+
+    /// Variable specifications with prompts and defaults.
+    #[serde(default)]
+    pub vars: Option<VarsMap>,
 
     /// Target file and section configuration
     pub target: CaptureTarget,

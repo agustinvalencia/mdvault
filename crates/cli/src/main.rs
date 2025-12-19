@@ -1,4 +1,5 @@
 mod cmd;
+mod prompt;
 mod tui;
 
 use clap::{Args, Parser, Subcommand};
@@ -30,6 +31,39 @@ enum Commands {
 
     /// Capture content into an existing file's section
     Capture(CaptureArgs),
+
+    /// Execute a multi-step macro workflow
+    Macro(MacroArgs),
+}
+
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  markadd macro --list
+  markadd macro weekly-review
+  markadd macro deploy-notes --trust
+  markadd macro setup --var project=\"my-app\"
+")]
+pub struct MacroArgs {
+    /// Logical macro name (e.g. \"weekly-review\" or \"deploy\")
+    #[arg(required_unless_present = "list")]
+    pub name: Option<String>,
+
+    /// List available macros
+    #[arg(long, short)]
+    pub list: bool,
+
+    /// Variables to pass to the macro (e.g. --var topic=\"Planning\")
+    #[arg(long = "var", value_parser = parse_key_val)]
+    pub vars: Vec<(String, String)>,
+
+    /// Non-interactive mode: fail if variables are missing instead of prompting
+    #[arg(long)]
+    pub batch: bool,
+
+    /// Trust shell commands in the macro
+    #[arg(long)]
+    pub trust: bool,
 }
 
 #[derive(Debug, Args)]
@@ -41,6 +75,14 @@ pub struct NewArgs {
     /// Output file path to create (optional if template defines output in frontmatter)
     #[arg(long)]
     pub output: Option<PathBuf>,
+
+    /// Variables to pass to the template (e.g. --var title="My Note")
+    #[arg(long = "var", value_parser = parse_key_val)]
+    pub vars: Vec<(String, String)>,
+
+    /// Non-interactive mode: fail if variables are missing instead of prompting
+    #[arg(long)]
+    pub batch: bool,
 }
 
 #[derive(Debug, Args)]
@@ -62,6 +104,10 @@ pub struct CaptureArgs {
     /// Variables to pass to the capture (e.g. --var text="My note")
     #[arg(long = "var", value_parser = parse_key_val)]
     pub vars: Vec<(String, String)>,
+
+    /// Non-interactive mode: fail if variables are missing instead of prompting
+    #[arg(long)]
+    pub batch: bool,
 }
 
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
@@ -93,6 +139,8 @@ fn main() {
                 cli.profile.as_deref(),
                 &args.template,
                 args.output.as_deref(),
+                &args.vars,
+                args.batch,
             );
         }
         Some(Commands::Capture(args)) => {
@@ -104,6 +152,21 @@ fn main() {
                     cli.profile.as_deref(),
                     args.name.as_ref().unwrap(),
                     &args.vars,
+                    args.batch,
+                );
+            }
+        }
+        Some(Commands::Macro(args)) => {
+            if args.list {
+                cmd::macro_cmd::run_list(cli.config.as_deref(), cli.profile.as_deref());
+            } else {
+                cmd::macro_cmd::run(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    args.name.as_ref().unwrap(),
+                    &args.vars,
+                    args.batch,
+                    args.trust,
                 );
             }
         }

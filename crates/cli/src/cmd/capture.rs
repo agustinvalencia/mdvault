@@ -2,11 +2,13 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
+use crate::prompt::{collect_variables, PromptOptions};
 use markadd_core::captures::{CaptureRepoError, CaptureRepository, CaptureSpec};
 use markadd_core::config::loader::{default_config_path, ConfigLoader};
 use markadd_core::config::types::ResolvedConfig;
 use markadd_core::frontmatter::{apply_ops, parse, serialize};
 use markadd_core::markdown_ast::{MarkdownAstError, MarkdownEditor, SectionMatch};
+use markadd_core::templates::engine::render_string as engine_render_string;
 
 use chrono::Local;
 use regex::Regex;
@@ -116,6 +118,7 @@ pub fn run(
     profile: Option<&str>,
     capture_name: &str,
     vars: &[(String, String)],
+    batch: bool,
 ) {
     // 1. Load config
     let cfg = match ConfigLoader::load(config, profile) {
@@ -160,11 +163,43 @@ pub fn run(
     };
 
     // 4. Build render context
-    let mut ctx = build_capture_context(&cfg);
+    let base_ctx = build_capture_context(&cfg);
 
-    // Add user-provided variables
-    for (key, value) in vars {
-        ctx.insert(key.clone(), value.clone());
+    // Convert provided vars to HashMap
+    let provided_vars: HashMap<String, String> = vars.iter().cloned().collect();
+
+    // Build content string for variable extraction (combine all templated fields)
+    let mut content_for_vars = String::new();
+    if let Some(content) = &loaded.spec.content {
+        content_for_vars.push_str(content);
+    }
+    content_for_vars.push_str(&loaded.spec.target.file);
+    if let Some(section) = &loaded.spec.target.section {
+        content_for_vars.push_str(section);
+    }
+
+    // Collect variables (prompt for missing ones if interactive)
+    let vars_map = loaded.spec.vars.as_ref();
+    let prompt_options = PromptOptions { batch_mode: batch };
+
+    let collected = match collect_variables(
+        vars_map,
+        &content_for_vars,
+        &provided_vars,
+        &base_ctx,
+        &prompt_options,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    // Merge collected variables into context
+    let mut ctx = base_ctx;
+    for (k, v) in collected.values {
+        ctx.insert(k, v);
     }
 
     // 5. Render target file path
@@ -283,12 +318,8 @@ fn build_capture_context(cfg: &ResolvedConfig) -> HashMap<String, String> {
 }
 
 fn render_string(template: &str, ctx: &HashMap<String, String>) -> String {
-    let re = Regex::new(r"\{\{([a-zA-Z0-9_]+)\}\}").unwrap();
-    re.replace_all(template, |caps: &regex::Captures<'_>| {
-        let key = &caps[1];
-        ctx.get(key).cloned().unwrap_or_else(|| caps[0].to_string())
-    })
-    .into_owned()
+    // Use the engine's render_string which supports date math expressions
+    engine_render_string(template, ctx).unwrap_or_else(|_| template.to_string())
 }
 
 fn resolve_target_path(vault_root: &Path, target: &str) -> std::path::PathBuf {

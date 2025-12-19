@@ -16,17 +16,27 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 
     let (title, content, style) = match &app.preview {
         Preview::None => (
-            "Preview",
+            "Preview".to_string(),
             String::from("Select an item to preview"),
             Style::default().fg(Color::DarkGray),
         ),
         Preview::Template { content } => {
-            ("Template Preview", content.clone(), Style::default())
+            ("Template Preview".to_string(), content.clone(), Style::default())
         }
         Preview::Capture { content } => {
-            ("Capture Preview", content.clone(), Style::default())
+            ("Capture Preview".to_string(), content.clone(), Style::default())
         }
-        Preview::Error(e) => ("Error", e.clone(), Style::default().fg(Color::Red)),
+        Preview::Macro { content, requires_trust } => {
+            let title = if *requires_trust {
+                "Macro Preview [requires --trust]".to_string()
+            } else {
+                "Macro Preview".to_string()
+            };
+            (title, content.clone(), Style::default())
+        }
+        Preview::Error(e) => {
+            ("Error".to_string(), e.clone(), Style::default().fg(Color::Red))
+        }
     };
 
     let paragraph = Paragraph::new(content)
@@ -43,22 +53,22 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_input_form(frame: &mut Frame, area: Rect, app: &App) {
-    let label = app.current_input_label().unwrap_or("Input");
+    let label = app.current_input_label().unwrap_or_else(|| "Input".to_string());
 
     let title = match &app.mode {
-        Mode::OutputPath => "Enter Output Path",
+        Mode::OutputPath => "Enter Output Path".to_string(),
         Mode::Input { var_index } => {
-            if app.required_vars.len() > 1 {
+            if app.required_var_infos.len() > 1 {
                 // Show progress
-                &format!("Variable {} of {}", var_index + 1, app.required_vars.len())
+                format!("Variable {} of {}", var_index + 1, app.required_var_infos.len())
             } else {
-                "Enter Variable"
+                "Enter Variable".to_string()
             }
         }
-        _ => "Input",
+        _ => "Input".to_string(),
     };
 
-    let content = vec![
+    let mut content = vec![
         Line::from(""),
         Line::from(vec![Span::styled(
             format!("  {}: ", label),
@@ -69,12 +79,22 @@ fn draw_input_form(frame: &mut Frame, area: Rect, app: &App) {
             Span::styled(&app.input_buffer, Style::default().fg(Color::White)),
             Span::styled("_", Style::default().fg(Color::Gray).rapid_blink()),
         ]),
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            "  [Enter] submit  [Esc] cancel",
-            Style::default().fg(Color::DarkGray),
-        )]),
     ];
+
+    // Show description if available
+    if let Some(description) = app.current_input_description() {
+        content.push(Line::from(""));
+        content.push(Line::from(vec![Span::styled(
+            format!("  {}", description),
+            Style::default().fg(Color::DarkGray).italic(),
+        )]));
+    }
+
+    content.push(Line::from(""));
+    content.push(Line::from(vec![Span::styled(
+        "  [Enter] submit  [Esc] cancel",
+        Style::default().fg(Color::DarkGray),
+    )]));
 
     let paragraph = Paragraph::new(content).block(
         Block::default()
