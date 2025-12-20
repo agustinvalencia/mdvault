@@ -185,6 +185,22 @@ author: "{{user}}"
 # New Post
 ```
 
+> **Important: Quote variables in frontmatter values**
+>
+> YAML interprets `{{` as special syntax. To use variables in frontmatter values, you **must** wrap them in quotes:
+>
+> ```yaml
+> # ✓ Correct - quoted
+> created: "{{date}}"
+> title: "{{meeting_title}}"
+>
+> # ✗ Wrong - unquoted (will be empty or cause parse errors)
+> created: {{date}}
+> title: {{meeting_title}}
+> ```
+>
+> This applies to all frontmatter fields that contain `{{variable}}` placeholders. Variables in the template body (outside frontmatter) do not require quotes.
+
 ## Variable Substitution
 
 Templates support `{{variable}}` placeholders that are replaced at render time.

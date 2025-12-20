@@ -240,6 +240,18 @@ frontmatter:
 | `increment` | Increment numeric field by 1 | `op: increment` |
 | `append` | Append value to list field | `op: append, value: "{{tag}}"` |
 
+> **Note: Quote variable values in YAML**
+>
+> When using `{{variable}}` in frontmatter values, wrap them in quotes:
+>
+> ```yaml
+> # ✓ Correct
+> value: "{{date}}"
+>
+> # ✗ Wrong - may cause parse errors
+> value: {{date}}
+> ```
+
 ### Frontmatter-Only Captures
 
 Captures can modify frontmatter without inserting content:
