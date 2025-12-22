@@ -9,7 +9,7 @@ Command: `mdv` (formerly `markadd`)
 
 ---
 
-## ⚠️ Important: Project Evolution in Progress
+##  Important: Project Evolution in Progress
 
 ### Name Change: markadd → mdvault
 
@@ -26,20 +26,20 @@ Command: `mdv` (formerly `markadd`)
 ### Scope Evolution: QuickAdd → Complete Vault Manager
 
 **Original Vision** (Inspired by Obsidian's QuickAdd):
-- ✅ Templates (note creation from templates)
-- ✅ Captures (quick content insertion)
-- ✅ Macros (workflow automation)
-- ✅ Multi-choice (organization)
+-  Templates (note creation from templates)
+-  Captures (quick content insertion)
+-  Macros (workflow automation)
+-  Multi-choice (organization)
 - Focus: **Quick input and automation**
 
 **Expanded Vision** (Complete Terminal Vault Manager):
-- ✅ Templates, captures, macros (existing)
-- 🔄 Search (vault-wide text search) - **PRIORITY 1**
-- 🔄 Query (frontmatter-based filtering) - **PRIORITY 2**
-- 🔄 Links (backlinks, orphans, graph analysis) - **PRIORITY 3**
-- 🔄 List/Browse (enhanced navigation)
-- 🔄 Read/View (content access with options)
-- 🔄 Batch operations (bulk updates)
+- Templates, captures, macros (existing)
+- Search (vault-wide text search) - **PRIORITY 1**
+- Query (frontmatter-based filtering) - **PRIORITY 2**
+- Links (backlinks, orphans, graph analysis) - **PRIORITY 3**
+- List/Browse (enhanced navigation)
+- Read/View (content access with options)
+- Batch operations (bulk updates)
 - Focus: **Complete vault management from terminal**
 
 **Why the Evolution?**
@@ -58,13 +58,13 @@ The integration with markdown-vault-mcp revealed opportunities:
 mdvault is a complete terminal interface for markdown-based knowledge vaults. It combines the quick-input automation of Obsidian's QuickAdd with comprehensive vault management features.
 
 **What mdvault does**:
-- 📝 Create notes from templates with variables and date math
-- 📥 Quick capture to daily notes and projects
-- 🔁 Multi-step workflow automation (macros)
-- 🔍 Full-text search across your vault (planned)
-- 📊 Query notes by frontmatter metadata (planned)
-- 🔗 Analyse backlinks, orphans, and connections (planned)
-- 📚 Browse and read vault contents (planned)
+- Create notes from templates with variables and date math
+- Quick capture to daily notes and projects
+- Multi-step workflow automation (macros)
+- Full-text search across your vault (planned)
+- Query notes by frontmatter metadata (planned)
+- Analyse backlinks, orphans, and connections (planned)
+- Browse and read vault contents (planned)
 
 **Compatible with**:
 - Obsidian, Logseq, Dendron, Foam
@@ -162,7 +162,7 @@ mdvault/
 
 ## Feature Roadmap
 
-### ✅ Implemented (v0.1.x)
+###  Implemented (v0.1.x)
 
 **Templates**:
 - Variable substitution (`{{variable}}`)
@@ -190,9 +190,9 @@ mdvault/
 - Security model (shell commands require trust)
 - TUI for browsing templates/captures/macros
 
-### 🔄 In Development (v0.2.0) - PRIORITY
+### In Development (v0.2.0) - PRIORITY
 
-**Search Command** ⭐⭐⭐
+**Search Command** 
 ```bash
 mdv search "network optimization"
 mdv search "TODO" --folder projects --context-lines 3
@@ -213,9 +213,9 @@ mdv search "ml" --tag research --after 2024-01-01
 - JSON output format for MCP integration
 - Respect .gitignore and similar exclusion patterns
 
-### 🔄 Planned (v0.3.0)
+### Planned (v0.3.0)
 
-**Query Command** ⭐⭐⭐
+**Query Command** 
 ```bash
 mdv query --where "status=todo"
 mdv query --where "due<2025-01-01" --where "priority=high"
@@ -236,9 +236,9 @@ mdv query --has-field "due" --format json
 - Handle missing fields gracefully
 - Cache parsed frontmatter
 
-### 🔄 Planned (v0.4.0)
+### Planned (v0.4.0)
 
-**Links Command** ⭐⭐
+**Links Command** 
 ```bash
 mdv links note.md --backlinks
 mdv links note.md --outgoing
@@ -259,7 +259,7 @@ mdv links --stats
 - Build link graph cache
 - Handle relative vs absolute paths
 
-### 📋 Future (v0.5.0+)
+###  Future (v0.5.0+)
 
 **List/Browse**:
 - Enhanced listing with metadata filters
@@ -699,25 +699,25 @@ uv run python -m markdown_vault_mcp
 ## Current Status Summary
 
 **What works today**:
-- ✅ Templates with variables and date math
-- ✅ Captures to existing notes
-- ✅ Macros for workflows
-- ✅ Profile management
-- ✅ TUI interface
-- ✅ MCP integration
+-  Templates with variables and date math
+-  Captures to existing notes
+-  Macros for workflows
+-  Profile management
+-  TUI interface
+-  MCP integration
 
 **What's next**:
-- 🔄 Search command (implementing)
-- 🔄 Query command (designing)
-- 🔄 Links command (designing)
-- 🔄 List/read commands (planned)
-- 🔄 Batch operations (planned)
+-  Search command (implementing)
+-  Query command (designing)
+-  Links command (designing)
+-  List/read commands (planned)
+-  Batch operations (planned)
 
 **Rename status**:
-- 🔄 Pending: markadd → mdvault
-- 🔄 Pending: `markadd` → `mdv` command
-- 🔄 Pending: `.markadd/` → `.mdvault/`
-- ✅ Decision made, ready to execute
+-  Pending: markadd → mdvault
+-  Pending: `markadd` → `mdv` command
+-  Pending: `.markadd/` → `.mdvault/`
+-  Decision made, ready to execute
 
 ---
 

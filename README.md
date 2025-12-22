@@ -12,18 +12,18 @@ mdvault is a complete terminal interface for markdown-based knowledge vaults. It
 ## What mdvault does
 
 **Available now:**
-- 📝 Create notes from templates with variable substitution
-- 📥 Quick capture to daily notes and projects
-- 🔁 Multi-step workflow automation (macros)
-- 📅 Date math expressions like `{{today + 1d}}` or `{{today + monday}}`
-- 💬 Interactive prompts for missing variables (or batch mode for scripts)
-- 🖥️ TUI for browsing and executing templates, captures, and macros
+- Create notes from templates with variable substitution
+- Quick capture to daily notes and projects
+- Multi-step workflow automation (macros)
+- Date math expressions like `{{today + 1d}}` or `{{today + monday}}`
+- Interactive prompts for missing variables (or batch mode for scripts)
+- TUI for browsing and executing templates, captures, and macros
 
 **Coming soon:**
-- 🔍 Full-text search across your vault
-- 📊 Query notes by frontmatter metadata
-- 🔗 Backlinks, orphans, and graph analysis
-- 📚 Browse and read vault contents
+- Full-text search across your vault
+- Query notes by frontmatter metadata
+- Backlinks, orphans, and graph analysis
+- Browse and read vault contents
 
 **Compatible with:**
 - Obsidian, Logseq, Dendron, Foam

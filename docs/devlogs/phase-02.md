@@ -1,4 +1,4 @@
-[⬅ Back to devlogs index](../devlogs/)
+[ Back to devlogs index](../devlogs/)
 # Phase 02 — Development Log  
 ## Template Discovery
 

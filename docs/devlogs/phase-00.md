@@ -1,4 +1,4 @@
-[⬅ Back to devlogs index](../devlogs/)
+[ Back to devlogs index](../devlogs/)
 
 # Phase 00 — Development Log  
 ## Workspace, Tooling, and CI

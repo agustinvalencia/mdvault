@@ -9,15 +9,15 @@ The original development plan had captures implemented in Phase 6 (CLI Wiring), 
 
 ### Original Plan
 ```
-Phase 4: Markdown AST (Comrak) ✓
+Phase 4: Markdown AST (Comrak) 
 Phase 5: File Planner, Atomic Writes, Undo Log
 Phase 6: CLI Wiring (template, capture, macro commands)
 ```
 
 ### Modified Plan (MVP-focused)
 ```
-Phase 4: Markdown AST (Comrak) ✓
-Phase 4-MVP: Captures Command ✓  <-- Added
+Phase 4: Markdown AST (Comrak) 
+Phase 4-MVP: Captures Command   <-- Added
 Phase 5: File Planner, Atomic Writes, Undo Log (deferred)
 Phase 6: CLI Wiring (remaining: macro command)
 ```
@@ -25,8 +25,8 @@ Phase 6: CLI Wiring (remaining: macro command)
 ### Rationale
 
 For a useful MVP, you need both core features:
-1. **Templates** (`markadd new`) - Create new files ✓
-2. **Captures** (`markadd capture`) - Append to existing files ✓
+1. **Templates** (`markadd new`) - Create new files 
+2. **Captures** (`markadd capture`) - Append to existing files 
 
 The safety features (atomic writes, undo log) are valuable but not essential for initial usability. They can be added as enhancements later.
 
@@ -143,8 +143,8 @@ With this implementation, markadd has both core features needed for an MVP:
 
 | Feature | Command | Status |
 |---------|---------|--------|
-| Templates | `markadd new --template <name> --output <path>` | ✓ Complete |
-| Captures | `markadd capture <name> --var key=value` | ✓ Complete |
+| Templates | `markadd new --template <name> --output <path>` |  Complete |
+| Captures | `markadd capture <name> --var key=value` |  Complete |
 
 ## Future Enhancements (deferred from Phase 5)
 
