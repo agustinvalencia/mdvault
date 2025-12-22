@@ -1,10 +1,10 @@
-use markadd_core::config::loader::{default_config_path, ConfigLoader};
+use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use std::path::Path;
 
 pub fn run(config: Option<&Path>, profile: Option<&str>) {
     match ConfigLoader::load(config, profile) {
         Ok(rc) => {
-            println!("OK   markadd doctor");
+            println!("OK   mdv doctor");
             println!(
                 "path: {}",
                 config
@@ -20,7 +20,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>) {
             println!("security.allow_http:  {}", rc.security.allow_http);
         }
         Err(e) => {
-            println!("FAIL markadd doctor");
+            println!("FAIL mdv doctor");
             println!("{e}");
             if config.is_none() {
                 println!("looked for: {}", default_config_path().display());

@@ -3,12 +3,12 @@ use std::fs;
 use std::path::Path;
 
 use crate::prompt::{collect_variables, PromptOptions};
-use markadd_core::captures::{CaptureRepoError, CaptureRepository, CaptureSpec};
-use markadd_core::config::loader::{default_config_path, ConfigLoader};
-use markadd_core::config::types::ResolvedConfig;
-use markadd_core::frontmatter::{apply_ops, parse, serialize};
-use markadd_core::markdown_ast::{MarkdownAstError, MarkdownEditor, SectionMatch};
-use markadd_core::templates::engine::render_string as engine_render_string;
+use mdvault_core::captures::{CaptureRepoError, CaptureRepository, CaptureSpec};
+use mdvault_core::config::loader::{default_config_path, ConfigLoader};
+use mdvault_core::config::types::ResolvedConfig;
+use mdvault_core::frontmatter::{apply_ops, parse, serialize};
+use mdvault_core::markdown_ast::{MarkdownAstError, MarkdownEditor, SectionMatch};
+use mdvault_core::templates::engine::render_string as engine_render_string;
 
 use chrono::Local;
 use regex::Regex;
@@ -28,7 +28,7 @@ pub fn run_list(config: Option<&Path>, profile: Option<&str>) {
     let cfg = match ConfigLoader::load(config, profile) {
         Ok(rc) => rc,
         Err(e) => {
-            eprintln!("FAIL markadd capture --list");
+            eprintln!("FAIL mdv capture --list");
             eprintln!("{e}");
             if config.is_none() {
                 eprintln!("looked for: {}", default_config_path().display());
@@ -40,7 +40,7 @@ pub fn run_list(config: Option<&Path>, profile: Option<&str>) {
     let repo = match CaptureRepository::new(&cfg.captures_dir) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("FAIL markadd capture --list");
+            eprintln!("FAIL mdv capture --list");
             eprintln!("{e}");
             std::process::exit(1);
         }
@@ -124,7 +124,7 @@ pub fn run(
     let cfg = match ConfigLoader::load(config, profile) {
         Ok(rc) => rc,
         Err(e) => {
-            eprintln!("FAIL markadd capture");
+            eprintln!("FAIL mdv capture");
             eprintln!("{e}");
             if config.is_none() {
                 eprintln!("looked for: {}", default_config_path().display());
@@ -137,7 +137,7 @@ pub fn run(
     let repo = match CaptureRepository::new(&cfg.captures_dir) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("FAIL markadd capture");
+            eprintln!("FAIL mdv capture");
             eprintln!("{e}");
             std::process::exit(1);
         }
@@ -232,7 +232,7 @@ pub fn run(
         std::process::exit(1);
     }
 
-    println!("OK   markadd capture");
+    println!("OK   mdv capture");
     println!("capture: {}", capture_name);
     println!("target:  {}", target_file.display());
     if let Some((title, level)) = section_info {

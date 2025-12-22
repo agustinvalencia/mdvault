@@ -3,13 +3,13 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use markadd_core::captures::CaptureInfo;
-use markadd_core::config::types::ResolvedConfig;
-use markadd_core::macros::{requires_trust, MacroInfo};
-use markadd_core::templates::discovery::TemplateInfo;
-use markadd_core::templates::engine::build_minimal_context;
-use markadd_core::templates::repository::TemplateRepository;
-use markadd_core::vars::collect_all_variables;
+use mdvault_core::captures::CaptureInfo;
+use mdvault_core::config::types::ResolvedConfig;
+use mdvault_core::macros::{requires_trust, MacroInfo};
+use mdvault_core::templates::discovery::TemplateInfo;
+use mdvault_core::templates::engine::build_minimal_context;
+use mdvault_core::templates::repository::TemplateRepository;
+use mdvault_core::vars::collect_all_variables;
 
 /// Unified item that can be either a template, capture, or macro.
 #[derive(Debug, Clone)]
@@ -222,7 +222,7 @@ impl App {
 
     /// Load preview for currently selected item.
     pub fn load_preview(&mut self) {
-        use markadd_core::macros::MacroRepository;
+        use mdvault_core::macros::MacroRepository;
 
         if self.items.is_empty() {
             self.preview = Preview::None;
@@ -326,7 +326,7 @@ impl App {
                         if needs_trust {
                             // Macros with shell commands aren't supported in TUI yet
                             self.status = Some(StatusMessage {
-                                text: "Macro requires --trust flag. Use CLI: markadd macro --trust".to_string(),
+                                text: "Macro requires --trust flag. Use CLI: mdv macro --trust".to_string(),
                                 is_error: true,
                             });
                             self.mode = Mode::Result;
@@ -358,7 +358,7 @@ impl App {
 
     /// Try to resolve template output path from frontmatter.
     fn resolve_template_output(&self, name: &str) -> Result<Option<PathBuf>, String> {
-        use markadd_core::templates::engine::render_string;
+        use mdvault_core::templates::engine::render_string;
 
         let repo = TemplateRepository::new(&self.config.templates_dir)
             .map_err(|e| format!("Failed to load templates: {e}"))?;
@@ -468,7 +468,7 @@ impl App {
 
     /// Load capture and extract user-defined variables with metadata.
     fn load_capture_var_infos(&self, name: &str) -> Result<Vec<VarInfo>, String> {
-        use markadd_core::captures::CaptureRepository;
+        use mdvault_core::captures::CaptureRepository;
 
         let repo = CaptureRepository::new(&self.config.captures_dir)
             .map_err(|e| format!("Failed to load captures: {e}"))?;
@@ -514,7 +514,7 @@ impl App {
     /// Load macro and extract user-defined variables with metadata.
     /// Returns (var_infos, needs_trust).
     fn load_macro_var_infos(&self, name: &str) -> Result<(Vec<VarInfo>, bool), String> {
-        use markadd_core::macros::MacroRepository;
+        use mdvault_core::macros::MacroRepository;
 
         let repo = MacroRepository::new(&self.config.macros_dir)
             .map_err(|e| format!("Failed to load macros: {e}"))?;

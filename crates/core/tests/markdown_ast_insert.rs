@@ -1,4 +1,4 @@
-use markadd_core::markdown_ast::{
+use mdvault_core::markdown_ast::{
     InsertPosition, MarkdownAstError, MarkdownEditor, SectionMatch,
 };
 

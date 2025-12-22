@@ -1,10 +1,10 @@
 use crate::prompt::{collect_variables, PromptOptions};
-use markadd_core::config::loader::{default_config_path, ConfigLoader};
-use markadd_core::templates::discovery::TemplateInfo;
-use markadd_core::templates::engine::{
+use mdvault_core::config::loader::{default_config_path, ConfigLoader};
+use mdvault_core::templates::discovery::TemplateInfo;
+use mdvault_core::templates::engine::{
     build_minimal_context, render, resolve_template_output_path,
 };
-use markadd_core::templates::repository::{TemplateRepoError, TemplateRepository};
+use mdvault_core::templates::repository::{TemplateRepoError, TemplateRepository};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -20,7 +20,7 @@ pub fn run(
     let cfg = match ConfigLoader::load(config, profile) {
         Ok(rc) => rc,
         Err(e) => {
-            println!("FAIL markadd new");
+            println!("FAIL mdv new");
             println!("{e}");
             if config.is_none() {
                 println!("looked for: {}", default_config_path().display());
@@ -32,7 +32,7 @@ pub fn run(
     let repo = match TemplateRepository::new(&cfg.templates_dir) {
         Ok(r) => r,
         Err(e) => {
-            println!("FAIL markadd new");
+            println!("FAIL mdv new");
             println!("{e}");
             std::process::exit(1);
         }
@@ -152,7 +152,7 @@ pub fn run(
         std::process::exit(1);
     }
 
-    println!("OK   markadd new");
+    println!("OK   mdv new");
     println!("template: {}", template_name);
     println!("output:   {}", output_path.display());
 }

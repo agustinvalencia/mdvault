@@ -1,12 +1,12 @@
-use markadd_core::config::loader::{default_config_path, ConfigLoader};
-use markadd_core::templates::discovery::discover_templates;
+use mdvault_core::config::loader::{default_config_path, ConfigLoader};
+use mdvault_core::templates::discovery::discover_templates;
 use std::path::Path;
 
 pub fn run(config: Option<&Path>, profile: Option<&str>) {
     let rc = match ConfigLoader::load(config, profile) {
         Ok(rc) => rc,
         Err(e) => {
-            println!("FAIL markadd list-templates");
+            println!("FAIL mdv list-templates");
             println!("{e}");
             if config.is_none() {
                 println!("looked for: {}", default_config_path().display());
@@ -27,7 +27,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>) {
             println!("-- {} templates --", list.len());
         }
         Err(e) => {
-            println!("FAIL markadd list-templates");
+            println!("FAIL mdv list-templates");
             println!("{e}");
             std::process::exit(1);
         }

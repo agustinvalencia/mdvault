@@ -1,18 +1,34 @@
-# markadd
+# mdvault
+
+**Your Markdown Vault on the Command Line**
 
 [![Build Status](https://github.com/agustinvalencia/markadd/actions/workflows/ci.yml/badge.svg)](https://github.com/agustinvalencia/markadd/actions)
 [![codecov](https://codecov.io/gh/agustinvalencia/markadd/branch/main/graph/badge.svg)](https://codecov.io/gh/agustinvalencia/markadd)
 
-`markadd` is a terminal-first Markdown automation tool inspired by Obsidian's QuickAdd plugin.
+> **Note**: This project is being renamed from `markadd` to `mdvault`. The command will change from `markadd` to `mdv`. See [Migration Guide](#migration-from-markadd) below.
 
-It allows you to:
+mdvault is a complete terminal interface for markdown-based knowledge vaults. It combines the quick-input automation of Obsidian's QuickAdd with comprehensive vault management features.
 
-- Generate Markdown files from templates with variable substitution
-- Insert content into Markdown sections via captures
-- Execute multi-step workflows with macros
-- Use date math expressions like `{{today + 1d}}` or `{{today + monday}}`
-- Interactive prompts for missing variables (or batch mode for scripts)
-- Launch an interactive TUI for browsing and executing templates, captures, and macros
+## What mdvault does
+
+**Available now:**
+- 📝 Create notes from templates with variable substitution
+- 📥 Quick capture to daily notes and projects
+- 🔁 Multi-step workflow automation (macros)
+- 📅 Date math expressions like `{{today + 1d}}` or `{{today + monday}}`
+- 💬 Interactive prompts for missing variables (or batch mode for scripts)
+- 🖥️ TUI for browsing and executing templates, captures, and macros
+
+**Coming soon:**
+- 🔍 Full-text search across your vault
+- 📊 Query notes by frontmatter metadata
+- 🔗 Backlinks, orphans, and graph analysis
+- 📚 Browse and read vault contents
+
+**Compatible with:**
+- Obsidian, Logseq, Dendron, Foam
+- Any markdown-based vault system
+- Works standalone OR with MCP integration
 
 ## Installation
 
@@ -31,16 +47,16 @@ cargo build --release
 1. Create a configuration file:
 
 ```bash
-mkdir -p ~/.config/markadd
-cat > ~/.config/markadd/config.toml << 'EOF'
+mkdir -p ~/.config/mdvault
+cat > ~/.config/mdvault/config.toml << 'EOF'
 version = 1
 profile = "default"
 
 [profiles.default]
 vault_root = "~/Notes"
-templates_dir = "{{vault_root}}/.markadd/templates"
-captures_dir  = "{{vault_root}}/.markadd/captures"
-macros_dir    = "{{vault_root}}/.markadd/macros"
+templates_dir = "{{vault_root}}/.mdvault/templates"
+captures_dir  = "{{vault_root}}/.mdvault/captures"
+macros_dir    = "{{vault_root}}/.mdvault/macros"
 
 [security]
 allow_shell = false
@@ -51,8 +67,8 @@ EOF
 2. Create a template:
 
 ```bash
-mkdir -p ~/Notes/.markadd/templates
-cat > ~/Notes/.markadd/templates/daily.md << 'EOF'
+mkdir -p ~/Notes/.mdvault/templates
+cat > ~/Notes/.mdvault/templates/daily.md << 'EOF'
 ---
 output: "daily/{{today}}.md"
 vars:
@@ -77,29 +93,29 @@ EOF
 
 ```bash
 # Interactive mode - prompts for missing variables
-markadd new --template daily
+mdv new --template daily
 
 # Or provide variables directly
-markadd new --template daily --var focus="Ship the feature"
+mdv new --template daily --var focus="Ship the feature"
 
 # Or use batch mode (fails if required vars missing)
-markadd new --template daily --batch
+mdv new --template daily --batch
 ```
 
 4. Launch the TUI:
 
 ```bash
-markadd
+mdv
 ```
 
 ## Commands
 
 ### TUI Mode
 
-Run `markadd` without arguments to launch the interactive TUI:
+Run `mdv` without arguments to launch the interactive TUI:
 
 ```bash
-markadd
+mdv
 ```
 
 The TUI displays templates, captures, and macros in a palette. Navigate with `j/k` or arrow keys, press `Enter` to execute, and `q` to quit.
@@ -109,7 +125,7 @@ The TUI displays templates, captures, and macros in a palette. Navigate with `j/
 Validate configuration and print resolved paths.
 
 ```bash
-markadd doctor
+mdv doctor
 ```
 
 ### list-templates
@@ -117,7 +133,7 @@ markadd doctor
 List available templates in the active profile.
 
 ```bash
-markadd list-templates
+mdv list-templates
 ```
 
 ### new
@@ -125,7 +141,7 @@ markadd list-templates
 Generate a new file from a template.
 
 ```bash
-markadd new --template <name> [--output <path>] [--var KEY=VALUE]...
+mdv new --template <name> [--output <path>] [--var KEY=VALUE]...
 ```
 
 Options:
@@ -139,7 +155,7 @@ Options:
 Insert content into an existing Markdown file using a capture workflow.
 
 ```bash
-markadd capture <capture-name> [--var KEY=VALUE]...
+mdv capture <capture-name> [--var KEY=VALUE]...
 ```
 
 Options:
@@ -152,7 +168,7 @@ Options:
 Execute a multi-step macro workflow.
 
 ```bash
-markadd macro <macro-name> [--var KEY=VALUE]...
+mdv macro <macro-name> [--var KEY=VALUE]...
 ```
 
 Options:
@@ -165,22 +181,38 @@ Example:
 
 ```bash
 # List available macros
-markadd macro --list
+mdv macro --list
 
 # Run a macro
-markadd macro weekly-review --var topic="Q1 Planning"
+mdv macro weekly-review --var topic="Q1 Planning"
 
 # Run a macro with shell commands
-markadd macro deploy-notes --trust
+mdv macro deploy-notes --trust
+```
+
+### Planned Commands
+
+```bash
+# Search vault
+mdv search "network optimization"
+mdv search "TODO" --folder projects --context-lines 3
+
+# Query by metadata
+mdv query --where "status=todo"
+mdv query --where "due<2025-01-01" --where "priority=high"
+
+# Analyze links
+mdv links note.md --backlinks
+mdv links --orphans --folder research
 ```
 
 ## Configuration
 
-`markadd` loads configuration from:
+`mdv` loads configuration from:
 
 1. `--config <path>` (if provided)
-2. `$XDG_CONFIG_HOME/markadd/config.toml`
-3. `~/.config/markadd/config.toml`
+2. `$XDG_CONFIG_HOME/mdvault/config.toml`
+3. `~/.config/mdvault/config.toml`
 
 ### Example Configuration
 
@@ -190,9 +222,9 @@ profile = "default"
 
 [profiles.default]
 vault_root = "~/Notes"
-templates_dir = "{{vault_root}}/.markadd/templates"
-captures_dir  = "{{vault_root}}/.markadd/captures"
-macros_dir    = "{{vault_root}}/.markadd/macros"
+templates_dir = "{{vault_root}}/.mdvault/templates"
+captures_dir  = "{{vault_root}}/.mdvault/captures"
+macros_dir    = "{{vault_root}}/.mdvault/macros"
 
 [profiles.work]
 vault_root = "~/Work/notes"
@@ -208,7 +240,7 @@ allow_http  = false
 Use `--profile` to switch profiles:
 
 ```bash
-markadd --profile work list-templates
+mdv --profile work list-templates
 ```
 
 For full configuration reference, see [`docs/config.md`](./docs/config.md).
@@ -337,7 +369,7 @@ content: |
 Run a capture:
 
 ```bash
-markadd capture inbox-item --var item="Review PR #42"
+mdv capture inbox-item --var item="Review PR #42"
 ```
 
 For more on captures, see [`docs/capture.md`](./docs/capture.md).
@@ -372,7 +404,7 @@ steps:
 Run a macro:
 
 ```bash
-markadd macro weekly-review
+mdv macro weekly-review
 ```
 
 ### Shell Commands
@@ -386,10 +418,55 @@ steps:
 ```
 
 ```bash
-markadd macro deploy --trust
+mdv macro deploy --trust
 ```
 
 For more on macros, see [`docs/macros.md`](./docs/macros.md).
+
+## Migration from markadd
+
+If you've been using `markadd`, here's how to migrate:
+
+### 1. Update command
+
+```bash
+# Old
+markadd new --template daily
+
+# New
+mdv new --template daily
+```
+
+### 2. Update config location
+
+```bash
+# Old location
+~/.config/markadd/config.toml
+~/.markadd/templates/
+
+# New location
+~/.config/mdvault/config.toml
+~/.mdvault/templates/
+```
+
+### 3. Update config file paths
+
+```toml
+[profiles.default]
+vault_root = "~/vault"
+templates_dir = "{{vault_root}}/.mdvault/templates"  # was .markadd
+captures_dir  = "{{vault_root}}/.mdvault/captures"   # was .markadd
+macros_dir    = "{{vault_root}}/.mdvault/macros"     # was .markadd
+```
+
+### 4. Reinstall
+
+```bash
+cargo install --path crates/cli
+
+# Command is now 'mdv'
+mdv --version
+```
 
 ## Documentation
 
@@ -398,6 +475,7 @@ For more on macros, see [`docs/macros.md`](./docs/macros.md).
 - [Captures Reference](./docs/capture.md)
 - [Macros Reference](./docs/macros.md)
 - [Development Guide](./docs/development.md)
+- [Scope Evolution](./docs/03_focus_change.md)
 
 ## License
 

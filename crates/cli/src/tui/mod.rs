@@ -19,10 +19,10 @@ use crossterm::{
 };
 use ratatui::prelude::*;
 
-use markadd_core::captures::CaptureRepository;
-use markadd_core::config::loader::ConfigLoader;
-use markadd_core::macros::MacroRepository;
-use markadd_core::templates::repository::TemplateRepository;
+use mdvault_core::captures::CaptureRepository;
+use mdvault_core::config::loader::ConfigLoader;
+use mdvault_core::macros::MacroRepository;
+use mdvault_core::templates::repository::TemplateRepository;
 
 use app::App;
 use event::map_key_event;
@@ -32,7 +32,7 @@ pub fn run(config_path: Option<&Path>, profile: Option<&str>) -> Result<()> {
     // Load config (fail fast if config broken)
     let config = ConfigLoader::load(config_path, profile).map_err(|e| {
         color_eyre::eyre::eyre!(
-            "Configuration error: {e}\nRun 'markadd doctor' to diagnose."
+            "Configuration error: {e}\nRun 'mdv doctor' to diagnose."
         )
     })?;
 

@@ -1,4 +1,4 @@
-use markadd_core::config::loader::ConfigLoader;
+use mdvault_core::config::loader::ConfigLoader;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::tempdir;

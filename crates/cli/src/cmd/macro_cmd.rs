@@ -6,21 +6,21 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::prompt::{collect_variables, PromptOptions};
-use markadd_core::captures::CaptureRepository;
-use markadd_core::config::loader::{default_config_path, ConfigLoader};
-use markadd_core::config::types::ResolvedConfig;
-use markadd_core::frontmatter::{apply_ops, parse, serialize};
-use markadd_core::macros::{
+use mdvault_core::captures::CaptureRepository;
+use mdvault_core::config::loader::{default_config_path, ConfigLoader};
+use mdvault_core::config::types::ResolvedConfig;
+use mdvault_core::frontmatter::{apply_ops, parse, serialize};
+use mdvault_core::macros::{
     get_shell_commands, requires_trust, run_macro, CaptureStep, MacroRepoError,
     MacroRepository, MacroRunError, MacroSpec, RunContext, RunOptions, ShellStep,
     StepExecutor, StepResult, TemplateStep,
 };
-use markadd_core::markdown_ast::{MarkdownEditor, SectionMatch};
-use markadd_core::templates::discovery::TemplateInfo;
-use markadd_core::templates::engine::{
+use mdvault_core::markdown_ast::{MarkdownEditor, SectionMatch};
+use mdvault_core::templates::discovery::TemplateInfo;
+use mdvault_core::templates::engine::{
     build_minimal_context, render_string, resolve_template_output_path,
 };
-use markadd_core::templates::repository::TemplateRepository;
+use mdvault_core::templates::repository::TemplateRepository;
 
 use chrono::Local;
 
@@ -29,7 +29,7 @@ pub fn run_list(config: Option<&Path>, profile: Option<&str>) {
     let cfg = match ConfigLoader::load(config, profile) {
         Ok(rc) => rc,
         Err(e) => {
-            eprintln!("FAIL markadd macro --list");
+            eprintln!("FAIL mdv macro --list");
             eprintln!("{e}");
             if config.is_none() {
                 eprintln!("looked for: {}", default_config_path().display());
@@ -41,7 +41,7 @@ pub fn run_list(config: Option<&Path>, profile: Option<&str>) {
     let repo = match MacroRepository::new(&cfg.macros_dir) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("FAIL markadd macro --list");
+            eprintln!("FAIL mdv macro --list");
             eprintln!("{e}");
             std::process::exit(1);
         }
@@ -90,7 +90,7 @@ pub fn run(
     let cfg = match ConfigLoader::load(config, profile) {
         Ok(rc) => rc,
         Err(e) => {
-            eprintln!("FAIL markadd macro");
+            eprintln!("FAIL mdv macro");
             eprintln!("{e}");
             if config.is_none() {
                 eprintln!("looked for: {}", default_config_path().display());
@@ -103,7 +103,7 @@ pub fn run(
     let repo = match MacroRepository::new(&cfg.macros_dir) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("FAIL markadd macro");
+            eprintln!("FAIL mdv macro");
             eprintln!("{e}");
             std::process::exit(1);
         }
@@ -207,7 +207,7 @@ pub fn run(
 
     // 9. Print results
     if result.success {
-        println!("OK   markadd macro");
+        println!("OK   mdv macro");
         println!("macro: {}", macro_name);
         println!("steps: {} completed", result.step_results.len());
         for (i, step_result) in result.step_results.iter().enumerate() {
@@ -215,7 +215,7 @@ pub fn run(
             println!("  [{status}] Step {}: {}", i + 1, step_result.message);
         }
     } else {
-        eprintln!("FAIL markadd macro");
+        eprintln!("FAIL mdv macro");
         eprintln!("macro: {}", macro_name);
         for (i, step_result) in result.step_results.iter().enumerate() {
             let status = if step_result.success { "OK" } else { "FAIL" };
@@ -242,7 +242,7 @@ fn build_vars_content(spec: &MacroSpec) -> String {
     // Add vars from step overrides
     for step in &spec.steps {
         match step {
-            markadd_core::macros::MacroStep::Template(t) => {
+            mdvault_core::macros::MacroStep::Template(t) => {
                 for v in t.vars_with.values() {
                     content.push_str(v);
                 }
@@ -250,12 +250,12 @@ fn build_vars_content(spec: &MacroSpec) -> String {
                     content.push_str(output);
                 }
             }
-            markadd_core::macros::MacroStep::Capture(c) => {
+            mdvault_core::macros::MacroStep::Capture(c) => {
                 for v in c.vars_with.values() {
                     content.push_str(v);
                 }
             }
-            markadd_core::macros::MacroStep::Shell(s) => {
+            mdvault_core::macros::MacroStep::Shell(s) => {
                 content.push_str(&s.shell);
             }
         }

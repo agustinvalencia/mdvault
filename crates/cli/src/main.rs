@@ -6,7 +6,7 @@ use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
-#[command(name = "markadd", version, about = "Terminal-first Markdown automation")]
+#[command(name = "mdv", version, about = "Your markdown vault on the command line")]
 struct Cli {
     #[arg(long, global = true)]
     config: Option<PathBuf>,
@@ -39,10 +39,10 @@ enum Commands {
 #[derive(Debug, Args)]
 #[command(after_help = "\
 Examples:
-  markadd macro --list
-  markadd macro weekly-review
-  markadd macro deploy-notes --trust
-  markadd macro setup --var project=\"my-app\"
+  mdv macro --list
+  mdv macro weekly-review
+  mdv macro deploy-notes --trust
+  mdv macro setup --var project=\"my-app\"
 ")]
 pub struct MacroArgs {
     /// Logical macro name (e.g. \"weekly-review\" or \"deploy\")
@@ -88,9 +88,9 @@ pub struct NewArgs {
 #[derive(Debug, Args)]
 #[command(after_help = "\
 Examples:
-  markadd capture --list
-  markadd capture inbox --var text=\"Buy milk\"
-  markadd capture todo --var task=\"Review PR\" --var priority=high
+  mdv capture --list
+  mdv capture inbox --var text=\"Buy milk\"
+  mdv capture todo --var task=\"Review PR\" --var priority=high
 ")]
 pub struct CaptureArgs {
     /// Logical capture name (e.g. "inbox" or "todo")

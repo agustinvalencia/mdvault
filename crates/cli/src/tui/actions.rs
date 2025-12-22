@@ -7,16 +7,16 @@ use std::path::Path;
 use chrono::Local;
 use regex::Regex;
 
-use markadd_core::captures::{CaptureRepository, CaptureSpec};
-use markadd_core::config::types::ResolvedConfig;
-use markadd_core::frontmatter::{apply_ops, parse, serialize};
-use markadd_core::macros::{
+use mdvault_core::captures::{CaptureRepository, CaptureSpec};
+use mdvault_core::config::types::ResolvedConfig;
+use mdvault_core::frontmatter::{apply_ops, parse, serialize};
+use mdvault_core::macros::{
     run_macro, MacroRepository, RunContext, RunOptions, StepExecutor,
 };
-use markadd_core::markdown_ast::{MarkdownAstError, MarkdownEditor, SectionMatch};
-use markadd_core::templates::discovery::TemplateInfo;
-use markadd_core::templates::engine::{build_render_context, render};
-use markadd_core::templates::repository::TemplateRepository;
+use mdvault_core::markdown_ast::{MarkdownAstError, MarkdownEditor, SectionMatch};
+use mdvault_core::templates::discovery::TemplateInfo;
+use mdvault_core::templates::engine::{build_render_context, render};
+use mdvault_core::templates::repository::TemplateRepository;
 
 /// Built-in variables that are automatically provided.
 const BUILTIN_VARS: &[&str] = &[
@@ -248,7 +248,7 @@ pub fn execute_macro(
     macro_name: &str,
     vars: &HashMap<String, String>,
 ) -> Result<String, String> {
-    use markadd_core::macros::{
+    use mdvault_core::macros::{
         CaptureStep, MacroRunError, ShellStep, StepResult, TemplateStep,
     };
 
@@ -275,7 +275,7 @@ pub fn execute_macro(
             step: &TemplateStep,
             ctx: &RunContext,
         ) -> Result<StepResult, MacroRunError> {
-            use markadd_core::templates::engine::{
+            use mdvault_core::templates::engine::{
                 build_minimal_context, render, render_string,
                 resolve_template_output_path,
             };
@@ -351,7 +351,7 @@ pub fn execute_macro(
             step: &CaptureStep,
             ctx: &RunContext,
         ) -> Result<StepResult, MacroRunError> {
-            use markadd_core::templates::engine::render_string;
+            use mdvault_core::templates::engine::render_string;
 
             let step_vars = ctx.with_step_vars(&step.vars_with);
 

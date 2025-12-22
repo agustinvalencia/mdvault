@@ -7,8 +7,8 @@
 //! - Support batch mode (non-interactive) for CI/scripting
 
 use dialoguer::{theme::ColorfulTheme, Input};
-use markadd_core::templates::engine::RenderContext;
-use markadd_core::vars::{
+use mdvault_core::templates::engine::RenderContext;
+use mdvault_core::vars::{
     collect_all_variables, try_evaluate_date_expr, VarSpec, VarsMap,
 };
 use std::collections::HashMap;

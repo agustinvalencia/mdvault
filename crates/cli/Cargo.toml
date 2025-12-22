@@ -1,10 +1,11 @@
 [package]
-name = "markadd"
-version = "0.0.1"
+name = "mdvault"
+version = "0.1.0"
 edition = "2021"
+description = "Your markdown vault on the command line"
 
 [[bin]]
-name = "markadd"
+name = "mdv"
 path = "src/main.rs"
 
 [dependencies]
@@ -13,7 +14,7 @@ clap = { version = "4.5.51", features = ["derive"] }
 color-eyre = "0.6"
 crossterm = "0.28"
 dialoguer = "0.11"
-markadd-core = { path = "../core" }
+mdvault-core = { path = "../core" }
 ratatui = "0.29"
 regex = "1.12.2"
 

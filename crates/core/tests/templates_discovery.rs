@@ -1,4 +1,4 @@
-use markadd_core::templates::discovery::discover_templates;
+use mdvault_core::templates::discovery::discover_templates;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::tempdir;

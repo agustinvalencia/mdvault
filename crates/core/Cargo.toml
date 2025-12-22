@@ -1,10 +1,11 @@
 [package]
-name = "markadd-core"
-version = "0.0.1"
+name = "mdvault-core"
+version = "0.1.0"
 edition = "2024"
+description = "Core library for mdvault - markdown vault management"
 
 [lib]
-name = "markadd_core"
+name = "mdvault_core"
 path = "src/lib.rs"
 
 [dependencies]

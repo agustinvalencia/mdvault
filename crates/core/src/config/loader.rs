@@ -98,10 +98,10 @@ impl ConfigLoader {
 
 pub fn default_config_path() -> PathBuf {
     if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
-        return Path::new(&xdg).join("markadd").join("config.toml");
+        return Path::new(&xdg).join("mdvault").join("config.toml");
     }
     let home = home_dir().unwrap_or_else(|| PathBuf::from("~"));
-    home.join(".config").join("markadd").join("config.toml")
+    home.join(".config").join("mdvault").join("config.toml")
 }
 
 fn expand_path(input: &str) -> Result<PathBuf, ConfigError> {

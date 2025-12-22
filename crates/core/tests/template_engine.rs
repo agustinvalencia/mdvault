@@ -1,5 +1,5 @@
-use markadd_core::templates::engine::{RenderContext, render};
-use markadd_core::templates::repository::LoadedTemplate;
+use mdvault_core::templates::engine::{RenderContext, render};
+use mdvault_core::templates::repository::LoadedTemplate;
 use std::path::PathBuf;
 
 fn loaded(contents: &str) -> LoadedTemplate {

@@ -38,7 +38,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
 fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let profile_text = format!("[{}]", app.config.active_profile);
-    let title = "markadd";
+    let title = "mdvault";
 
     // Calculate padding for right-alignment
     let padding =

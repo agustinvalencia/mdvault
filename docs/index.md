@@ -1,17 +1,27 @@
-# markadd Documentation
+# mdvault Documentation
 
-Welcome to the documentation for **markadd**, a terminal-first Markdown automation tool inspired by Obsidian’s QuickAdd.
+Welcome to the documentation for **mdvault** (formerly markadd), your Markdown vault on the command line.
 
-This documentation includes:
+mdvault is a complete terminal interface for markdown-based knowledge vaults. It combines the quick-input automation of Obsidian's QuickAdd with comprehensive vault management features.
 
-- configuration reference  
-- architecture notes  
-- development logs  
-- roadmap overview  
+## What mdvault does
+
+- 📝 Create notes from templates with variables and date math
+- 📥 Quick capture to daily notes and projects
+- 🔁 Multi-step workflow automation (macros)
+- 🔍 Full-text search across your vault (planned)
+- 📊 Query notes by frontmatter metadata (planned)
+- 🔗 Analyse backlinks, orphans, and connections (planned)
+- 📚 Browse and read vault contents (planned)
+
+## Getting Started
 
 If you're new, begin with:
 
-`docs/config.md`
+- [config.md](./config.md) — Configuration reference
+- [templates.md](./templates.md) — Template authoring guide
+- [capture.md](./capture.md) — Captures reference
+- [macros.md](./macros.md) — Macros reference
 
 For development progress, see:
 
@@ -23,10 +33,12 @@ For development progress, see:
 - [config.md](./config.md) — Configuration reference
 - [templates.md](./templates.md) — Template authoring guide
 - [capture.md](./capture.md) — Captures reference
+- [macros.md](./macros.md) — Macros reference
 
 ### Developer Documentation
 - [development.md](./development.md) — Repository structure, testing, contributing
 - [01_development_plan.md](./01_development_plan.md) — Full phase plan with UML diagrams
+- [03_focus_change.md](./03_focus_change.md) — Scope evolution and roadmap
 
 ### Development Logs
 - [devlogs/phase-00.md](./devlogs/phase-00.md)
@@ -43,17 +55,24 @@ For development progress, see:
 
 ```
 crates/core   – configuration, template discovery, template engine, markdown AST
-crates/cli    – command-line interface
-crates/tui    – terminal UI (in development)
+crates/cli    – command-line interface and TUI
 ```
 
 ## Philosophy
 
-`markadd` aims to be:
+`mdvault` aims to be:
 
-- deterministic and testable
-- terminal-native
-- Markdown-first
-- extensible through templates, captures, and macros
+- **Performance first** — Rust for speed on large vaults
+- **Terminal native** — Fast, keyboard-driven workflows
+- **Vault agnostic** — Works with Obsidian, Logseq, Dendron, or any markdown system
+- **Extensible** — Through templates, captures, and macros
+- **MCP integration ready** — JSON output formats for tooling
+
+## Related Projects
+
+mdvault is part of a two-project ecosystem:
+
+- **mdvault** (this project) — Complete terminal vault manager
+- **markdown-vault-mcp** — Python MCP server that delegates to mdvault for AI integration
 
 Return to project root: [README.md](../README.md)

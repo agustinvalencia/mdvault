@@ -1,5 +1,5 @@
 use insta::assert_snapshot;
-use markadd_core::markdown_ast::{InsertPosition, MarkdownEditor, SectionMatch};
+use mdvault_core::markdown_ast::{InsertPosition, MarkdownEditor, SectionMatch};
 
 #[test]
 fn golden_changelog_insert_unreleased_begin() {

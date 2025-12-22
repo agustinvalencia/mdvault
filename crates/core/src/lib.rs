@@ -8,7 +8,7 @@ pub fn rustc_version() -> String {
 
 pub fn doctor_stub() -> String {
     format!(
-        "markadd-core v{} | rustc {} on {} ",
+        "mdvault-core v{} | rustc {} on {} ",
         version(),
         rustc_version(),
         std::env::consts::OS

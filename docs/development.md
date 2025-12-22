@@ -1,13 +1,13 @@
 # Development Guide
 
-This document covers the technical structure of `markadd`, development phases, and contribution guidelines.
+This document covers the technical structure of `mdvault` (formerly `markadd`), development phases, and contribution guidelines.
 
 For usage documentation, see the main [README](../README.md).
 
 ## Repository Structure
 
 ```text
-markadd/
+mdvault/
 ├─ crates/
 │  ├─ core/        # config loader, templates, captures, markdown AST, frontmatter
 │  └─ cli/         # command-line interface and TUI
@@ -15,9 +15,12 @@ markadd/
 │  ├─ config.md          # configuration reference
 │  ├─ templates.md       # template authoring guide
 │  ├─ capture.md         # captures reference
+│  ├─ macros.md          # macros reference
 │  ├─ development.md     # this file
 │  ├─ 00_Conceptualisation.md
 │  ├─ 01_development_plan.md
+│  ├─ 02_revised_development_plan.md
+│  ├─ 03_focus_change.md # scope evolution
 │  └─ devlogs/           # per-phase development logs
 ├─ .clippy.toml
 ├─ .github/
@@ -39,7 +42,7 @@ markadd/
 
 ## Development Status
 
-### Completed
+### Completed (v0.1.x)
 
 **Phase 0 — Workspace, Tooling, CI**
 - Workspace crates: `core`, `cli`
@@ -53,19 +56,19 @@ markadd/
 - XDG discovery, `~` expansion, environment variable expansion
 - Interpolation (`{{vault_root}}`, etc.)
 - Directory structure for templates / captures / macros
-- Command: `markadd doctor`
+- Command: `mdv doctor`
 
 **Phase 2 — Template Discovery**
 - Recursive search in `templates_dir`
 - Only `.md` files treated as templates
 - Logical names from relative paths
-- Command: `markadd list-templates`
+- Command: `mdv list-templates`
 
 **Phase 3 — Template Engine MVP**
 - Template repository with logical name lookup
 - Simple `{{var}}` substitution
 - Built-in context variables (date, time, vault_root, etc.)
-- Command: `markadd new --template <name> --output <path>`
+- Command: `mdv new --template <name> --output <path>`
 
 **Phase 4 — Markdown AST Insertions**
 - `MarkdownEditor` API for section-based insertions
@@ -78,7 +81,7 @@ markadd/
 **Phase 4 MVP — Captures**
 - Capture specs (YAML) with target file, section, position
 - Variable substitution in file paths and content
-- Command: `markadd capture <name> --var key=value`
+- Command: `mdv capture <name> --var key=value`
 - Integration tests for capture workflows
 
 **Frontmatter System**
@@ -90,27 +93,47 @@ markadd/
 
 **TUI Integration**
 - TUI integrated into CLI crate (ratatui + crossterm)
-- Launch TUI by running `markadd` without subcommand
+- Launch TUI by running `mdv` without subcommand
 - Template and capture browsing
 - Elm-inspired architecture (App state, Message, update loop)
 
-### Roadmap
+**Macros**
+- Multi-step workflow execution
+- Template + capture step combinations
+- Variable passing between steps
+- Shell command execution (with `--trust`)
 
-**Phase 5** — File Planner, Atomic Writes, Undo Log
+### Roadmap (v0.2.0+)
 
-**Phase 6** — CLI Wiring & Coordinator Facade
+The project scope has evolved from QuickAdd-style automation to a complete terminal vault manager. See [03_focus_change.md](./03_focus_change.md) for the full vision.
 
-**Phase 7** — Macro Runner & Security Gates
+**Priority 1 — Search Command (v0.2.0)**
+```bash
+mdv search "network optimization"
+mdv search "TODO" --folder projects --context-lines 3
+mdv search "query" --format json
+```
 
-**Phase 8** — Lua Hooks (optional)
+**Priority 2 — Query Command (v0.3.0)**
+```bash
+mdv query --where "status=todo"
+mdv query --where "due<2025-01-01" --where "priority=high"
+mdv query --tag research --sort-by "created"
+```
 
-**Phase 9** — TUI Polish (variable input, execution feedback)
+**Priority 3 — Links Command (v0.4.0)**
+```bash
+mdv links note.md --backlinks
+mdv links note.md --outgoing
+mdv links --orphans --folder research
+```
 
-**Phase 10** — Documentation & Release
+**Future (v0.5.0+)**
+- List/Browse enhancements
+- Read/View commands
+- Batch operations
 
-For detailed phase descriptions with UML diagrams, see [`01_development_plan.md`](./01_development_plan.md).
-
-For the progressive TUI integration proposal, see [`devlogs/tui-integration-proposal.md`](./devlogs/tui-integration-proposal.md).
+For detailed feature specifications, see [03_focus_change.md](./03_focus_change.md).
 
 ## Testing
 
@@ -123,7 +146,7 @@ cargo test --all
 Update snapshots locally:
 
 ```bash
-INSTA_UPDATE=auto cargo test -p markadd
+INSTA_UPDATE=auto cargo test -p mdvault
 ```
 
 Snapshots are immutable in CI.
@@ -143,10 +166,11 @@ Snapshots are immutable in CI.
 
 ## Architecture Principles
 
-1. **Core is reusable**: `markadd-core` should work for CLI, TUI, and future integrations
+1. **Core is reusable**: `mdvault-core` should work for CLI, TUI, and future integrations
 2. **Determinism**: Same inputs produce same outputs; avoid hidden state
 3. **Fail fast**: Validate early, provide actionable error messages
 4. **Testability**: Prefer pure functions; inject dependencies where needed
+5. **MCP integration ready**: JSON output formats for tooling
 
 ## Contributing
 
