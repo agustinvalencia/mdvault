@@ -43,11 +43,10 @@ jobs:
       - name: Generate code coverage
         run: |
           cargo +nightly tarpaulin \
-            --verbose \
             --workspace \
             --all-features \
             --timeout 120 \
-            --out Xml --out Lcov
+            --out Xml --out Lcov --out json
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
