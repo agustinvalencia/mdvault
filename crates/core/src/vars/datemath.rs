@@ -8,7 +8,8 @@
 //! - `{{week}}` returns ISO week number (1-53), `{{week | %Y-W%V}}` for "2025-W51"
 
 use chrono::{
-    Datelike, Duration, IsoWeek, Local, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Weekday,
+    Datelike, Duration, IsoWeek, Local, NaiveDate, NaiveDateTime, NaiveTime, Timelike,
+    Weekday,
 };
 use regex::Regex;
 use thiserror::Error;
@@ -560,7 +561,7 @@ mod tests {
         let result = evaluate_date_expr(&expr);
         // Should be a number between 1 and 53
         let week_num: u32 = result.parse().unwrap();
-        assert!(week_num >= 1 && week_num <= 53);
+        assert!((1..=53).contains(&week_num));
     }
 
     #[test]
@@ -578,7 +579,7 @@ mod tests {
         let result = evaluate_date_expr(&expr);
         // Should be a valid week number
         let week_num: u32 = result.parse().unwrap();
-        assert!(week_num >= 1 && week_num <= 53);
+        assert!((1..=53).contains(&week_num));
     }
 
     #[test]
@@ -594,7 +595,7 @@ mod tests {
         // Should be a 4-digit year
         assert_eq!(result.len(), 4);
         let year: i32 = result.parse().unwrap();
-        assert!(year >= 2020 && year <= 2100);
+        assert!((2020..=2100).contains(&year));
     }
 
     #[test]

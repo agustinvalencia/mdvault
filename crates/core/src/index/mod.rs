@@ -26,8 +26,8 @@ pub mod schema;
 pub mod types;
 
 pub use db::{IndexDb, IndexError};
-pub use schema::{SchemaError, SCHEMA_VERSION};
+pub use schema::{SCHEMA_VERSION, SchemaError};
 pub use types::{
-    ActivitySummary, IndexedLink, IndexedNote, LinkType, NoteQuery, NoteType, ProjectStatus,
-    TaskStatus, TemporalActivity,
+    ActivitySummary, IndexedLink, IndexedNote, LinkType, NoteQuery, NoteType,
+    ProjectStatus, TaskStatus, TemporalActivity,
 };

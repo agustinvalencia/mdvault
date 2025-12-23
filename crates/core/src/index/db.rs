@@ -2,10 +2,10 @@
 
 use std::path::Path;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use thiserror::Error;
 
-use super::schema::{init_schema, SchemaError};
+use super::schema::{SchemaError, init_schema};
 use super::types::{IndexedLink, IndexedNote, LinkType, NoteQuery, NoteType};
 
 #[derive(Debug, Error)]
@@ -140,13 +140,16 @@ impl IndexDb {
     }
 
     /// Get a note by its path.
-    pub fn get_note_by_path(&self, path: &Path) -> Result<Option<IndexedNote>, IndexError> {
+    pub fn get_note_by_path(
+        &self,
+        path: &Path,
+    ) -> Result<Option<IndexedNote>, IndexError> {
         self.conn
             .query_row(
                 "SELECT id, path, note_type, title, created_at, modified_at, frontmatter_json, content_hash
                  FROM notes WHERE path = ?1",
                 [path.to_string_lossy()],
-                |row| Self::row_to_note(row),
+                Self::row_to_note,
             )
             .optional()
             .map_err(Into::into)
@@ -159,7 +162,7 @@ impl IndexDb {
                 "SELECT id, path, note_type, title, created_at, modified_at, frontmatter_json, content_hash
                  FROM notes WHERE id = ?1",
                 [id],
-                |row| Self::row_to_note(row),
+                Self::row_to_note,
             )
             .optional()
             .map_err(Into::into)
@@ -203,11 +206,12 @@ impl IndexDb {
             sql.push_str(&format!(" OFFSET {}", offset));
         }
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
 
         let mut stmt = self.conn.prepare(&sql)?;
         let notes = stmt
-            .query_map(params_refs.as_slice(), |row| Self::row_to_note(row))?
+            .query_map(params_refs.as_slice(), Self::row_to_note)?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -216,10 +220,9 @@ impl IndexDb {
 
     /// Delete a note by path (also deletes associated links via CASCADE).
     pub fn delete_note(&self, path: &Path) -> Result<bool, IndexError> {
-        let rows = self.conn.execute(
-            "DELETE FROM notes WHERE path = ?1",
-            [path.to_string_lossy()],
-        )?;
+        let rows = self
+            .conn
+            .execute("DELETE FROM notes WHERE path = ?1", [path.to_string_lossy()])?;
         Ok(rows > 0)
     }
 
@@ -244,9 +247,13 @@ impl IndexDb {
         Ok(IndexedNote {
             id: Some(row.get(0)?),
             path: path_str.into(),
-            note_type: NoteType::from_str(&type_str),
+            note_type: type_str.parse().unwrap(),
             title: row.get(3)?,
-            created: created_str.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok().map(|d| d.with_timezone(&chrono::Utc))),
+            created: created_str.and_then(|s| {
+                chrono::DateTime::parse_from_rfc3339(&s)
+                    .ok()
+                    .map(|d| d.with_timezone(&chrono::Utc))
+            }),
             modified: chrono::DateTime::parse_from_rfc3339(&modified_str)
                 .map(|d| d.with_timezone(&chrono::Utc))
                 .unwrap_or_else(|_| chrono::Utc::now()),
@@ -279,21 +286,23 @@ impl IndexDb {
 
     /// Delete all links from a source note.
     pub fn delete_links_from(&self, source_id: i64) -> Result<usize, IndexError> {
-        let rows = self
-            .conn
-            .execute("DELETE FROM links WHERE source_id = ?1", [source_id])?;
+        let rows =
+            self.conn.execute("DELETE FROM links WHERE source_id = ?1", [source_id])?;
         Ok(rows)
     }
 
     /// Get outgoing links from a note.
-    pub fn get_outgoing_links(&self, source_id: i64) -> Result<Vec<IndexedLink>, IndexError> {
+    pub fn get_outgoing_links(
+        &self,
+        source_id: i64,
+    ) -> Result<Vec<IndexedLink>, IndexError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source_id, target_id, target_path, link_text, link_type, context, line_number
              FROM links WHERE source_id = ?1",
         )?;
 
         let links = stmt
-            .query_map([source_id], |row| Self::row_to_link(row))?
+            .query_map([source_id], Self::row_to_link)?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -308,7 +317,7 @@ impl IndexDb {
         )?;
 
         let links = stmt
-            .query_map([target_id], |row| Self::row_to_link(row))?
+            .query_map([target_id], Self::row_to_link)?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -324,10 +333,8 @@ impl IndexDb {
              WHERE l.id IS NULL",
         )?;
 
-        let notes = stmt
-            .query_map([], |row| Self::row_to_note(row))?
-            .filter_map(|r| r.ok())
-            .collect();
+        let notes =
+            stmt.query_map([], Self::row_to_note)?.filter_map(|r| r.ok()).collect();
 
         Ok(notes)
     }
@@ -355,7 +362,7 @@ impl IndexDb {
             target_id: row.get(2)?,
             target_path: row.get(3)?,
             link_text: row.get(4)?,
-            link_type: LinkType::from_str(&type_str).unwrap_or(LinkType::Wikilink),
+            link_type: LinkType::parse(&type_str).unwrap_or(LinkType::Wikilink),
             context: row.get(6)?,
             line_number: row.get(7)?,
         })
@@ -375,7 +382,7 @@ impl IndexDb {
             .query_map([], |row| {
                 let type_str: String = row.get(0)?;
                 let count: i64 = row.get(1)?;
-                Ok((NoteType::from_str(&type_str), count))
+                Ok((type_str.parse().unwrap(), count))
             })?
             .filter_map(|r| r.ok())
             .collect();
@@ -385,17 +392,15 @@ impl IndexDb {
 
     /// Get total note count.
     pub fn count_notes(&self) -> Result<i64, IndexError> {
-        let count: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM notes", [], |row| row.get(0))?;
+        let count: i64 =
+            self.conn.query_row("SELECT COUNT(*) FROM notes", [], |row| row.get(0))?;
         Ok(count)
     }
 
     /// Get total link count.
     pub fn count_links(&self) -> Result<i64, IndexError> {
-        let count: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM links", [], |row| row.get(0))?;
+        let count: i64 =
+            self.conn.query_row("SELECT COUNT(*) FROM links", [], |row| row.get(0))?;
         Ok(count)
     }
 }
@@ -461,10 +466,7 @@ mod tests {
         task.note_type = NoteType::Task;
         db.insert_note(&task).unwrap();
 
-        let query = NoteQuery {
-            note_type: Some(NoteType::Zettel),
-            ..Default::default()
-        };
+        let query = NoteQuery { note_type: Some(NoteType::Zettel), ..Default::default() };
         let results = db.query_notes(&query).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].note_type, NoteType::Zettel);

@@ -3,6 +3,7 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Note type classification based on frontmatter `type:` field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -24,18 +25,6 @@ pub enum NoteType {
 }
 
 impl NoteType {
-    /// Parse note type from string (case-insensitive).
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "daily" => Self::Daily,
-            "weekly" => Self::Weekly,
-            "task" => Self::Task,
-            "project" => Self::Project,
-            "zettel" | "knowledge" => Self::Zettel,
-            _ => Self::None,
-        }
-    }
-
     /// Convert to database string representation.
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -46,6 +35,21 @@ impl NoteType {
             Self::Zettel => "zettel",
             Self::None => "none",
         }
+    }
+}
+
+impl FromStr for NoteType {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
+            "daily" => Self::Daily,
+            "weekly" => Self::Weekly,
+            "task" => Self::Task,
+            "project" => Self::Project,
+            "zettel" | "knowledge" => Self::Zettel,
+            _ => Self::None,
+        })
     }
 }
 
@@ -62,7 +66,7 @@ pub enum TaskStatus {
 }
 
 impl TaskStatus {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().replace(['-', '_'], "").as_str() {
             "open" => Some(Self::Open),
             "inprogress" => Some(Self::InProgress),
@@ -97,7 +101,7 @@ pub enum ProjectStatus {
 }
 
 impl ProjectStatus {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "planning" => Some(Self::Planning),
             "active" => Some(Self::Active),
@@ -140,7 +144,7 @@ impl LinkType {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "wikilink" => Some(Self::Wikilink),
             "markdown" => Some(Self::Markdown),
