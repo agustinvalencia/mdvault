@@ -1,13 +1,14 @@
 //! Date math expression parser and evaluator.
 //!
 //! Supports expressions like:
-//! - `{{today}}`, `{{now}}`, `{{time}}`
+//! - `{{today}}`, `{{now}}`, `{{time}}`, `{{week}}`, `{{year}}`
 //! - `{{today + 1d}}`, `{{today - 1w}}`, `{{now + 2h}}`
 //! - `{{today | %Y-%m-%d}}` (with format specifier)
 //! - `{{today - monday}}`, `{{today + friday}}` (relative weekday)
+//! - `{{week}}` returns ISO week number (1-53), `{{week | %Y-W%V}}` for "2025-W51"
 
 use chrono::{
-    Datelike, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Weekday,
+    Datelike, Duration, IsoWeek, Local, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Weekday,
 };
 use regex::Regex;
 use thiserror::Error;
@@ -39,6 +40,10 @@ pub enum DateBase {
     Time,
     /// Current date (alias for today)
     Date,
+    /// Current ISO week number (1-53)
+    Week,
+    /// Current year (YYYY)
+    Year,
 }
 
 /// A duration offset to apply.
@@ -123,6 +128,8 @@ fn parse_base(s: &str) -> Result<DateBase, DateMathError> {
         "now" => Ok(DateBase::Now),
         "time" => Ok(DateBase::Time),
         "date" => Ok(DateBase::Date),
+        "week" => Ok(DateBase::Week),
+        "year" => Ok(DateBase::Year),
         _ => Err(DateMathError::InvalidExpression(format!("unknown base: {s}"))),
     }
 }
@@ -202,6 +209,14 @@ pub fn evaluate_date_expr(expr: &DateExpr) -> String {
         DateBase::Time => {
             let time = apply_time_offset(current_time, &expr.offset);
             format_time(time, expr.format.as_deref())
+        }
+        DateBase::Week => {
+            let date = apply_date_offset(today, &expr.offset);
+            format_week(date.iso_week(), expr.format.as_deref())
+        }
+        DateBase::Year => {
+            let date = apply_date_offset(today, &expr.offset);
+            format_year(date, expr.format.as_deref())
         }
     }
 }
@@ -343,15 +358,37 @@ fn format_time(time: NaiveTime, format: Option<&str>) -> String {
     time.format(fmt).to_string()
 }
 
+fn format_week(week: IsoWeek, format: Option<&str>) -> String {
+    match format {
+        // If a format is provided, apply it to a date in that week
+        // This allows formats like "%Y-W%V" to produce "2025-W51"
+        Some(fmt) => {
+            // Get a date in this week (Monday)
+            let date = NaiveDate::from_isoywd_opt(week.year(), week.week(), Weekday::Mon)
+                .unwrap_or_else(|| Local::now().date_naive());
+            date.format(fmt).to_string()
+        }
+        // Default: just the week number
+        None => week.week().to_string(),
+    }
+}
+
+fn format_year(date: NaiveDate, format: Option<&str>) -> String {
+    let fmt = format.unwrap_or("%Y");
+    date.format(fmt).to_string()
+}
+
 /// Check if a string looks like a date math expression.
 ///
-/// Returns true for strings like "today", "now + 1d", "time - 2h", etc.
+/// Returns true for strings like "today", "now + 1d", "time - 2h", "week", "year", etc.
 pub fn is_date_expr(s: &str) -> bool {
     let s = s.trim().to_lowercase();
     s.starts_with("today")
         || s.starts_with("now")
         || s.starts_with("time")
         || s.starts_with("date")
+        || s.starts_with("week")
+        || s.starts_with("year")
 }
 
 /// Evaluate a date expression string if it is one, otherwise return None.
@@ -508,5 +545,64 @@ mod tests {
     fn test_try_evaluate() {
         assert!(try_evaluate_date_expr("today").is_some());
         assert!(try_evaluate_date_expr("not_a_date").is_none());
+    }
+
+    #[test]
+    fn test_parse_week() {
+        let expr = parse_date_expr("week").unwrap();
+        assert_eq!(expr.base, DateBase::Week);
+        assert_eq!(expr.offset, DateOffset::None);
+    }
+
+    #[test]
+    fn test_evaluate_week() {
+        let expr = parse_date_expr("week").unwrap();
+        let result = evaluate_date_expr(&expr);
+        // Should be a number between 1 and 53
+        let week_num: u32 = result.parse().unwrap();
+        assert!(week_num >= 1 && week_num <= 53);
+    }
+
+    #[test]
+    fn test_evaluate_week_with_format() {
+        let expr = parse_date_expr("week | %Y-W%V").unwrap();
+        let result = evaluate_date_expr(&expr);
+        // Should be like "2025-W51"
+        assert!(result.contains("-W"));
+        assert!(result.len() >= 8); // "YYYY-WNN"
+    }
+
+    #[test]
+    fn test_week_with_offset() {
+        let expr = parse_date_expr("week + 1w").unwrap();
+        let result = evaluate_date_expr(&expr);
+        // Should be a valid week number
+        let week_num: u32 = result.parse().unwrap();
+        assert!(week_num >= 1 && week_num <= 53);
+    }
+
+    #[test]
+    fn test_parse_year() {
+        let expr = parse_date_expr("year").unwrap();
+        assert_eq!(expr.base, DateBase::Year);
+    }
+
+    #[test]
+    fn test_evaluate_year() {
+        let expr = parse_date_expr("year").unwrap();
+        let result = evaluate_date_expr(&expr);
+        // Should be a 4-digit year
+        assert_eq!(result.len(), 4);
+        let year: i32 = result.parse().unwrap();
+        assert!(year >= 2020 && year <= 2100);
+    }
+
+    #[test]
+    fn test_is_date_expr_week_year() {
+        assert!(is_date_expr("week"));
+        assert!(is_date_expr("WEEK"));
+        assert!(is_date_expr("week + 1w"));
+        assert!(is_date_expr("year"));
+        assert!(is_date_expr("year - 1y"));
     }
 }
