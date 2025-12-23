@@ -932,8 +932,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "markadd"
-version = "0.0.1"
+name = "mdvault"
+version = "0.1.0"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -942,7 +942,7 @@ dependencies = [
  "crossterm",
  "dialoguer",
  "insta",
- "markadd-core",
+ "mdvault-core",
  "predicates",
  "ratatui",
  "regex",
@@ -950,8 +950,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "markadd-core"
-version = "0.0.1"
+name = "mdvault-core"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "comrak",

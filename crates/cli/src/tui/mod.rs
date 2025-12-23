@@ -31,9 +31,7 @@ use event::map_key_event;
 pub fn run(config_path: Option<&Path>, profile: Option<&str>) -> Result<()> {
     // Load config (fail fast if config broken)
     let config = ConfigLoader::load(config_path, profile).map_err(|e| {
-        color_eyre::eyre::eyre!(
-            "Configuration error: {e}\nRun 'mdv doctor' to diagnose."
-        )
+        color_eyre::eyre::eyre!("Configuration error: {e}\nRun 'mdv doctor' to diagnose.")
     })?;
 
     // Discover templates
