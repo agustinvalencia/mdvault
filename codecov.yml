@@ -1,0 +1,23 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 5%
+        informational: true
+    patch:
+      default:
+        target: auto
+        threshold: 5%
+        informational: true
+
+ignore:
+  - "crates/cli/tests/**/*"
+  - "crates/core/tests/**/*"
+  - "crates/cli/src/main.rs"
+  - "crates/cli/src/tui/**/*"
+
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: true

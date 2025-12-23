@@ -2,8 +2,8 @@
 
 **Your Markdown Vault on the Command Line**
 
-[![Build Status](https://github.com/agustinvalencia/markadd/actions/workflows/ci.yml/badge.svg)](https://github.com/agustinvalencia/markadd/actions)
-[![codecov](https://codecov.io/gh/agustinvalencia/markadd/branch/main/graph/badge.svg)](https://codecov.io/gh/agustinvalencia/markadd)
+[![Build Status](https://github.com/agustinvalencia/mdvault/actions/workflows/ci.yml/badge.svg)](https://github.com/agustinvalencia/mdvault/actions)
+[![codecov](https://codecov.io/gh/agustinvalencia/mdvault/branch/main/graph/badge.svg)](https://codecov.io/gh/agustinvalencia/mdvault)
 
 > **Note**: This project is being renamed from `markadd` to `mdvault`. The command will change from `markadd` to `mdv`. See [Migration Guide](#migration-from-markadd) below.
 
