@@ -67,12 +67,12 @@ Some content here.
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config").arg(root.join("config.toml")).arg("capture").arg("mark-done");
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("OK   markadd capture"))
+        .stdout(predicate::str::contains("OK   mdv capture"))
         .stdout(predicate::str::contains("frontmatter: modified"));
 
     let content = fs::read_to_string(root.join("vault/daily/today.md")).unwrap();
@@ -121,7 +121,7 @@ Content here.
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config").arg(root.join("config.toml")).arg("capture").arg("toggle-flag");
 
     cmd.assert().success();
@@ -170,7 +170,7 @@ Content here.
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("capture")
@@ -224,7 +224,7 @@ Content here.
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("capture")
@@ -289,7 +289,7 @@ has_tasks: false
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("capture")
@@ -346,7 +346,7 @@ This file has no frontmatter.
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config").arg(root.join("config.toml")).arg("capture").arg("add-metadata");
 
     cmd.assert().success();

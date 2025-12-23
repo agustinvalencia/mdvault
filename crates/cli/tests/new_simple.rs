@@ -16,13 +16,13 @@ fn new_renders_template_to_output_file() {
 
     // XDG config
     let xdg = tmp.path().join("xdg");
-    let cfg_dir = xdg.join("markadd");
+    let cfg_dir = xdg.join("mdvault");
     let cfg_path = cfg_dir.join("config.toml");
     fs::create_dir_all(&cfg_dir).unwrap();
 
     // Vault and templates
     let vault = tmp.path().join("vault");
-    let tpl_root = vault.join(".markadd").join("templates");
+    let tpl_root = vault.join(".mdvault").join("templates");
     let tpl_daily = tpl_root.join("daily.md");
 
     write(
@@ -38,8 +38,8 @@ profile = "default"
 [profiles.default]
 vault_root = "{vault}"
 templates_dir = "{tpl}"
-captures_dir  = "{{{{vault_root}}}}/.markadd/captures"
-macros_dir    = "{{{{vault_root}}}}/.markadd/macros"
+captures_dir  = "{{{{vault_root}}}}/.mdvault/captures"
+macros_dir    = "{{{{vault_root}}}}/.mdvault/macros"
 "#,
         vault = vault.display(),
         tpl = tpl_root.display(),
@@ -48,7 +48,7 @@ macros_dir    = "{{{{vault_root}}}}/.markadd/macros"
 
     let output = vault.join("rendered.md");
 
-    let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.env("XDG_CONFIG_HOME", &xdg);
     cmd.env("NO_COLOR", "1");
     cmd.args([
@@ -65,7 +65,7 @@ macros_dir    = "{{{{vault_root}}}}/.markadd/macros"
 
     cmd.assert()
         .success()
-        .stdout(predicates::str::contains("OK   markadd new"))
+        .stdout(predicates::str::contains("OK   mdv new"))
         .stdout(predicates::str::contains("template: daily"));
 
     let rendered = fs::read_to_string(&output).unwrap();

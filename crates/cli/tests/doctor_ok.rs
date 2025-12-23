@@ -22,9 +22,9 @@ profile = "default"
 
 [profiles.default]
 vault_root = "/tmp/v"
-templates_dir = "{{vault_root}}/.markadd/templates"
-captures_dir  = "{{vault_root}}/.markadd/captures"
-macros_dir    = "{{vault_root}}/.markadd/macros"
+templates_dir = "{{vault_root}}/.mdvault/templates"
+captures_dir  = "{{vault_root}}/.mdvault/captures"
+macros_dir    = "{{vault_root}}/.mdvault/macros"
 
 [security]
 allow_shell = false
@@ -32,11 +32,11 @@ allow_http  = false
 "#;
     write_file(&cfg, toml);
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.args(["doctor", "--config", cfg.to_str().unwrap()]);
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("OK   markadd doctor"))
+        .stdout(predicate::str::contains("OK   mdv doctor"))
         .stdout(predicate::str::contains("profile: default"))
         .stdout(predicate::str::contains("vault_root: /tmp/v"));
 }
@@ -44,7 +44,7 @@ allow_http  = false
 #[test]
 fn doctor_uses_xdg_default_when_present() {
     let tmp = tempdir().unwrap();
-    let cfg_dir = tmp.path().join("markadd");
+    let cfg_dir = tmp.path().join("mdvault");
     let cfg_path = cfg_dir.join("config.toml");
     fs::create_dir_all(&cfg_dir).unwrap();
     write_file(
@@ -60,11 +60,11 @@ macros_dir    = "{{vault_root}}/m"
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.env("XDG_CONFIG_HOME", tmp.path());
     cmd.arg("doctor");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("OK   markadd doctor"))
+        .stdout(predicate::str::contains("OK   mdv doctor"))
         .stdout(predicate::str::contains("vault_root: /tmp/v"));
 }

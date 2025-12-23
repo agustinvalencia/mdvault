@@ -62,7 +62,7 @@ vars:
     fs::create_dir_all(vault.join("macros")).unwrap();
 
     // Run in batch mode - should use defaults
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("new")
@@ -110,7 +110,7 @@ By: {{author}}
     fs::create_dir_all(vault.join("captures")).unwrap();
     fs::create_dir_all(vault.join("macros")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("new")
@@ -176,7 +176,7 @@ content: "- [{{priority}}] {{text}}"
     fs::create_dir_all(vault.join("templates")).unwrap();
     fs::create_dir_all(vault.join("macros")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("capture")
@@ -216,7 +216,7 @@ vars:
     fs::create_dir_all(vault.join("captures")).unwrap();
     fs::create_dir_all(vault.join("macros")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("new")
@@ -271,7 +271,7 @@ steps:
 
     fs::create_dir_all(vault.join("captures")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("macro")
@@ -327,7 +327,7 @@ content: "- {{text}}"
     fs::create_dir_all(vault.join("templates")).unwrap();
     fs::create_dir_all(vault.join("macros")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("capture")
@@ -370,7 +370,7 @@ Due: {{due}}
     fs::create_dir_all(vault.join("captures")).unwrap();
     fs::create_dir_all(vault.join("macros")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("new")

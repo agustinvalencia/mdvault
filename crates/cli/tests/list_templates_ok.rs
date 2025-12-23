@@ -17,12 +17,12 @@ fn list_templates_reports_markdown_files_only() {
 
     // XDG-style config location
     let xdg = tmp.path().join("xdg");
-    let cfg_dir = xdg.join("markadd");
+    let cfg_dir = xdg.join("mdvault");
     let cfg_path = cfg_dir.join("config.toml");
     fs::create_dir_all(&cfg_dir).unwrap();
 
     // Templates tree
-    let tpl_root = tmp.path().join("vault").join(".markadd").join("templates");
+    let tpl_root = tmp.path().join("vault").join(".mdvault").join("templates");
     let a = tpl_root.join("daily.md");
     let b = tpl_root.join("blog").join("post.md");
     let ignored = tpl_root.join("ignore.tpl.md"); // should be ignored under MD-only rule
@@ -40,8 +40,8 @@ profile = "default"
 [profiles.default]
 vault_root = "{vault}"
 templates_dir = "{tpl}"
-captures_dir  = "{{{{vault_root}}}}/.markadd/captures"
-macros_dir    = "{{{{vault_root}}}}/.markadd/macros"
+captures_dir  = "{{{{vault_root}}}}/.mdvault/captures"
+macros_dir    = "{{{{vault_root}}}}/.mdvault/macros"
 "#,
         vault = tmp.path().join("vault").display(),
         tpl = tpl_root.display(),
@@ -49,7 +49,7 @@ macros_dir    = "{{{{vault_root}}}}/.markadd/macros"
     fs::write(&cfg_path, toml).unwrap();
 
     // With clap: global flags can be before the subcommand
-    let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.env("XDG_CONFIG_HOME", &xdg);
     cmd.env("NO_COLOR", "1"); // keep output deterministic
     cmd.args([

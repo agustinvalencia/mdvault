@@ -52,7 +52,7 @@ Next week: {{today + 1w}}
 
     let output = vault.join("output.md");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("new")
@@ -99,7 +99,7 @@ Year: {{today | %Y}}
 
     let output = vault.join("output.md");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("new")
@@ -156,7 +156,7 @@ content: "- [{{today}}] {{text}} (due: {{today + 7d}})"
     fs::create_dir_all(vault.join("templates")).unwrap();
     fs::create_dir_all(vault.join("macros")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("capture")
@@ -198,7 +198,7 @@ Last Friday: {{today - friday}}
 
     let output = vault.join("output.md");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("new")
@@ -240,7 +240,7 @@ Date: {{today}}
     fs::create_dir_all(vault.join("captures")).unwrap();
     fs::create_dir_all(vault.join("macros")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("new")

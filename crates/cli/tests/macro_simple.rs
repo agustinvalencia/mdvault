@@ -67,7 +67,7 @@ steps:
     fs::create_dir_all(vault.join("templates")).unwrap();
     fs::create_dir_all(vault.join("captures")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config").arg(root.join("config.toml")).arg("macro").arg("--list");
 
     cmd.assert()
@@ -100,7 +100,7 @@ steps:
     fs::create_dir_all(vault.join("templates")).unwrap();
     fs::create_dir_all(vault.join("captures")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config").arg(root.join("config.toml")).arg("macro").arg("nonexistent");
 
     cmd.assert()
@@ -135,7 +135,7 @@ steps:
     fs::create_dir_all(vault.join("captures")).unwrap();
 
     // Without --trust, should fail
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config").arg(root.join("config.toml")).arg("macro").arg("deploy");
 
     cmd.assert()
@@ -176,7 +176,7 @@ steps:
     fs::create_dir_all(vault.join("templates")).unwrap();
     fs::create_dir_all(vault.join("captures")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config").arg(root.join("config.toml")).arg("macro").arg("--list");
 
     cmd.assert()
@@ -220,7 +220,7 @@ steps:
 
     fs::create_dir_all(vault.join("captures")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("macro")
@@ -231,7 +231,7 @@ steps:
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("OK   markadd macro"))
+        .stdout(predicate::str::contains("OK   mdv macro"))
         .stdout(predicate::str::contains("1 completed"));
 
     // Verify file was created
@@ -291,7 +291,7 @@ steps:
 
     fs::create_dir_all(vault.join("templates")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("macro")
@@ -300,7 +300,7 @@ steps:
         .arg("text=New macro item")
         .arg("--batch");
 
-    cmd.assert().success().stdout(predicate::str::contains("OK   markadd macro"));
+    cmd.assert().success().stdout(predicate::str::contains("OK   mdv macro"));
 
     let content = fs::read_to_string(vault.join("inbox.md")).unwrap();
     assert!(content.contains("- New macro item"));
@@ -368,7 +368,7 @@ steps:
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("macro")
@@ -425,7 +425,7 @@ steps:
 
     fs::create_dir_all(vault.join("captures")).unwrap();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("macro")

@@ -55,13 +55,13 @@ output: daily/{{date}}.md
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config").arg(&config_path).arg("new").arg("--template").arg("daily");
     // Note: no --output flag
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("OK   markadd new"))
+        .stdout(predicate::str::contains("OK   mdv new"))
         .stdout(predicate::str::contains("template: daily"))
         .stdout(predicate::str::contains("daily/"));
 
@@ -104,7 +104,7 @@ Content here.
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config").arg(&config_path).arg("new").arg("--template").arg("simple");
     // Note: no --output flag
 
@@ -141,7 +141,7 @@ tags:
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config").arg(&config_path).arg("new").arg("--template").arg("daily");
 
     cmd.assert().success();
@@ -200,7 +200,7 @@ Attendees: {{attendees}}
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(&config_path)
         .arg("new")
@@ -272,7 +272,7 @@ Content
 
     let custom_output = vault.join("custom").join("my-note.md");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(&config_path)
         .arg("new")

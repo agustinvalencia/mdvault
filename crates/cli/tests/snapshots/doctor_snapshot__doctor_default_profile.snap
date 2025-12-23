@@ -2,12 +2,12 @@
 source: crates/cli/tests/doctor_snapshot.rs
 expression: norm
 ---
-OK   markadd doctor
+OK   mdv doctor
 path: <CFG>
 profile: default
 vault_root: /tmp/v
-templates_dir: /tmp/v/.markadd/templates
-captures_dir: /tmp/v/.markadd/captures
-macros_dir: /tmp/v/.markadd/macros
+templates_dir: /tmp/v/.mdvault/templates
+captures_dir: /tmp/v/.mdvault/captures
+macros_dir: /tmp/v/.mdvault/macros
 security.allow_shell: false
 security.allow_http:  false

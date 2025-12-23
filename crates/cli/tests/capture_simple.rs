@@ -66,7 +66,7 @@ content: "- {{text}}"
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("capture")
@@ -76,7 +76,7 @@ content: "- {{text}}"
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("OK   markadd capture"))
+        .stdout(predicate::str::contains("OK   mdv capture"))
         .stdout(predicate::str::contains("capture: inbox"))
         .stdout(predicate::str::contains("section: Inbox"));
 
@@ -128,7 +128,7 @@ content: "- [ ] {{task}}"
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("capture")
@@ -181,7 +181,7 @@ Content here
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("capture")
@@ -216,7 +216,7 @@ content: "- {{text}}"
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config")
         .arg(root.join("config.toml"))
         .arg("capture")
@@ -248,7 +248,7 @@ content: "test"
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config").arg(root.join("config.toml")).arg("capture").arg("nonexistent");
 
     cmd.assert()
@@ -304,7 +304,7 @@ content: "Entry at {{date}}"
 "#,
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("markadd"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config").arg(root.join("config.toml")).arg("capture").arg("--list");
 
     cmd.assert()

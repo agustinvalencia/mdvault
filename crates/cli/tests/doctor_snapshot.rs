@@ -29,9 +29,9 @@ profile = "default"
 
 [profiles.default]
 vault_root = "/tmp/v"
-templates_dir = "{{vault_root}}/.markadd/templates"
-captures_dir  = "{{vault_root}}/.markadd/captures"
-macros_dir    = "{{vault_root}}/.markadd/macros"
+templates_dir = "{{vault_root}}/.mdvault/templates"
+captures_dir  = "{{vault_root}}/.mdvault/captures"
+macros_dir    = "{{vault_root}}/.mdvault/macros"
 
 [security]
 allow_shell = false
@@ -39,11 +39,11 @@ allow_http  = false
 "#;
     write_file(&cfg, toml);
 
-    let assert = Command::new(assert_cmd::cargo::cargo_bin!("markadd"))
+    let assert = Command::new(assert_cmd::cargo::cargo_bin!("mdv"))
         .args(["doctor", "--config", cfg.to_str().unwrap()])
         .assert()
         .success()
-        .stdout(predicate::str::contains("OK   markadd doctor"));
+        .stdout(predicate::str::contains("OK   mdv doctor"));
 
     let out = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     let norm = normalize_paths(&out);
