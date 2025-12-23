@@ -114,12 +114,7 @@ mdvault will enforce note types via frontmatter:
 
 ## MCP Integration
 
-mdvault includes an MCP server for AI-assisted vault interaction:
-
-```bash
-# Run as MCP server
-mdv mcp
-```
+mdvault has a [sister project](https://github.com/agustinvalencia/markdown-vault-mcp) being developed for an MCP server for AI-assisted vault interaction
 
 This enables Claude and other MCP clients to:
 - Browse and search vault contents

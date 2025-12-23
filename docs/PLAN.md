@@ -139,27 +139,28 @@ The existing codebase provides:
 ### Creation Commands
 
 ```bash
-mdv task new "Implement feature X" --project RAN-optimization
-mdv project new "Network Slicing Research" --status planning
-mdv zettel new "KAN architecture notes" --tags ml,kan,research
+mdv task new "Implement feature X" --project MyProject
+mdv project new "OtherProject" --status planning
+mdv zettel new "Quantum AI notes" --tags ai,research
 mdv quick "Investigate Mamba for RAN"
 ```
 
 ### Workflow Commands
 
 ```bash
-mdv workon RAN-optimization     # Open project, show tasks, log session
+mdv workon MyProject            # Open project, show tasks, log session
 mdv done tasks/impl.md "Done"   # Complete task, update daily
 mdv today                       # Show due tasks, recent activity
 mdv review                      # Interactive triage
 mdv weekly-planning             # Create/open weekly note
+mdv rename notte.md note.md     # Rename and reindex notes
 ```
 
 ### Search Commands
 
 ```bash
-mdv find "KAN distillation" --context full
-mdv timeline "RAN optimization" --since "2 weeks ago"
+mdv find "an interesting topic" --context full
+mdv timeline "MyProject" --since "2 weeks ago"
 mdv related-to notes/mcp.md --depth 2
 mdv stale --threshold 30d
 mdv orphans
