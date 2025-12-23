@@ -1,34 +1,44 @@
 # mdvault
 
-**Your Markdown Vault on the Command Line**
+**CLI and MCP Server for Markdown Vault Management**
 
 [![Build Status](https://github.com/agustinvalencia/mdvault/actions/workflows/ci.yml/badge.svg)](https://github.com/agustinvalencia/mdvault/actions)
 [![codecov](https://codecov.io/gh/agustinvalencia/mdvault/branch/main/graph/badge.svg)](https://codecov.io/gh/agustinvalencia/mdvault)
 
-> **Note**: This project is being renamed from `markadd` to `mdvault`. The command will change from `markadd` to `mdv`. See [Migration Guide](#migration-from-markadd) below.
+mdvault is a Rust-based CLI tool and MCP (Model Context Protocol) server for managing markdown vaults. It's designed for knowledge workers who need structure without friction—particularly those who excel at capturing information but struggle with retrieval and maintenance.
 
-mdvault is a complete terminal interface for markdown-based knowledge vaults. It combines the quick-input automation of Obsidian's QuickAdd with comprehensive vault management features.
+## Design Philosophy
 
-## What mdvault does
+**Pull-Optimised, Not Push-Optimised**: Notes get created correctly during hyperfocus but go stale without maintenance. Retrieval is the primary failure mode, so mdvault focuses on finding information when you need it rather than optimising capture.
 
-**Available now:**
-- Create notes from templates with variable substitution
-- Quick capture to daily notes and projects
-- Multi-step workflow automation (macros)
-- Date math expressions like `{{today + 1d}}` or `{{today + monday}}`
-- Interactive prompts for missing variables (or batch mode for scripts)
-- TUI for browsing and executing templates, captures, and macros
+**Opinionated Structure**: Rather than maximising flexibility, mdvault enforces structure through required frontmatter fields, automatic scaffolding, validation workflows, and enforced linking patterns.
 
-**Coming soon:**
-- Full-text search across your vault
-- Query notes by frontmatter metadata
-- Backlinks, orphans, and graph analysis
-- Browse and read vault contents
+**ADHD-Friendly Principles**:
+- Reduce cognitive load with smart defaults
+- Progressive capture—quick entry, structured cleanup later
+- Automated maintenance—proactive detection of stale/broken/orphaned content
+- Passive surfacing—don't wait for searches, show relevant context
 
-**Compatible with:**
-- Obsidian, Logseq, Dendron, Foam
-- Any markdown-based vault system
-- Works standalone OR with MCP integration
+## Current Status
+
+mdvault is undergoing a significant expansion. The core templating and capture system is functional, while the indexing, search, and MCP integration are in development.
+
+### Working Now
+
+- **Templates**: Create notes from templates with variable substitution
+- **Captures**: Quick append to existing notes (daily logs, project notes)
+- **Macros**: Multi-step workflow automation
+- **Date Math**: Expressions like `{{today + 1d}}` or `{{today + monday}}`
+- **TUI**: Interactive palette for templates, captures, and macros
+- **MCP Server**: Basic vault browsing and note operations
+
+### In Development
+
+- SQLite-based indexing (metadata, links, temporal activity)
+- Contextual search (graph neighbourhood + temporal signals)
+- Structure validation and linting
+- Type-specific workflows (task, project, zettel, daily, weekly)
+- Proactive maintenance (stale detection, orphan finding)
 
 ## Installation
 
@@ -64,45 +74,13 @@ allow_http  = false
 EOF
 ```
 
-2. Create a template:
+2. Verify your setup:
 
 ```bash
-mkdir -p ~/Notes/.mdvault/templates
-cat > ~/Notes/.mdvault/templates/daily.md << 'EOF'
----
-output: "daily/{{today}}.md"
-vars:
-  focus:
-    prompt: "What's your focus today?"
-    default: "General work"
----
-# {{today}}
-
-Focus: {{focus}}
-
-## Tasks
-
-- [ ]
-
-## Notes
-
-EOF
+mdv doctor
 ```
 
-3. Generate a file from the template:
-
-```bash
-# Interactive mode - prompts for missing variables
-mdv new --template daily
-
-# Or provide variables directly
-mdv new --template daily --var focus="Ship the feature"
-
-# Or use batch mode (fails if required vars missing)
-mdv new --template daily --batch
-```
-
-4. Launch the TUI:
+3. Launch the TUI:
 
 ```bash
 mdv
@@ -110,372 +88,62 @@ mdv
 
 ## Commands
 
-### TUI Mode
+| Command | Description |
+|---------|-------------|
+| `mdv` | Launch interactive TUI |
+| `mdv doctor` | Validate configuration |
+| `mdv new --template <name>` | Create note from template |
+| `mdv capture <name>` | Run a capture workflow |
+| `mdv macro <name>` | Execute a multi-step macro |
+| `mdv list-templates` | List available templates |
 
-Run `mdv` without arguments to launch the interactive TUI:
+See `mdv --help` for full options.
 
-```bash
-mdv
-```
+## Vault Structure (Planned)
 
-The TUI displays templates, captures, and macros in a palette. Navigate with `j/k` or arrow keys, press `Enter` to execute, and `q` to quit.
+mdvault will enforce note types via frontmatter:
 
-### doctor
+| Type | Purpose | Required Fields |
+|------|---------|-----------------|
+| `daily` | Daily notes, temporal backbone | `date` |
+| `weekly` | Weekly overviews | `week_start_date` |
+| `task` | Individual tasks | `status`, `project` |
+| `project` | Task collections | `status`, `created_date` |
+| `zettel` | Knowledge notes | `tags` |
+| `none` | Uncategorised (triage queue) | — |
 
-Validate configuration and print resolved paths.
+## MCP Integration
 
-```bash
-mdv doctor
-```
-
-### list-templates
-
-List available templates in the active profile.
-
-```bash
-mdv list-templates
-```
-
-### new
-
-Generate a new file from a template.
+mdvault includes an MCP server for AI-assisted vault interaction:
 
 ```bash
-mdv new --template <name> [--output <path>] [--var KEY=VALUE]...
+# Run as MCP server
+mdv mcp
 ```
 
-Options:
-- `--template` - Logical template name (e.g., `daily` or `blog/post`)
-- `--output` - Output file path (optional if template defines output in frontmatter)
-- `--var KEY=VALUE` - Pass variables (can be repeated)
-- `--batch` - Fail on missing variables instead of prompting
-
-### capture
-
-Insert content into an existing Markdown file using a capture workflow.
-
-```bash
-mdv capture <capture-name> [--var KEY=VALUE]...
-```
-
-Options:
-- `--list`, `-l` - List available captures
-- `--var KEY=VALUE` - Pass variables to the capture (can be repeated)
-- `--batch` - Fail on missing variables instead of prompting
-
-### macro
-
-Execute a multi-step macro workflow.
-
-```bash
-mdv macro <macro-name> [--var KEY=VALUE]...
-```
-
-Options:
-- `--list`, `-l` - List available macros
-- `--var KEY=VALUE` - Pass variables (can be repeated)
-- `--batch` - Fail on missing variables instead of prompting
-- `--trust` - Allow shell command execution (required for macros with shell steps)
-
-Example:
-
-```bash
-# List available macros
-mdv macro --list
-
-# Run a macro
-mdv macro weekly-review --var topic="Q1 Planning"
-
-# Run a macro with shell commands
-mdv macro deploy-notes --trust
-```
-
-### Planned Commands
-
-```bash
-# Search vault
-mdv search "network optimization"
-mdv search "TODO" --folder projects --context-lines 3
-
-# Query by metadata
-mdv query --where "status=todo"
-mdv query --where "due<2025-01-01" --where "priority=high"
-
-# Analyze links
-mdv links note.md --backlinks
-mdv links --orphans --folder research
-```
-
-## Configuration
-
-`mdv` loads configuration from:
-
-1. `--config <path>` (if provided)
-2. `$XDG_CONFIG_HOME/mdvault/config.toml`
-3. `~/.config/mdvault/config.toml`
-
-### Example Configuration
-
-```toml
-version = 1
-profile = "default"
-
-[profiles.default]
-vault_root = "~/Notes"
-templates_dir = "{{vault_root}}/.mdvault/templates"
-captures_dir  = "{{vault_root}}/.mdvault/captures"
-macros_dir    = "{{vault_root}}/.mdvault/macros"
-
-[profiles.work]
-vault_root = "~/Work/notes"
-templates_dir = "{{vault_root}}/templates"
-captures_dir  = "{{vault_root}}/captures"
-macros_dir    = "{{vault_root}}/macros"
-
-[security]
-allow_shell = false
-allow_http  = false
-```
-
-Use `--profile` to switch profiles:
-
-```bash
-mdv --profile work list-templates
-```
-
-For full configuration reference, see [`docs/config.md`](./docs/config.md).
-
-## Templates
-
-Templates are Markdown files stored in your `templates_dir`. They support variable substitution using `{{variable}}` syntax.
-
-### Built-in Variables
-
-| Variable | Description |
-|----------|-------------|
-| `{{date}}` | Current date (YYYY-MM-DD) |
-| `{{today}}` | Alias for `{{date}}` |
-| `{{time}}` | Current time (HH:MM) |
-| `{{now}}` | Alias for `{{datetime}}` |
-| `{{datetime}}` | ISO 8601 datetime |
-| `{{vault_root}}` | Configured vault root path |
-| `{{template_name}}` | Logical name of the template |
-| `{{output_path}}` | Full output file path |
-| `{{output_filename}}` | Output filename only |
-
-### Date Math
-
-Use date math expressions for dynamic dates:
-
-```markdown
-Tomorrow: {{today + 1d}}
-Yesterday: {{today - 1d}}
-Next week: {{today + 1w}}
-Next month: {{today + 1M}}
-Next year: {{today + 1y}}
-
-# Weekday navigation
-Next Monday: {{today + monday}}
-Last Friday: {{today - friday}}
-
-# Custom formatting
-Day name: {{today | %A}}
-Month name: {{today | %B}}
-Full date: {{today | %Y-%m-%d}}
-```
-
-### Variable Metadata
-
-Define variables with prompts, defaults, and descriptions in template frontmatter:
-
-```yaml
----
-output: "meetings/{{title}}.md"
-vars:
-  title:
-    prompt: "Meeting title"
-    required: true
-  attendees:
-    prompt: "Who's attending?"
-    default: "TBD"
-    description: "Comma-separated list of names"
----
-```
-
-Simple form (just the prompt):
-
-```yaml
-vars:
-  title: "Meeting title"
-```
-
-### Example Template
-
-```markdown
----
-output: "meetings/{{date}}-{{title}}.md"
-vars:
-  title:
-    prompt: "Meeting title"
-  attendees:
-    prompt: "Attendees"
-    default: "Team"
----
-# Meeting: {{title}}
-
-**Date**: {{date}}
-**Time**: {{time}}
-**Attendees**: {{attendees}}
-
-## Agenda
-
-1.
-
-## Notes
-
-## Action Items
-
-- [ ]
-```
-
-For more on templates, see [`docs/templates.md`](./docs/templates.md).
-
-## Captures
-
-Captures are YAML files that define workflows for inserting content into existing Markdown files. They're stored in your `captures_dir`.
-
-### Example Capture
-
-```yaml
-name: inbox-item
-description: Add an item to inbox
-
-vars:
-  item:
-    prompt: "What to add?"
-  priority:
-    prompt: "Priority"
-    default: "normal"
-
-target:
-  file: "{{vault_root}}/inbox.md"
-  section: Inbox
-  position: end
-
-content: |
-  - [{{priority}}] {{item}}
-```
-
-Run a capture:
-
-```bash
-mdv capture inbox-item --var item="Review PR #42"
-```
-
-For more on captures, see [`docs/capture.md`](./docs/capture.md).
-
-## Macros
-
-Macros are multi-step workflows that combine templates, captures, and shell commands. They're stored as YAML files in your `macros_dir`.
-
-### Example Macro
-
-```yaml
-name: weekly-review
-description: Set up weekly review documents
-
-vars:
-  week_topic:
-    prompt: "What's the focus this week?"
-
-steps:
-  # Create weekly summary from template
-  - template: weekly-summary
-    with:
-      topic: "{{week_topic}}"
-
-  # Archive completed tasks
-  - capture: archive-tasks
-
-  # Optional: commit changes (requires --trust)
-  # - shell: "git add . && git commit -m 'Weekly review'"
-```
-
-Run a macro:
-
-```bash
-mdv macro weekly-review
-```
-
-### Shell Commands
-
-Macros can include shell commands, but these require the `--trust` flag for security:
-
-```yaml
-steps:
-  - shell: "git add {{file}}"
-    description: Stage file in git
-```
-
-```bash
-mdv macro deploy --trust
-```
-
-For more on macros, see [`docs/macros.md`](./docs/macros.md).
-
-## Migration from markadd
-
-If you've been using `markadd`, here's how to migrate:
-
-### 1. Update command
-
-```bash
-# Old
-markadd new --template daily
-
-# New
-mdv new --template daily
-```
-
-### 2. Update config location
-
-```bash
-# Old location
-~/.config/markadd/config.toml
-~/.markadd/templates/
-
-# New location
-~/.config/mdvault/config.toml
-~/.mdvault/templates/
-```
-
-### 3. Update config file paths
-
-```toml
-[profiles.default]
-vault_root = "~/vault"
-templates_dir = "{{vault_root}}/.mdvault/templates"  # was .markadd
-captures_dir  = "{{vault_root}}/.mdvault/captures"   # was .markadd
-macros_dir    = "{{vault_root}}/.mdvault/macros"     # was .markadd
-```
-
-### 4. Reinstall
-
-```bash
-cargo install --path crates/cli
-
-# Command is now 'mdv'
-mdv --version
-```
+This enables Claude and other MCP clients to:
+- Browse and search vault contents
+- Create properly structured notes
+- Surface relevant context automatically
+- Prompt for maintenance tasks
 
 ## Documentation
 
-- [Configuration Reference](./docs/config.md)
-- [Template Authoring](./docs/templates.md)
-- [Captures Reference](./docs/capture.md)
-- [Macros Reference](./docs/macros.md)
-- [Development Guide](./docs/development.md)
-- [Scope Evolution](./docs/03_focus_change.md)
+- [Architecture and Design](./docs/architecture.md) — Full design philosophy and technical details
+- [Development Plan](./docs/PLAN.md) — Implementation phases and roadmap
+
+### Legacy Documentation
+
+The original markadd documentation (templates, captures, macros, configuration) is preserved in [`docs/markadd-legacy/`](./docs/markadd-legacy/).
+
+## Compatibility
+
+Works with any markdown-based vault system:
+- Obsidian
+- Logseq
+- Dendron
+- Foam
+- Plain markdown folders
 
 ## License
 
