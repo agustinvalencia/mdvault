@@ -53,14 +53,14 @@ jobs:
         with:
           name: coverage-report
           path: |
-            tarpaulin-report.xml
-            tarpaulin-report.lcov
+            cobertura.xml
+            lcov.info
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./tarpaulin-report.xml
+          files: ./cobertura.xml
           disable_search: true
           fail_ci_if_error: false
         env:
