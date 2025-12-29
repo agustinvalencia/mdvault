@@ -340,8 +340,9 @@ impl IndexDb {
     }
 
     /// Resolve target_id for links by matching target_path to notes.
+    /// Returns the number of links that were successfully resolved.
     pub fn resolve_link_targets(&self) -> Result<usize, IndexError> {
-        let rows = self.conn.execute(
+        self.conn.execute(
             "UPDATE links SET target_id = (
                 SELECT n.id FROM notes n
                 WHERE links.target_path = n.path
@@ -351,7 +352,24 @@ impl IndexDb {
              WHERE target_id IS NULL",
             [],
         )?;
-        Ok(rows)
+
+        // Count how many links now have a resolved target
+        let resolved: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM links WHERE target_id IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(resolved as usize)
+    }
+
+    /// Count links that have no resolved target (broken links).
+    pub fn count_broken_links(&self) -> Result<i64, IndexError> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM links WHERE target_id IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count)
     }
 
     fn row_to_link(row: &rusqlite::Row) -> Result<IndexedLink, rusqlite::Error> {
@@ -402,6 +420,18 @@ impl IndexDb {
         let count: i64 =
             self.conn.query_row("SELECT COUNT(*) FROM links", [], |row| row.get(0))?;
         Ok(count)
+    }
+
+    /// Clear all data from the index (for full reindex).
+    pub fn clear_all(&self) -> Result<(), IndexError> {
+        self.conn.execute_batch(
+            "DELETE FROM links;
+             DELETE FROM temporal_activity;
+             DELETE FROM activity_summary;
+             DELETE FROM note_cooccurrence;
+             DELETE FROM notes;",
+        )?;
+        Ok(())
     }
 }
 

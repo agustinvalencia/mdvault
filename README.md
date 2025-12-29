@@ -30,11 +30,12 @@ mdvault is undergoing a significant expansion. The core templating and capture s
 - **Macros**: Multi-step workflow automation
 - **Date Math**: Expressions like `{{today + 1d}}` or `{{today + monday}}`
 - **TUI**: Interactive palette for templates, captures, and macros
+- **Vault Indexing**: SQLite-based index with note metadata and link graph
 - **MCP Server**: Basic vault browsing and note operations
 
 ### In Development
 
-- SQLite-based indexing (metadata, links, temporal activity)
+- Incremental index updates (currently full reindex only)
 - Contextual search (graph neighbourhood + temporal signals)
 - Structure validation and linting
 - Type-specific workflows (task, project, zettel, daily, weekly)
@@ -96,6 +97,7 @@ mdv
 | `mdv capture <name>` | Run a capture workflow |
 | `mdv macro <name>` | Execute a multi-step macro |
 | `mdv list-templates` | List available templates |
+| `mdv reindex` | Build or rebuild the vault index |
 
 See `mdv --help` for full options.
 

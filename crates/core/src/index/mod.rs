@@ -21,10 +21,12 @@
 //! let tasks = db.query_notes(&query).unwrap();
 //! ```
 
+pub mod builder;
 pub mod db;
 pub mod schema;
 pub mod types;
 
+pub use builder::{BuilderError, IndexBuilder, IndexStats, ProgressCallback};
 pub use db::{IndexDb, IndexError};
 pub use schema::{SCHEMA_VERSION, SchemaError};
 pub use types::{

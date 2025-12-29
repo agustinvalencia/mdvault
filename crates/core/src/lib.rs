@@ -23,3 +23,4 @@ pub mod macros;
 pub mod markdown_ast;
 pub mod templates;
 pub mod vars;
+pub mod vault;

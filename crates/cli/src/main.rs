@@ -34,6 +34,16 @@ enum Commands {
 
     /// Execute a multi-step macro workflow
     Macro(MacroArgs),
+
+    /// Build or rebuild the vault index
+    Reindex(ReindexArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ReindexArgs {
+    /// Show verbose output (list each file as it's indexed)
+    #[arg(long, short)]
+    pub verbose: bool,
 }
 
 #[derive(Debug, Args)]
@@ -169,6 +179,13 @@ fn main() {
                     args.trust,
                 );
             }
+        }
+        Some(Commands::Reindex(args)) => {
+            cmd::reindex::run(
+                cli.config.as_deref(),
+                cli.profile.as_deref(),
+                args.verbose,
+            );
         }
     }
 }

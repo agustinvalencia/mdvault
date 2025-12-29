@@ -18,10 +18,12 @@ The existing codebase provides:
 
 **Goal**: Build the foundation for indexing and querying.
 
-- [ ] SQLite database schema
-  - [ ] `notes` table (id, path, type, created, modified, title, frontmatter JSON, content_hash)
-  - [ ] `links` table (source_id, target_id, link_text, link_type, context)
-  - [ ] `temporal_activity` table (note_id, daily_id, activity_date, context)
+- [x] SQLite database schema
+  - [x] `notes` table (id, path, type, created, modified, title, frontmatter JSON, content_hash)
+  - [x] `links` table (source_id, target_id, link_text, link_type, context)
+  - [x] `temporal_activity` table (note_id, daily_id, activity_date, context)
+  - [x] `activity_summary` and `note_cooccurrence` tables (for Phase 3)
+  - [x] Schema versioning and migration support
 - [ ] Index builder
   - [ ] Walk vault and parse markdown files
   - [ ] Extract frontmatter metadata
@@ -30,10 +32,15 @@ The existing codebase provides:
 - [ ] Incremental updates
   - [ ] Detect changed files via mtime/hash
   - [ ] Partial reindex on file changes
-- [ ] Basic queries
-  - [ ] Find notes by type
-  - [ ] Find links to/from a note
-  - [ ] List notes modified in date range
+- [x] Basic queries (database layer)
+  - [x] Find notes by type
+  - [x] Find links to/from a note (backlinks, outlinks)
+  - [x] List notes modified in date range
+  - [x] Find orphan notes
+- [ ] Basic queries (CLI commands)
+  - [ ] `mdv list` command with filters
+  - [ ] `mdv links` command for backlinks/outlinks
+  - [ ] `mdv orphans` command
 
 ### Phase 2: Structure Enforcement
 
