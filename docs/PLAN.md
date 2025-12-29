@@ -24,14 +24,14 @@ The existing codebase provides:
   - [x] `temporal_activity` table (note_id, daily_id, activity_date, context)
   - [x] `activity_summary` and `note_cooccurrence` tables (for Phase 3)
   - [x] Schema versioning and migration support
-- [ ] Index builder
-  - [ ] Walk vault and parse markdown files
-  - [ ] Extract frontmatter metadata
-  - [ ] Parse wikilinks and markdown links
-  - [ ] Compute content hashes for change detection
-- [ ] Incremental updates
-  - [ ] Detect changed files via mtime/hash
-  - [ ] Partial reindex on file changes
+- [x] Index builder
+  - [x] Walk vault and parse markdown files
+  - [x] Extract frontmatter metadata
+  - [x] Parse wikilinks and markdown links
+  - [x] Compute content hashes for change detection
+- [x] Incremental updates
+  - [x] Detect changed files via content hash
+  - [x] Partial reindex on file changes (--force for full rebuild)
 - [x] Basic queries (database layer)
   - [x] Find notes by type
   - [x] Find links to/from a note (backlinks, outlinks)

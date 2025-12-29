@@ -26,7 +26,7 @@ pub mod db;
 pub mod schema;
 pub mod types;
 
-pub use builder::{BuilderError, IndexBuilder, IndexStats, ProgressCallback};
+pub use builder::{BuilderError, FileChange, IndexBuilder, IndexStats, ProgressCallback};
 pub use db::{IndexDb, IndexError};
 pub use schema::{SCHEMA_VERSION, SchemaError};
 pub use types::{

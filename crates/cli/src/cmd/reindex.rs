@@ -7,7 +7,7 @@ use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::index::{IndexBuilder, IndexDb};
 
 /// Run the reindex command.
-pub fn run(config: Option<&Path>, profile: Option<&str>, verbose: bool) {
+pub fn run(config: Option<&Path>, profile: Option<&str>, verbose: bool, force: bool) {
     // Load configuration
     let rc = match ConfigLoader::load(config, profile) {
         Ok(rc) => rc,
@@ -36,7 +36,8 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, verbose: bool) {
         }
     };
 
-    println!("Indexing vault: {}", rc.vault_root.display());
+    let mode = if force { "full" } else { "incremental" };
+    println!("Indexing vault ({} mode): {}", mode, rc.vault_root.display());
 
     // Create progress callback
     let progress: Option<mdvault_core::index::ProgressCallback> = if verbose {
@@ -47,7 +48,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, verbose: bool) {
         Some(Box::new(|current, total, _path| {
             // Simple progress indicator
             if current % 50 == 0 || current == total {
-                print!("\rIndexing... {}/{}", current, total);
+                print!("\rScanning... {}/{}", current, total);
                 std::io::stdout().flush().ok();
             }
         }))
@@ -55,7 +56,13 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, verbose: bool) {
 
     // Build index
     let builder = IndexBuilder::new(&db, &rc.vault_root);
-    match builder.full_reindex(progress) {
+    let result = if force {
+        builder.full_reindex(progress)
+    } else {
+        builder.incremental_reindex(progress)
+    };
+
+    match result {
         Ok(stats) => {
             if !verbose {
                 println!(); // Newline after progress
@@ -63,9 +70,20 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, verbose: bool) {
             println!();
             println!("Indexing complete:");
             println!("  Files found:    {}", stats.files_found);
-            println!("  Notes indexed:  {}", stats.notes_indexed);
+
+            if force {
+                // Full reindex stats
+                println!("  Notes indexed:  {}", stats.notes_indexed);
+            } else {
+                // Incremental stats
+                println!("  Unchanged:      {}", stats.files_unchanged);
+                println!("  Added:          {}", stats.files_added);
+                println!("  Updated:        {}", stats.files_updated);
+                println!("  Deleted:        {}", stats.files_deleted);
+            }
+
             if stats.notes_skipped > 0 {
-                println!("  Notes skipped:  {}", stats.notes_skipped);
+                println!("  Skipped:        {}", stats.notes_skipped);
             }
             println!("  Links indexed:  {}", stats.links_indexed);
             println!("  Broken links:   {}", stats.broken_links);

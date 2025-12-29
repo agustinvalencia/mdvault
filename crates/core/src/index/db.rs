@@ -238,6 +238,19 @@ impl IndexDb {
             .map_err(Into::into)
     }
 
+    /// Get all indexed note paths (for detecting deletions during incremental reindex).
+    pub fn get_all_paths(&self) -> Result<Vec<std::path::PathBuf>, IndexError> {
+        let mut stmt = self.conn.prepare("SELECT path FROM notes")?;
+        let paths = stmt
+            .query_map([], |row| {
+                let path_str: String = row.get(0)?;
+                Ok(std::path::PathBuf::from(path_str))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(paths)
+    }
+
     fn row_to_note(row: &rusqlite::Row) -> Result<IndexedNote, rusqlite::Error> {
         let path_str: String = row.get(1)?;
         let type_str: String = row.get(2)?;
