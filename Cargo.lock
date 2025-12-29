@@ -1000,6 +1000,8 @@ dependencies = [
  "predicates",
  "ratatui",
  "regex",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 

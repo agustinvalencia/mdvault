@@ -2,8 +2,47 @@ mod cmd;
 mod prompt;
 mod tui;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
+
+/// Output format for query commands.
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+pub enum OutputFormat {
+    /// Human-readable table format
+    #[default]
+    Table,
+    /// JSON output
+    Json,
+    /// Quiet mode - paths only
+    Quiet,
+}
+
+/// Note type filter for list command.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum NoteTypeArg {
+    /// Daily journal notes
+    Daily,
+    /// Weekly overview notes
+    Weekly,
+    /// Individual actionable tasks
+    Task,
+    /// Collections of related tasks
+    Project,
+    /// Knowledge notes (Zettelkasten-style)
+    Zettel,
+}
+
+impl From<NoteTypeArg> for mdvault_core::index::NoteType {
+    fn from(arg: NoteTypeArg) -> Self {
+        match arg {
+            NoteTypeArg::Daily => mdvault_core::index::NoteType::Daily,
+            NoteTypeArg::Weekly => mdvault_core::index::NoteType::Weekly,
+            NoteTypeArg::Task => mdvault_core::index::NoteType::Task,
+            NoteTypeArg::Project => mdvault_core::index::NoteType::Project,
+            NoteTypeArg::Zettel => mdvault_core::index::NoteType::Zettel,
+        }
+    }
+}
 
 #[derive(Debug, Parser)]
 #[command(name = "mdv", version, about = "Your markdown vault on the command line")]
@@ -37,6 +76,15 @@ enum Commands {
 
     /// Build or rebuild the vault index
     Reindex(ReindexArgs),
+
+    /// List notes in the vault with optional filters
+    List(ListArgs),
+
+    /// Show links for a note (backlinks and/or outgoing)
+    Links(LinksArgs),
+
+    /// Find orphan notes (no incoming links)
+    Orphans(OrphansArgs),
 }
 
 #[derive(Debug, Args)]
@@ -128,6 +176,100 @@ pub struct CaptureArgs {
     pub batch: bool,
 }
 
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv list                              # List all notes
+  mdv list --type task                  # Filter by type
+  mdv list --modified-after 2024-01-01  # Filter by date
+  mdv list --modified-after \"today - 7d\" # Notes from last week
+  mdv list --json                       # JSON output
+  mdv list -q                           # Paths only
+")]
+pub struct ListArgs {
+    /// Filter by note type
+    #[arg(long)]
+    pub r#type: Option<NoteTypeArg>,
+
+    /// Show only notes modified after this date (YYYY-MM-DD or date expression)
+    #[arg(long)]
+    pub modified_after: Option<String>,
+
+    /// Show only notes modified before this date (YYYY-MM-DD or date expression)
+    #[arg(long)]
+    pub modified_before: Option<String>,
+
+    /// Maximum number of notes to return
+    #[arg(long, short = 'n')]
+    pub limit: Option<u32>,
+
+    /// Output format
+    #[arg(long, short, value_enum, default_value = "table")]
+    pub output: OutputFormat,
+
+    /// Output as JSON (shorthand for --output json)
+    #[arg(long)]
+    pub json: bool,
+
+    /// Quiet mode - output paths only (shorthand for --output quiet)
+    #[arg(long, short)]
+    pub quiet: bool,
+}
+
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv links note.md                     # Show backlinks and outlinks
+  mdv links note.md --backlinks         # Only backlinks
+  mdv links note.md --outlinks          # Only outlinks
+  mdv links tasks/todo.md --json        # JSON output
+")]
+pub struct LinksArgs {
+    /// Path to the note (relative to vault root)
+    pub note: String,
+
+    /// Show only backlinks (notes linking to this note)
+    #[arg(long, short = 'b')]
+    pub backlinks: bool,
+
+    /// Show only outgoing links (notes this note links to)
+    #[arg(long, short = 'o')]
+    pub outlinks: bool,
+
+    /// Output format
+    #[arg(long, value_enum, default_value = "table")]
+    pub output: OutputFormat,
+
+    /// Output as JSON (shorthand for --output json)
+    #[arg(long)]
+    pub json: bool,
+
+    /// Quiet mode - output paths only (shorthand for --output quiet)
+    #[arg(long, short)]
+    pub quiet: bool,
+}
+
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv orphans                           # Find orphan notes
+  mdv orphans --json                    # JSON output
+  mdv orphans -q                        # Paths only
+")]
+pub struct OrphansArgs {
+    /// Output format
+    #[arg(long, short, value_enum, default_value = "table")]
+    pub output: OutputFormat,
+
+    /// Output as JSON (shorthand for --output json)
+    #[arg(long)]
+    pub json: bool,
+
+    /// Quiet mode - output paths only (shorthand for --output quiet)
+    #[arg(long, short)]
+    pub quiet: bool,
+}
+
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
     let pos =
         s.find('=').ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
@@ -195,6 +337,15 @@ fn main() {
                 args.verbose,
                 args.force,
             );
+        }
+        Some(Commands::List(args)) => {
+            cmd::list::run(cli.config.as_deref(), cli.profile.as_deref(), args);
+        }
+        Some(Commands::Links(args)) => {
+            cmd::links::run(cli.config.as_deref(), cli.profile.as_deref(), args);
+        }
+        Some(Commands::Orphans(args)) => {
+            cmd::orphans::run(cli.config.as_deref(), cli.profile.as_deref(), args);
         }
     }
 }

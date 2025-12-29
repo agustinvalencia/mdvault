@@ -164,27 +164,25 @@ impl<'a> IndexBuilder<'a> {
                 FileChange::Unchanged => {
                     stats.files_unchanged += 1;
                 }
-                FileChange::Added | FileChange::Modified => {
-                    match self.index_note(file) {
-                        Ok(link_count) => {
-                            stats.notes_indexed += 1;
-                            stats.links_indexed += link_count;
-                            if change == FileChange::Added {
-                                stats.files_added += 1;
-                            } else {
-                                stats.files_updated += 1;
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                "Failed to index {}: {}",
-                                file.relative_path.display(),
-                                e
-                            );
-                            stats.notes_skipped += 1;
+                FileChange::Added | FileChange::Modified => match self.index_note(file) {
+                    Ok(link_count) => {
+                        stats.notes_indexed += 1;
+                        stats.links_indexed += link_count;
+                        if change == FileChange::Added {
+                            stats.files_added += 1;
+                        } else {
+                            stats.files_updated += 1;
                         }
                     }
-                }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to index {}: {}",
+                            file.relative_path.display(),
+                            e
+                        );
+                        stats.notes_skipped += 1;
+                    }
+                },
             }
         }
 
@@ -482,7 +480,8 @@ Links to [Note One](../note1.md).
         builder.incremental_reindex(None).unwrap();
 
         // Modify a file
-        fs::write(vault.path().join("note1.md"), "# Note 1 Modified\n\nNew content.").unwrap();
+        fs::write(vault.path().join("note1.md"), "# Note 1 Modified\n\nNew content.")
+            .unwrap();
 
         let stats = builder.incremental_reindex(None).unwrap();
 
@@ -547,7 +546,8 @@ Links to [Note One](../note1.md).
         assert_eq!(links_before.len(), 2); // [[note2]] and [[missing-note]]
 
         // Modify to have different links
-        fs::write(vault.path().join("note1.md"), "# Note 1\n\n[[note3]] only now.").unwrap();
+        fs::write(vault.path().join("note1.md"), "# Note 1\n\n[[note3]] only now.")
+            .unwrap();
         builder.incremental_reindex(None).unwrap();
 
         let note1 = db.get_note_by_path(Path::new("note1.md")).unwrap().unwrap();
@@ -567,7 +567,8 @@ Links to [Note One](../note1.md).
         assert!(stats1.broken_links > 0); // missing-note is broken
 
         // Now create the missing note
-        fs::write(vault.path().join("missing-note.md"), "# Missing Note\n\nNow exists!").unwrap();
+        fs::write(vault.path().join("missing-note.md"), "# Missing Note\n\nNow exists!")
+            .unwrap();
 
         let stats2 = builder.incremental_reindex(None).unwrap();
         assert_eq!(stats2.files_added, 1);

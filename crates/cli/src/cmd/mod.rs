@@ -1,6 +1,10 @@
 pub mod capture;
 pub mod doctor;
+pub mod links;
+pub mod list;
 pub mod list_templates;
 pub mod macro_cmd;
 pub mod new;
+pub mod orphans;
+pub mod output;
 pub mod reindex;
