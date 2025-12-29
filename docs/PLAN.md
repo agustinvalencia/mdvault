@@ -37,18 +37,39 @@ The existing codebase provides:
   - [x] Find links to/from a note (backlinks, outlinks)
   - [x] List notes modified in date range
   - [x] Find orphan notes
-- [ ] Basic queries (CLI commands)
-  - [ ] `mdv list` command with filters
-  - [ ] `mdv links` command for backlinks/outlinks
-  - [ ] `mdv orphans` command
+- [x] Basic queries (CLI commands)
+  - [x] `mdv list` command with filters (--type, --modified-after, --modified-before, --limit)
+  - [x] `mdv links` command for backlinks/outlinks (--backlinks, --outlinks)
+  - [x] `mdv orphans` command
+  - [x] Output formats: --json, --quiet, --output table|json|quiet
+
+### Phase 1.5: Lua Scripting Layer
+
+**Goal**: Enable user-configurable type system and validation via Lua.
+
+- [x] Core Lua runtime
+  - [x] Add mlua dependency (Lua 5.4, vendored, sandboxed)
+  - [x] Create `scripting` module with LuaEngine
+  - [x] Expose `mdv.date(expr, format?)` for date math
+  - [x] Expose `mdv.render(template, context)` for template rendering
+  - [x] Expose `mdv.is_date_expr(str)` for type checking
+  - [x] Sandbox: remove io, os, require, load, debug
+- [ ] Type definitions in Lua
+  - [ ] Load type definitions from `types/*.lua`
+  - [ ] Parse type schema (required_fields, status enums)
+  - [ ] Validation hook integration
+- [ ] Vault context bindings
+  - [ ] Expose `mdv.current_note()`
+  - [ ] Expose `mdv.backlinks()`, `mdv.outlinks()`
+  - [ ] Expose `mdv.query()` for index queries
 
 ### Phase 2: Structure Enforcement
 
 **Goal**: Implement note types and validation.
 
-- [ ] Note type system
+- [ ] Note type system (now Lua-driven)
   - [ ] Parse `type:` from frontmatter
-  - [ ] Define required fields per type
+  - [ ] Define required fields per type (via Lua)
   - [ ] Validate enum values (task status, project status)
 - [ ] Validation rules
   - [ ] Required field checking

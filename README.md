@@ -31,13 +31,15 @@ mdvault is undergoing a significant expansion. The core templating and capture s
 - **Date Math**: Expressions like `{{today + 1d}}` or `{{today + monday}}`
 - **TUI**: Interactive palette for templates, captures, and macros
 - **Vault Indexing**: SQLite-based index with note metadata, link graph, and incremental updates
+- **Index Queries**: List notes, find backlinks/outlinks, detect orphans via CLI
+- **Lua Scripting**: Sandboxed Lua runtime with access to date math and template engines
 - **MCP Server**: Basic vault browsing and note operations
 
 ### In Development
+- User-defined type system via Lua (validation rules, required fields)
 - Contextual search (graph neighbourhood + temporal signals)
 - Structure validation and linting
 - Type-specific workflows (task, project, zettel, daily, weekly)
-- Proactive maintenance (stale detection, orphan finding)
 
 ## Installation
 
@@ -96,6 +98,9 @@ mdv
 | `mdv macro <name>` | Execute a multi-step macro |
 | `mdv list-templates` | List available templates |
 | `mdv reindex` | Build or rebuild the vault index |
+| `mdv list` | List notes with filters (type, date, limit) |
+| `mdv links <note>` | Show backlinks and outgoing links |
+| `mdv orphans` | Find notes with no incoming links |
 
 See `mdv --help` for full options.
 
@@ -126,6 +131,7 @@ This enables Claude and other MCP clients to:
 
 - [Architecture and Design](./docs/architecture.md) — Full design philosophy and technical details
 - [Development Plan](./docs/PLAN.md) — Implementation phases and roadmap
+- [Lua Scripting](./docs/lua-scripting.md) — Using the Lua scripting layer
 
 ### Legacy Documentation
 
