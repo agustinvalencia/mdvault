@@ -38,7 +38,8 @@ pub fn validate_note(
             Ok((valid, message)) => {
                 if !valid {
                     result.add_error(ValidationError::CustomValidation {
-                        message: message.unwrap_or_else(|| "Custom validation failed".to_string()),
+                        message: message
+                            .unwrap_or_else(|| "Custom validation failed".to_string()),
                     });
                 }
             }
@@ -50,7 +51,10 @@ pub fn validate_note(
 }
 
 /// Validate frontmatter against schema.
-fn validate_schema(typedef: &TypeDefinition, frontmatter: &serde_yaml::Mapping) -> ValidationResult {
+fn validate_schema(
+    typedef: &TypeDefinition,
+    frontmatter: &serde_yaml::Mapping,
+) -> ValidationResult {
     let mut result = ValidationResult::success();
 
     for (field_name, schema) in &typedef.schema {
@@ -75,7 +79,11 @@ fn validate_schema(typedef: &TypeDefinition, frontmatter: &serde_yaml::Mapping) 
 }
 
 /// Validate a single field value against its schema.
-fn validate_field(field: &str, schema: &FieldSchema, value: &serde_yaml::Value) -> ValidationResult {
+fn validate_field(
+    field: &str,
+    schema: &FieldSchema,
+    value: &serde_yaml::Value,
+) -> ValidationResult {
     let mut result = ValidationResult::success();
 
     let expected_type = schema.effective_type();
@@ -102,7 +110,8 @@ fn validate_field(field: &str, schema: &FieldSchema, value: &serde_yaml::Value) 
     }
 
     // Enum constraint
-    if let (Some(enum_values), serde_yaml::Value::String(s)) = (&schema.enum_values, value)
+    if let (Some(enum_values), serde_yaml::Value::String(s)) =
+        (&schema.enum_values, value)
         && !enum_values.contains(s)
     {
         result.add_error(ValidationError::EnumViolation {
@@ -114,72 +123,89 @@ fn validate_field(field: &str, schema: &FieldSchema, value: &serde_yaml::Value) 
 
     // Number constraints
     if let serde_yaml::Value::Number(n) = value
-        && let Some(f) = n.as_f64() {
-            if let Some(min) = schema.min
-                && f < min {
-                    result.add_error(ValidationError::InvalidValue {
-                        field: field.to_string(),
-                        message: format!("value {} is less than minimum {}", f, min),
-                    });
-                }
-            if let Some(max) = schema.max
-                && f > max {
-                    result.add_error(ValidationError::InvalidValue {
-                        field: field.to_string(),
-                        message: format!("value {} is greater than maximum {}", f, max),
-                    });
-                }
-            if let Some(true) = schema.integer
-                && f.fract() != 0.0 {
-                    result.add_error(ValidationError::InvalidValue {
-                        field: field.to_string(),
-                        message: format!("value {} must be an integer", f),
-                    });
-                }
+        && let Some(f) = n.as_f64()
+    {
+        if let Some(min) = schema.min
+            && f < min
+        {
+            result.add_error(ValidationError::InvalidValue {
+                field: field.to_string(),
+                message: format!("value {} is less than minimum {}", f, min),
+            });
         }
+        if let Some(max) = schema.max
+            && f > max
+        {
+            result.add_error(ValidationError::InvalidValue {
+                field: field.to_string(),
+                message: format!("value {} is greater than maximum {}", f, max),
+            });
+        }
+        if let Some(true) = schema.integer
+            && f.fract() != 0.0
+        {
+            result.add_error(ValidationError::InvalidValue {
+                field: field.to_string(),
+                message: format!("value {} must be an integer", f),
+            });
+        }
+    }
 
     // String length constraints
     if let serde_yaml::Value::String(s) = value {
         if let Some(min) = schema.min_length
-            && s.len() < min {
-                result.add_error(ValidationError::InvalidValue {
-                    field: field.to_string(),
-                    message: format!("string length {} is less than minimum {}", s.len(), min),
-                });
-            }
+            && s.len() < min
+        {
+            result.add_error(ValidationError::InvalidValue {
+                field: field.to_string(),
+                message: format!(
+                    "string length {} is less than minimum {}",
+                    s.len(),
+                    min
+                ),
+            });
+        }
         if let Some(max) = schema.max_length
-            && s.len() > max {
-                result.add_error(ValidationError::InvalidValue {
-                    field: field.to_string(),
-                    message: format!("string length {} is greater than maximum {}", s.len(), max),
-                });
-            }
+            && s.len() > max
+        {
+            result.add_error(ValidationError::InvalidValue {
+                field: field.to_string(),
+                message: format!(
+                    "string length {} is greater than maximum {}",
+                    s.len(),
+                    max
+                ),
+            });
+        }
         if let Some(pattern) = &schema.pattern
             && let Ok(re) = Regex::new(pattern)
-                && !re.is_match(s) {
-                    result.add_error(ValidationError::InvalidValue {
-                        field: field.to_string(),
-                        message: format!("value '{}' does not match pattern '{}'", s, pattern),
-                    });
-                }
+            && !re.is_match(s)
+        {
+            result.add_error(ValidationError::InvalidValue {
+                field: field.to_string(),
+                message: format!("value '{}' does not match pattern '{}'", s, pattern),
+            });
+        }
     }
 
     // List constraints
     if let serde_yaml::Value::Sequence(seq) = value {
         if let Some(min) = schema.min_items
-            && seq.len() < min {
-                result.add_error(ValidationError::InvalidValue {
-                    field: field.to_string(),
-                    message: format!("list has {} items, minimum is {}", seq.len(), min),
-                });
-            }
+            && seq.len() < min
+        {
+            result.add_error(ValidationError::InvalidValue {
+                field: field.to_string(),
+                message: format!("list has {} items, minimum is {}", seq.len(), min),
+            });
+        }
         if let Some(max) = schema.max_items
-            && seq.len() > max {
-                result.add_error(ValidationError::InvalidValue {
-                    field: field.to_string(),
-                    message: format!("list has {} items, maximum is {}", seq.len(), max),
-                });
-            }
+            && seq.len() > max
+        {
+            result.add_error(ValidationError::InvalidValue {
+                field: field.to_string(),
+                message: format!("list has {} items, maximum is {}", seq.len(), max),
+            });
+        }
 
         // Validate items if schema provided
         if let Some(item_schema) = &schema.items {
@@ -242,7 +268,8 @@ fn run_validate_hook(
     frontmatter: &serde_yaml::Value,
     content: &str,
 ) -> Result<(bool, Option<String>), ValidationError> {
-    let engine = LuaEngine::sandboxed().map_err(|e| ValidationError::LuaError(e.to_string()))?;
+    let engine =
+        LuaEngine::sandboxed().map_err(|e| ValidationError::LuaError(e.to_string()))?;
 
     let lua = engine.lua();
 
@@ -252,9 +279,8 @@ fn run_validate_hook(
         .map_err(|e| ValidationError::LuaError(e.to_string()))?;
 
     // Build note table for validation
-    let note_table = lua
-        .create_table()
-        .map_err(|e| ValidationError::LuaError(e.to_string()))?;
+    let note_table =
+        lua.create_table().map_err(|e| ValidationError::LuaError(e.to_string()))?;
 
     note_table
         .set("type", note_type)
@@ -291,7 +317,9 @@ fn run_validate_hook(
     // Parse result: (true) or (false, "error message")
     let values: Vec<mlua::Value> = result.into_iter().collect();
     match values.as_slice() {
-        [mlua::Value::Boolean(true)] | [mlua::Value::Boolean(true), _] => Ok((true, None)),
+        [mlua::Value::Boolean(true)] | [mlua::Value::Boolean(true), _] => {
+            Ok((true, None))
+        }
         [mlua::Value::Boolean(false)] => Ok((false, None)),
         [mlua::Value::Boolean(false), mlua::Value::String(msg)] => {
             let msg_str = msg.to_str().map(|s| s.to_string()).unwrap_or_default();
@@ -306,7 +334,10 @@ fn run_validate_hook(
 /// Convert a serde_yaml::Value to a Lua value.
 ///
 /// This is used to pass frontmatter data to Lua hooks.
-pub fn yaml_to_lua_table(lua: &mlua::Lua, value: &serde_yaml::Value) -> mlua::Result<mlua::Value> {
+pub fn yaml_to_lua_table(
+    lua: &mlua::Lua,
+    value: &serde_yaml::Value,
+) -> mlua::Result<mlua::Value> {
     match value {
         serde_yaml::Value::Null => Ok(mlua::Value::Nil),
         serde_yaml::Value::Bool(b) => Ok(mlua::Value::Boolean(*b)),
@@ -382,7 +413,8 @@ mod tests {
         );
         registry.register(make_typedef_with_schema(schema)).unwrap();
 
-        let frontmatter = make_frontmatter(&[("title", serde_yaml::Value::String("Hello".into()))]);
+        let frontmatter =
+            make_frontmatter(&[("title", serde_yaml::Value::String("Hello".into()))]);
 
         let result = validate_note(&registry, "test", "/test.md", &frontmatter, "");
         assert!(result.valid);
@@ -408,7 +440,9 @@ mod tests {
         let result = validate_note(&registry, "test", "/test.md", &frontmatter, "");
         assert!(!result.valid);
         assert_eq!(result.errors.len(), 1);
-        assert!(matches!(&result.errors[0], ValidationError::MissingRequired { field } if field == "title"));
+        assert!(
+            matches!(&result.errors[0], ValidationError::MissingRequired { field } if field == "title")
+        );
     }
 
     #[test]
@@ -425,8 +459,10 @@ mod tests {
         );
         registry.register(make_typedef_with_schema(schema)).unwrap();
 
-        let frontmatter =
-            make_frontmatter(&[("count", serde_yaml::Value::String("not a number".into()))]);
+        let frontmatter = make_frontmatter(&[(
+            "count",
+            serde_yaml::Value::String("not a number".into()),
+        )]);
 
         let result = validate_note(&registry, "test", "/test.md", &frontmatter, "");
         assert!(!result.valid);
@@ -449,7 +485,8 @@ mod tests {
         registry.register(make_typedef_with_schema(schema)).unwrap();
 
         // Valid enum value
-        let frontmatter = make_frontmatter(&[("status", serde_yaml::Value::String("open".into()))]);
+        let frontmatter =
+            make_frontmatter(&[("status", serde_yaml::Value::String("open".into()))]);
         let result = validate_note(&registry, "test", "/test.md", &frontmatter, "");
         assert!(result.valid);
 
@@ -478,17 +515,20 @@ mod tests {
         registry.register(make_typedef_with_schema(schema)).unwrap();
 
         // Valid range
-        let frontmatter = make_frontmatter(&[("priority", serde_yaml::Value::Number(3.into()))]);
+        let frontmatter =
+            make_frontmatter(&[("priority", serde_yaml::Value::Number(3.into()))]);
         let result = validate_note(&registry, "test", "/test.md", &frontmatter, "");
         assert!(result.valid);
 
         // Below minimum
-        let frontmatter = make_frontmatter(&[("priority", serde_yaml::Value::Number(0.into()))]);
+        let frontmatter =
+            make_frontmatter(&[("priority", serde_yaml::Value::Number(0.into()))]);
         let result = validate_note(&registry, "test", "/test.md", &frontmatter, "");
         assert!(!result.valid);
 
         // Above maximum
-        let frontmatter = make_frontmatter(&[("priority", serde_yaml::Value::Number(10.into()))]);
+        let frontmatter =
+            make_frontmatter(&[("priority", serde_yaml::Value::Number(10.into()))]);
         let result = validate_note(&registry, "test", "/test.md", &frontmatter, "");
         assert!(!result.valid);
     }
@@ -510,18 +550,22 @@ mod tests {
         registry.register(make_typedef_with_schema(schema)).unwrap();
 
         // Valid length
-        let frontmatter = make_frontmatter(&[("code", serde_yaml::Value::String("ABC123".into()))]);
+        let frontmatter =
+            make_frontmatter(&[("code", serde_yaml::Value::String("ABC123".into()))]);
         let result = validate_note(&registry, "test", "/test.md", &frontmatter, "");
         assert!(result.valid);
 
         // Too short
-        let frontmatter = make_frontmatter(&[("code", serde_yaml::Value::String("AB".into()))]);
+        let frontmatter =
+            make_frontmatter(&[("code", serde_yaml::Value::String("AB".into()))]);
         let result = validate_note(&registry, "test", "/test.md", &frontmatter, "");
         assert!(!result.valid);
 
         // Too long
-        let frontmatter =
-            make_frontmatter(&[("code", serde_yaml::Value::String("ABCDEFGHIJK".into()))]);
+        let frontmatter = make_frontmatter(&[(
+            "code",
+            serde_yaml::Value::String("ABCDEFGHIJK".into()),
+        )]);
         let result = validate_note(&registry, "test", "/test.md", &frontmatter, "");
         assert!(!result.valid);
     }
@@ -554,7 +598,8 @@ mod tests {
         assert!(result.valid);
 
         // Empty list (below minimum)
-        let frontmatter = make_frontmatter(&[("tags", serde_yaml::Value::Sequence(vec![]))]);
+        let frontmatter =
+            make_frontmatter(&[("tags", serde_yaml::Value::Sequence(vec![]))]);
         let result = validate_note(&registry, "test", "/test.md", &frontmatter, "");
         assert!(!result.valid);
     }
@@ -591,7 +636,8 @@ mod tests {
         let registry = TypeRegistry::new();
 
         // Unknown types should pass
-        let frontmatter = make_frontmatter(&[("anything", serde_yaml::Value::String("value".into()))]);
+        let frontmatter =
+            make_frontmatter(&[("anything", serde_yaml::Value::String("value".into()))]);
         let result = validate_note(&registry, "unknown", "/test.md", &frontmatter, "");
         assert!(result.valid);
     }

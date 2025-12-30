@@ -4,7 +4,7 @@ use std::path::Path;
 
 use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::index::IndexDb;
-use mdvault_core::types::{TypedefRepository, TypeRegistry, validate_note};
+use mdvault_core::types::{validate_note, TypeRegistry, TypedefRepository};
 
 use crate::{OutputFormat, ValidateArgs};
 
@@ -94,7 +94,8 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
             .unwrap_or(serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
 
         // Read note content for custom validators
-        let content = std::fs::read_to_string(rc.vault_root.join(&note.path)).unwrap_or_default();
+        let content =
+            std::fs::read_to_string(rc.vault_root.join(&note.path)).unwrap_or_default();
 
         let result = validate_note(
             &registry,
@@ -117,8 +118,12 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
 
     // Output results
     match format {
-        OutputFormat::Table => print_results_table(&results, total, valid_count, error_count),
-        OutputFormat::Json => print_results_json(&results, total, valid_count, error_count),
+        OutputFormat::Table => {
+            print_results_table(&results, total, valid_count, error_count)
+        }
+        OutputFormat::Json => {
+            print_results_json(&results, total, valid_count, error_count)
+        }
         OutputFormat::Quiet => print_results_quiet(&results),
     }
 
@@ -171,7 +176,10 @@ fn print_results_table(
         return;
     }
 
-    println!("Validation Results: {} valid, {} with errors (of {} total)", valid, errors, total);
+    println!(
+        "Validation Results: {} valid, {} with errors (of {} total)",
+        valid, errors, total
+    );
     println!();
 
     for (path, note_type, result) in results {

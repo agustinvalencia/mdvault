@@ -55,12 +55,6 @@ impl VaultContext {
         macro_repo: Arc<MacroRepository>,
         type_registry: Arc<TypeRegistry>,
     ) -> Self {
-        Self {
-            config,
-            template_repo,
-            capture_repo,
-            macro_repo,
-            type_registry,
-        }
+        Self { config, template_repo, capture_repo, macro_repo, type_registry }
     }
 }

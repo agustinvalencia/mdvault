@@ -52,11 +52,7 @@ pub enum ValidationError {
 
     /// Field value has wrong type.
     #[error("invalid type for field '{field}': expected {expected}, got {actual}")]
-    TypeMismatch {
-        field: String,
-        expected: String,
-        actual: String,
-    },
+    TypeMismatch { field: String, expected: String, actual: String },
 
     /// Field value is invalid.
     #[error("invalid value for field '{field}': {message}")]
@@ -64,11 +60,7 @@ pub enum ValidationError {
 
     /// Enum constraint violated.
     #[error("enum constraint violated for '{field}': '{value}' not in {allowed:?}")]
-    EnumViolation {
-        field: String,
-        value: String,
-        allowed: Vec<String>,
-    },
+    EnumViolation { field: String, value: String, allowed: Vec<String> },
 
     /// Custom validation function failed.
     #[error("custom validation failed: {message}")]
@@ -93,20 +85,12 @@ pub struct ValidationResult {
 impl ValidationResult {
     /// Create a successful validation result.
     pub fn success() -> Self {
-        Self {
-            valid: true,
-            errors: vec![],
-            warnings: vec![],
-        }
+        Self { valid: true, errors: vec![], warnings: vec![] }
     }
 
     /// Create a failed validation result.
     pub fn failure(errors: Vec<ValidationError>) -> Self {
-        Self {
-            valid: false,
-            errors,
-            warnings: vec![],
-        }
+        Self { valid: false, errors, warnings: vec![] }
     }
 
     /// Create a failed validation result with a single error.

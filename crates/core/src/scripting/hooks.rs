@@ -30,12 +30,7 @@ impl NoteContext {
         frontmatter: serde_yaml::Value,
         content: String,
     ) -> Self {
-        Self {
-            path,
-            note_type,
-            frontmatter,
-            content,
-        }
+        Self { path, note_type, frontmatter, content }
     }
 }
 

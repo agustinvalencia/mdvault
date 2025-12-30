@@ -74,7 +74,10 @@ impl TypeRegistry {
     }
 
     /// Get override for a built-in type (if any).
-    pub fn get_builtin_override(&self, note_type: NoteType) -> Option<Arc<TypeDefinition>> {
+    pub fn get_builtin_override(
+        &self,
+        note_type: NoteType,
+    ) -> Option<Arc<TypeDefinition>> {
         self.builtin_overrides.get(&note_type).cloned()
     }
 

@@ -143,7 +143,10 @@ mod tests {
 
     #[test]
     fn test_typedef_info() {
-        let info = TypedefInfo::new("meeting".to_string(), PathBuf::from("/path/to/meeting.lua"));
+        let info = TypedefInfo::new(
+            "meeting".to_string(),
+            PathBuf::from("/path/to/meeting.lua"),
+        );
         assert_eq!(info.name, "meeting");
         assert_eq!(info.path, PathBuf::from("/path/to/meeting.lua"));
     }

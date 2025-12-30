@@ -43,11 +43,7 @@ pub fn discover_typedefs(root: &Path) -> Result<Vec<TypedefInfo>, TypedefError> 
             continue;
         }
 
-        let name = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
+        let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
 
         if !name.is_empty() {
             out.push(TypedefInfo::new(name, path.to_path_buf()));
@@ -76,10 +72,7 @@ impl TypedefRepository {
     /// Returns an empty repository if the directory doesn't exist.
     pub fn new(root: &Path) -> Result<Self, TypedefError> {
         let typedefs = discover_typedefs(root)?;
-        Ok(Self {
-            root: root.to_path_buf(),
-            typedefs,
-        })
+        Ok(Self { root: root.to_path_buf(), typedefs })
     }
 
     /// List all discovered type definitions.
@@ -115,34 +108,31 @@ impl TypedefRepository {
 
 /// Load and parse a type definition from a Lua file.
 pub fn load_typedef_from_file(path: &Path) -> Result<TypeDefinition, TypedefError> {
-    let source = fs::read_to_string(path).map_err(|e| TypedefError::Io {
-        path: path.to_path_buf(),
-        source: e,
-    })?;
+    let source = fs::read_to_string(path)
+        .map_err(|e| TypedefError::Io { path: path.to_path_buf(), source: e })?;
 
-    let name = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown")
-        .to_string();
+    let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
 
     parse_typedef(&name, &source, path)
 }
 
 /// Parse a type definition from Lua source.
-fn parse_typedef(name: &str, source: &str, path: &Path) -> Result<TypeDefinition, TypedefError> {
-    let engine = LuaEngine::sandboxed().map_err(|e| TypedefError::LuaParse {
-        path: path.to_path_buf(),
-        source: e,
-    })?;
+fn parse_typedef(
+    name: &str,
+    source: &str,
+    path: &Path,
+) -> Result<TypeDefinition, TypedefError> {
+    let engine = LuaEngine::sandboxed()
+        .map_err(|e| TypedefError::LuaParse { path: path.to_path_buf(), source: e })?;
 
     let lua = engine.lua();
 
     // Execute the Lua file - it should return a table
-    let value: mlua::Value = lua.load(source).eval().map_err(|e| TypedefError::LuaParse {
-        path: path.to_path_buf(),
-        source: crate::scripting::ScriptingError::Lua(e),
-    })?;
+    let value: mlua::Value =
+        lua.load(source).eval().map_err(|e| TypedefError::LuaParse {
+            path: path.to_path_buf(),
+            source: crate::scripting::ScriptingError::Lua(e),
+        })?;
 
     let table = match value {
         mlua::Value::Table(t) => t,
@@ -150,7 +140,7 @@ fn parse_typedef(name: &str, source: &str, path: &Path) -> Result<TypeDefinition
             return Err(TypedefError::InvalidDefinition {
                 path: path.to_path_buf(),
                 message: "Type definition must return a table".to_string(),
-            })
+            });
         }
     };
 
@@ -194,11 +184,10 @@ fn extract_schema(
     };
 
     for pair in schema_table.pairs::<String, mlua::Table>() {
-        let (field_name, field_def) =
-            pair.map_err(|e| TypedefError::LuaParse {
-                path: path.to_path_buf(),
-                source: crate::scripting::ScriptingError::Lua(e),
-            })?;
+        let (field_name, field_def) = pair.map_err(|e| TypedefError::LuaParse {
+            path: path.to_path_buf(),
+            source: crate::scripting::ScriptingError::Lua(e),
+        })?;
 
         let field_schema = parse_field_schema(&field_def, &field_name, path)?;
         schema.insert(field_name, field_schema);
@@ -214,10 +203,8 @@ fn parse_field_schema(
     _path: &Path,
 ) -> Result<FieldSchema, TypedefError> {
     // Get field type
-    let field_type: Option<FieldType> = table
-        .get::<String>("type")
-        .ok()
-        .and_then(|s| s.parse().ok());
+    let field_type: Option<FieldType> =
+        table.get::<String>("type").ok().and_then(|s| s.parse().ok());
 
     // Get required flag
     let required: bool = table.get("required").unwrap_or(false);
@@ -226,23 +213,21 @@ fn parse_field_schema(
     let description: Option<String> = table.get("description").ok();
 
     // Get default value (convert Lua value to serde_yaml::Value)
-    let default: Option<serde_yaml::Value> = table
-        .get::<mlua::Value>("default")
-        .ok()
-        .and_then(|v| lua_to_yaml_value(&v));
+    let default: Option<serde_yaml::Value> =
+        table.get::<mlua::Value>("default").ok().and_then(|v| lua_to_yaml_value(&v));
 
     // Get enum values
-    let enum_values: Option<Vec<String>> = table.get::<mlua::Table>("enum").ok().map(|t| {
-        t.pairs::<i64, String>()
-            .filter_map(|r| r.ok())
-            .map(|(_, v)| v)
-            .collect()
-    });
+    let enum_values: Option<Vec<String>> =
+        table.get::<mlua::Table>("enum").ok().map(|t| {
+            t.pairs::<i64, String>().filter_map(|r| r.ok()).map(|(_, v)| v).collect()
+        });
 
     // Get string constraints
     let pattern: Option<String> = table.get("pattern").ok();
-    let min_length: Option<usize> = table.get::<i64>("min_length").ok().map(|v| v as usize);
-    let max_length: Option<usize> = table.get::<i64>("max_length").ok().map(|v| v as usize);
+    let min_length: Option<usize> =
+        table.get::<i64>("min_length").ok().map(|v| v as usize);
+    let max_length: Option<usize> =
+        table.get::<i64>("max_length").ok().map(|v| v as usize);
 
     // Get number constraints
     let min: Option<f64> = table.get("min").ok();
@@ -297,7 +282,9 @@ fn lua_to_yaml_value(value: &mlua::Value) -> Option<serde_yaml::Value> {
                 Some(serde_yaml::Value::String(n.to_string()))
             }
         }
-        mlua::Value::String(s) => s.to_str().ok().map(|s| serde_yaml::Value::String(s.to_string())),
+        mlua::Value::String(s) => {
+            s.to_str().ok().map(|s| serde_yaml::Value::String(s.to_string()))
+        }
         _ => None,
     }
 }

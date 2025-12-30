@@ -53,10 +53,6 @@ impl SandboxConfig {
 
     /// An unrestricted configuration (use with caution).
     pub fn unrestricted() -> Self {
-        Self {
-            memory_limit: 0,
-            instruction_limit: 0,
-            allow_require: true,
-        }
+        Self { memory_limit: 0, instruction_limit: 0, allow_require: true }
     }
 }

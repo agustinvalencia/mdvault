@@ -131,11 +131,7 @@ pub struct FieldSchema {
 impl FieldSchema {
     /// Create a new required string field.
     pub fn required_string() -> Self {
-        Self {
-            field_type: Some(FieldType::String),
-            required: true,
-            ..Default::default()
-        }
+        Self { field_type: Some(FieldType::String), required: true, ..Default::default() }
     }
 
     /// Create a new optional string field.

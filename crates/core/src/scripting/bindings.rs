@@ -6,7 +6,7 @@
 use mlua::{Function, Lua, Result as LuaResult, Table, Value};
 use std::collections::HashMap;
 
-use crate::templates::engine::{render_string, RenderContext};
+use crate::templates::engine::{RenderContext, render_string};
 use crate::vars::datemath::{evaluate_date_expr, is_date_expr, parse_date_expr};
 
 /// Register the `mdv` global table with all bindings.

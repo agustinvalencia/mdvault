@@ -92,7 +92,9 @@ fn create_template_fn(lua: &Lua) -> LuaResult<Function> {
             ])),
             Err(e) => Ok(MultiValue::from_vec(vec![
                 Value::Nil,
-                Value::String(lua.create_string(format!("template render error: {}", e))?),
+                Value::String(
+                    lua.create_string(format!("template render error: {}", e))?,
+                ),
             ])),
         }
     })
@@ -209,11 +211,7 @@ fn create_macro_fn(lua: &Lua) -> LuaResult<Function> {
         // Run macro with shell disabled (no --trust in hooks)
         let run_ctx = RunContext::new(
             vars,
-            RunOptions {
-                trust: false,
-                allow_shell: false,
-                dry_run: false,
-            },
+            RunOptions { trust: false, allow_shell: false, dry_run: false },
         );
 
         let result = crate::macros::runner::run_macro(&loaded, &executor, run_ctx);
@@ -242,22 +240,13 @@ fn build_base_context(config: &ResolvedConfig) -> HashMap<String, String> {
     ctx.insert("now".into(), now.format("%Y-%m-%dT%H:%M:%S").to_string());
 
     // Config paths
-    ctx.insert(
-        "vault_root".into(),
-        config.vault_root.to_string_lossy().to_string(),
-    );
+    ctx.insert("vault_root".into(), config.vault_root.to_string_lossy().to_string());
     ctx.insert(
         "templates_dir".into(),
         config.templates_dir.to_string_lossy().to_string(),
     );
-    ctx.insert(
-        "captures_dir".into(),
-        config.captures_dir.to_string_lossy().to_string(),
-    );
-    ctx.insert(
-        "macros_dir".into(),
-        config.macros_dir.to_string_lossy().to_string(),
-    );
+    ctx.insert("captures_dir".into(), config.captures_dir.to_string_lossy().to_string());
+    ctx.insert("macros_dir".into(), config.macros_dir.to_string_lossy().to_string());
 
     ctx
 }
@@ -289,8 +278,9 @@ fn execute_capture(
     let target_file = resolve_target_path(&config.vault_root, &target_file_raw);
 
     // Read existing file
-    let existing_content = fs::read_to_string(&target_file)
-        .map_err(|e| format!("failed to read target file {}: {}", target_file.display(), e))?;
+    let existing_content = fs::read_to_string(&target_file).map_err(|e| {
+        format!("failed to read target file {}: {}", target_file.display(), e)
+    })?;
 
     // Execute capture operations
     let (result_content, _section_info) =
@@ -310,8 +300,8 @@ fn execute_capture_operations(
     ctx: &HashMap<String, String>,
 ) -> Result<(String, Option<(String, u8)>), String> {
     // Parse frontmatter from existing content
-    let mut parsed =
-        parse(existing_content).map_err(|e| format!("failed to parse frontmatter: {}", e))?;
+    let mut parsed = parse(existing_content)
+        .map_err(|e| format!("failed to parse frontmatter: {}", e))?;
     let mut section_info = None;
 
     // Apply frontmatter operations if specified
@@ -326,8 +316,7 @@ fn execute_capture_operations(
             "capture has content but no target section specified".to_string()
         })?;
 
-        let rendered_section =
-            render_string(section, ctx).map_err(|e| e.to_string())?;
+        let rendered_section = render_string(section, ctx).map_err(|e| e.to_string())?;
         let rendered_content =
             render_string(content_template, ctx).map_err(|e| e.to_string())?;
 
@@ -353,11 +342,7 @@ fn execute_capture_operations(
 
 fn resolve_target_path(vault_root: &Path, target: &str) -> std::path::PathBuf {
     let path = Path::new(target);
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        vault_root.join(path)
-    }
+    if path.is_absolute() { path.to_path_buf() } else { vault_root.join(path) }
 }
 
 /// Step executor for hooks (no shell support).
@@ -384,13 +369,13 @@ impl StepExecutor for HookStepExecutor {
 
         // Resolve output path
         let output_path = if let Some(output) = step.output.as_ref() {
-            let rendered =
-                render_string(output, &vars).map_err(|e| MacroRunError::TemplateError(e.to_string()))?;
+            let rendered = render_string(output, &vars)
+                .map_err(|e| MacroRunError::TemplateError(e.to_string()))?;
             resolve_target_path(&self.config.vault_root, &rendered)
         } else if let Some(fm) = loaded.frontmatter.as_ref() {
             if let Some(output) = fm.output.as_ref() {
-                let rendered =
-                    render_string(output, &vars).map_err(|e| MacroRunError::TemplateError(e.to_string()))?;
+                let rendered = render_string(output, &vars)
+                    .map_err(|e| MacroRunError::TemplateError(e.to_string()))?;
                 resolve_target_path(&self.config.vault_root, &rendered)
             } else {
                 return Err(MacroRunError::TemplateError(

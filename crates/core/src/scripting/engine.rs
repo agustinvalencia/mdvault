@@ -123,8 +123,9 @@ impl LuaEngine {
     ///
     /// Returns an error if the script returns nil.
     pub fn eval_string(&self, script: &str) -> Result<String, ScriptingError> {
-        self.eval(script)?
-            .ok_or_else(|| ScriptingError::Lua(mlua::Error::runtime("script returned nil")))
+        self.eval(script)?.ok_or_else(|| {
+            ScriptingError::Lua(mlua::Error::runtime("script returned nil"))
+        })
     }
 
     /// Execute a Lua script that returns a boolean.
@@ -133,9 +134,9 @@ impl LuaEngine {
         match value {
             Value::Boolean(b) => Ok(b),
             Value::Nil => Ok(false),
-            _ => Err(ScriptingError::Lua(mlua::Error::runtime(
-                "expected boolean result",
-            ))),
+            _ => {
+                Err(ScriptingError::Lua(mlua::Error::runtime("expected boolean result")))
+            }
         }
     }
 
@@ -255,9 +256,8 @@ mod tests {
     #[test]
     fn test_render_with_numbers() {
         let engine = LuaEngine::sandboxed().unwrap();
-        let result = engine
-            .eval_string(r#"mdv.render("Count: {{n}}", { n = 42 })"#)
-            .unwrap();
+        let result =
+            engine.eval_string(r#"mdv.render("Count: {{n}}", { n = 42 })"#).unwrap();
         assert_eq!(result, "Count: 42");
     }
 
@@ -265,9 +265,7 @@ mod tests {
     fn test_render_with_date_expr() {
         let engine = LuaEngine::sandboxed().unwrap();
         // Template engine should handle date expressions in templates
-        let result = engine
-            .eval_string(r#"mdv.render("Date: {{today}}", {})"#)
-            .unwrap();
+        let result = engine.eval_string(r#"mdv.render("Date: {{today}}", {})"#).unwrap();
         // Should contain "Date: " followed by a date
         assert!(result.starts_with("Date: "));
         assert_eq!(result.len(), 16); // "Date: " + "YYYY-MM-DD"
@@ -353,9 +351,8 @@ mod tests {
     #[test]
     fn test_pure_lua_table() {
         let engine = LuaEngine::sandboxed().unwrap();
-        let result = engine
-            .eval_string(r#"local t = {1, 2, 3}; return tostring(#t)"#)
-            .unwrap();
+        let result =
+            engine.eval_string(r#"local t = {1, 2, 3}; return tostring(#t)"#).unwrap();
         assert_eq!(result, "3");
     }
 
