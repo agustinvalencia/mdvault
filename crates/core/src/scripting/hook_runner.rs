@@ -50,15 +50,14 @@ pub fn run_on_create_hook(
     let lua = engine.lua();
 
     // Load and evaluate the type definition to get the table
-    let typedef_table: mlua::Table = lua
-        .load(&typedef.lua_source)
-        .eval()
-        .map_err(|e| HookError::LuaError(format!("failed to load type definition: {}", e)))?;
+    let typedef_table: mlua::Table =
+        lua.load(&typedef.lua_source).eval().map_err(|e| {
+            HookError::LuaError(format!("failed to load type definition: {}", e))
+        })?;
 
     // Build note table for the hook
-    let note_table = lua
-        .create_table()
-        .map_err(|e| HookError::LuaError(e.to_string()))?;
+    let note_table =
+        lua.create_table().map_err(|e| HookError::LuaError(e.to_string()))?;
 
     note_table
         .set("path", note_ctx.path.to_string_lossy().to_string())
@@ -73,17 +72,17 @@ pub fn run_on_create_hook(
         .map_err(|e| HookError::LuaError(e.to_string()))?;
 
     // Convert frontmatter to Lua table
-    let fm_table =
-        yaml_to_lua_table(lua, &note_ctx.frontmatter).map_err(|e| HookError::LuaError(e.to_string()))?;
+    let fm_table = yaml_to_lua_table(lua, &note_ctx.frontmatter)
+        .map_err(|e| HookError::LuaError(e.to_string()))?;
 
     note_table
         .set("frontmatter", fm_table)
         .map_err(|e| HookError::LuaError(e.to_string()))?;
 
     // Get on_create function
-    let on_create_fn: mlua::Function = typedef_table
-        .get("on_create")
-        .map_err(|e| HookError::LuaError(format!("on_create function not found: {}", e)))?;
+    let on_create_fn: mlua::Function = typedef_table.get("on_create").map_err(|e| {
+        HookError::LuaError(format!("on_create function not found: {}", e))
+    })?;
 
     // Call the hook
     // The hook receives the note table and can call mdv.template/capture/macro
@@ -141,7 +140,7 @@ mod tests {
         // Create a minimal vault context - this won't be used since there's no hook
         // We can't easily create a VaultContext in tests without real repositories,
         // but since has_on_create_hook is false, it will return early
-        let note_ctx = make_note_ctx();
+        let _note_ctx = make_note_ctx();
 
         // This test verifies that when has_on_create_hook is false,
         // the function returns Ok(()) without trying to access vault_ctx
@@ -167,8 +166,8 @@ mod tests {
             }
         "#;
 
-        let typedef = make_typedef_with_hook(lua_source);
-        let note_ctx = make_note_ctx();
+        let _typedef = make_typedef_with_hook(lua_source);
+        let _note_ctx = make_note_ctx();
 
         // Create a sandboxed engine to test the Lua code directly
         let engine = LuaEngine::sandboxed().unwrap();
