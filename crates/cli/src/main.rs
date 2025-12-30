@@ -85,6 +85,9 @@ enum Commands {
 
     /// Find orphan notes (no incoming links)
     Orphans(OrphansArgs),
+
+    /// Validate notes against type definitions
+    Validate(ValidateArgs),
 }
 
 #[derive(Debug, Args)]
@@ -270,6 +273,40 @@ pub struct OrphansArgs {
     pub quiet: bool,
 }
 
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv validate                          # Validate all notes
+  mdv validate --type task              # Validate only task notes
+  mdv validate --list-types             # Show available type definitions
+  mdv validate --json                   # JSON output
+")]
+pub struct ValidateArgs {
+    /// Only validate notes of this type
+    #[arg(long)]
+    pub r#type: Option<String>,
+
+    /// Maximum number of notes to validate
+    #[arg(long, short = 'n')]
+    pub limit: Option<u32>,
+
+    /// List available type definitions
+    #[arg(long)]
+    pub list_types: bool,
+
+    /// Output format
+    #[arg(long, short, value_enum, default_value = "table")]
+    pub output: OutputFormat,
+
+    /// Output as JSON (shorthand for --output json)
+    #[arg(long)]
+    pub json: bool,
+
+    /// Quiet mode - output paths only (shorthand for --output quiet)
+    #[arg(long, short)]
+    pub quiet: bool,
+}
+
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
     let pos =
         s.find('=').ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
@@ -346,6 +383,9 @@ fn main() {
         }
         Some(Commands::Orphans(args)) => {
             cmd::orphans::run(cli.config.as_deref(), cli.profile.as_deref(), args);
+        }
+        Some(Commands::Validate(args)) => {
+            cmd::validate::run(cli.config.as_deref(), cli.profile.as_deref(), args);
         }
     }
 }

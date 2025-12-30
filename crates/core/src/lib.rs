@@ -23,5 +23,6 @@ pub mod macros;
 pub mod markdown_ast;
 pub mod scripting;
 pub mod templates;
+pub mod types;
 pub mod vars;
 pub mod vault;

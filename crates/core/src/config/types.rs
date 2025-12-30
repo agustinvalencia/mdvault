@@ -35,5 +35,7 @@ pub struct ResolvedConfig {
     pub templates_dir: PathBuf,
     pub captures_dir: PathBuf,
     pub macros_dir: PathBuf,
+    /// Directory for Lua type definitions (global, not per-profile).
+    pub typedefs_dir: PathBuf,
     pub security: SecurityPolicy,
 }

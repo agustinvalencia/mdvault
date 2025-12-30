@@ -54,10 +54,13 @@ The existing codebase provides:
   - [x] Expose `mdv.render(template, context)` for template rendering
   - [x] Expose `mdv.is_date_expr(str)` for type checking
   - [x] Sandbox: remove io, os, require, load, debug
-- [ ] Type definitions in Lua
-  - [ ] Load type definitions from `types/*.lua`
-  - [ ] Parse type schema (required_fields, status enums)
-  - [ ] Validation hook integration
+- [x] Type definitions in Lua
+  - [x] Load type definitions from `~/.config/mdvault/types/*.lua`
+  - [x] Parse type schema (required fields, types, enums, constraints)
+  - [x] Custom validate() function hooks
+  - [x] Lifecycle hooks (on_create, on_update) - stored, ready for integration
+  - [x] TypeRegistry for built-in + custom types
+  - [x] `mdv validate` CLI command
 - [ ] Vault context bindings
   - [ ] Expose `mdv.current_note()`
   - [ ] Expose `mdv.backlinks()`, `mdv.outlinks()`
@@ -67,22 +70,31 @@ The existing codebase provides:
 
 **Goal**: Implement note types and validation.
 
-- [ ] Note type system (now Lua-driven)
-  - [ ] Parse `type:` from frontmatter
-  - [ ] Define required fields per type (via Lua)
-  - [ ] Validate enum values (task status, project status)
-- [ ] Validation rules
-  - [ ] Required field checking
+- [x] Note type system (Lua-driven)
+  - [x] Parse `type:` from frontmatter
+  - [x] Define required fields per type (via Lua schema)
+  - [x] Validate enum values via schema constraints
+  - [x] Custom types extend built-in types (daily, weekly, task, project, zettel)
+- [x] Validation rules
+  - [x] Required field checking
+  - [x] Type constraints (string, number, boolean, date, datetime, list, reference)
+  - [x] Enum constraints
+  - [x] Number range (min/max)
+  - [x] String length and pattern (regex)
+  - [x] List item count (min/max)
+  - [x] Custom validate() hooks in Lua
   - [ ] Link integrity (target exists)
-  - [ ] Type-specific constraints
 - [ ] Linting system
-  - [ ] `mdv lint` — report issues
+  - [ ] `mdv lint` — report issues (validate covers most of this)
   - [ ] `mdv lint --fix` — auto-fix safe issues
   - [ ] Severity levels (error, warning, info)
 - [ ] Note scaffolding
   - [ ] Type-aware templates
   - [ ] Auto-populate required fields
   - [ ] Link to daily note on creation
+- [ ] Hook integration
+  - [ ] Call on_create() during template rendering
+  - [ ] Call on_update() during capture operations
 
 ### Phase 3: Search and Retrieval
 
@@ -198,6 +210,9 @@ mdv stuck
 ### Maintenance Commands
 
 ```bash
+mdv validate                    # Validate notes against type definitions
+mdv validate --type task        # Validate only task notes
+mdv validate --list-types       # Show available type definitions
 mdv lint
 mdv lint --fix
 mdv reindex

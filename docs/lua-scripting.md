@@ -214,41 +214,216 @@ match engine.eval_string(r#"mdv.date("invalid_expr")"#) {
 }
 ```
 
-## Future: Type Definitions
+## Type Definitions
 
-The Lua layer will be extended to support user-defined note types:
+Type definitions allow you to define custom note types with schema validation and lifecycle hooks. Type definitions are Lua files stored in `~/.config/mdvault/types/`.
+
+### Creating a Type Definition
+
+Create a `.lua` file in `~/.config/mdvault/types/`. The filename becomes the type name:
 
 ```lua
--- types/task.lua (planned)
+-- ~/.config/mdvault/types/meeting.lua
 return {
-  name = "task",
+    name = "meeting",
+    description = "Meeting notes with attendees and action items",
 
-  required_fields = { "status", "project" },
-
-  fields = {
-    status = {
-      type = "enum",
-      values = { "open", "in-progress", "blocked", "done" },
-      default = "open"
+    -- Schema defines the expected frontmatter fields
+    schema = {
+        title = {
+            type = "string",
+            required = true
+        },
+        date = {
+            type = "date",
+            required = true
+        },
+        attendees = {
+            type = "list",
+            required = true,
+            min_items = 1
+        },
+        status = {
+            type = "string",
+            enum = { "scheduled", "in-progress", "completed", "cancelled" },
+            default = "scheduled"
+        },
+        duration_minutes = {
+            type = "number",
+            min = 1,
+            max = 480
+        }
     },
-    project = {
-      type = "wikilink",
-      required = true
-    }
-  },
 
-  validate = function(note)
-    if note.frontmatter.status == "done" and not note.frontmatter.completed_date then
-      return false, "Done tasks require completed_date"
+    -- Custom validation function (optional)
+    validate = function(note)
+        if note.frontmatter.status == "completed" and not note.frontmatter.summary then
+            return false, "Completed meetings must have a summary"
+        end
+        return true
+    end,
+
+    -- Lifecycle hooks (optional)
+    on_create = function(note)
+        note.frontmatter.created_at = mdv.date("now", "%Y-%m-%dT%H:%M:%S")
+        return note
+    end,
+
+    on_update = function(note, previous)
+        note.frontmatter.updated_at = mdv.date("now", "%Y-%m-%dT%H:%M:%S")
+        return note
     end
-    return true
-  end
 }
+```
+
+### Supported Field Types
+
+| Type | Description | Constraints |
+|------|-------------|-------------|
+| `string` | Text value | `enum`, `pattern`, `min_length`, `max_length` |
+| `number` | Numeric value | `min`, `max`, `integer` |
+| `boolean` | True/false | - |
+| `date` | Date (YYYY-MM-DD) | `min`, `max` |
+| `datetime` | ISO 8601 datetime | `min`, `max` |
+| `list` | Array of values | `items`, `min_items`, `max_items` |
+| `reference` | Link to another note | `note_type` |
+
+### Field Schema Properties
+
+```lua
+field_name = {
+    type = "string",           -- Field type (required)
+    required = true,           -- Is the field mandatory?
+    description = "...",       -- Human-readable description
+    default = "value",         -- Default value
+
+    -- String constraints
+    enum = { "a", "b", "c" },  -- Allowed values
+    pattern = "^[A-Z]+$",      -- Regex pattern
+    min_length = 1,            -- Minimum length
+    max_length = 100,          -- Maximum length
+
+    -- Number constraints
+    min = 0,                   -- Minimum value
+    max = 100,                 -- Maximum value
+    integer = true,            -- Must be whole number
+
+    -- List constraints
+    min_items = 1,             -- Minimum items
+    max_items = 10,            -- Maximum items
+    items = { type = "string" }, -- Schema for list items
+
+    -- Reference constraints
+    note_type = "project"      -- Restrict to specific type
+}
+```
+
+### Custom Validation Function
+
+The `validate` function receives a note table and returns validation status:
+
+```lua
+validate = function(note)
+    -- note.type - the note type string
+    -- note.path - path to the note file
+    -- note.content - note content (body text)
+    -- note.frontmatter - table with frontmatter fields
+
+    -- Check custom business rules
+    if note.frontmatter.priority > 5 and not note.frontmatter.assignee then
+        return false, "High priority tasks must have an assignee"
+    end
+
+    -- Use mdv functions
+    if mdv.is_date_expr(note.frontmatter.due) then
+        local due = mdv.date(note.frontmatter.due)
+        -- Additional date-based validation...
+    end
+
+    return true  -- Validation passed
+end
+```
+
+### Lifecycle Hooks
+
+Lifecycle hooks are called during note operations:
+
+```lua
+-- Called when creating a new note of this type
+on_create = function(note)
+    -- Add automatic timestamps
+    note.frontmatter.created_at = mdv.date("now", "%Y-%m-%dT%H:%M:%S")
+    note.frontmatter.status = "draft"
+    return note
+end
+
+-- Called when updating an existing note
+on_update = function(note, previous)
+    -- Track modification time
+    note.frontmatter.updated_at = mdv.date("now", "%Y-%m-%dT%H:%M:%S")
+
+    -- Preserve creation date from previous version
+    note.frontmatter.created_at = previous.frontmatter.created_at
+
+    return note
+end
+```
+
+> **Note**: Lifecycle hooks are currently stored but not yet integrated into the template and capture workflows. This integration is planned for a future release.
+
+### Built-in Types
+
+mdvault has five built-in types: `daily`, `weekly`, `task`, `project`, and `zettel`. You can create Lua files with these names to add validation and hooks to them:
+
+```lua
+-- ~/.config/mdvault/types/task.lua
+-- This overrides/extends the built-in task type
+return {
+    schema = {
+        status = {
+            type = "string",
+            required = true,
+            enum = { "open", "in-progress", "blocked", "done", "cancelled" }
+        },
+        project = {
+            type = "reference",
+            required = true
+        },
+        due = {
+            type = "date"
+        }
+    },
+
+    validate = function(note)
+        if note.frontmatter.status == "done" and not note.frontmatter.completed_date then
+            return false, "Done tasks require a completed_date field"
+        end
+        return true
+    end
+}
+```
+
+### Validating Notes
+
+Use the `mdv validate` command to validate notes:
+
+```bash
+# Validate all notes in the vault
+mdv validate
+
+# Validate only notes of a specific type
+mdv validate --type task
+
+# Show available type definitions
+mdv validate --list-types
+
+# JSON output for scripting
+mdv validate --json
 ```
 
 ## Future: Vault Context
 
-Additional bindings will expose vault context:
+Additional bindings will expose vault context in a future release:
 
 ```lua
 -- Planned API

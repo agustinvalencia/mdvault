@@ -91,6 +91,7 @@ impl ConfigLoader {
             templates_dir,
             captures_dir,
             macros_dir,
+            typedefs_dir: default_typedefs_dir(),
             security: sec.clone(),
         })
     }
@@ -102,6 +103,16 @@ pub fn default_config_path() -> PathBuf {
     }
     let home = home_dir().unwrap_or_else(|| PathBuf::from("~"));
     home.join(".config").join("mdvault").join("config.toml")
+}
+
+/// Default directory for Lua type definitions.
+/// Global location: ~/.config/mdvault/types/
+pub fn default_typedefs_dir() -> PathBuf {
+    if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
+        return Path::new(&xdg).join("mdvault").join("types");
+    }
+    let home = home_dir().unwrap_or_else(|| PathBuf::from("~"));
+    home.join(".config").join("mdvault").join("types")
 }
 
 fn expand_path(input: &str) -> Result<PathBuf, ConfigError> {
