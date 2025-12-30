@@ -148,6 +148,7 @@ fn render_yaml_value(
 /// Supports:
 /// - Simple variables: `{{var_name}}`
 /// - Date math expressions: `{{today + 1d}}`, `{{now - 2h}}`, `{{today | %Y-%m-%d}}`
+/// - Filters: `{{var_name | filter}}` (currently supports: slugify)
 pub fn render_string(
     template: &str,
     ctx: &RenderContext,
@@ -167,11 +168,76 @@ pub fn render_string(
             return evaluate_date_expr(&parsed);
         }
 
+        // Check for filter syntax: "var_name | filter"
+        if let Some((var_name, filter)) = parse_filter_expr(expr) {
+            if let Some(value) = ctx.get(var_name) {
+                return apply_filter(value, filter);
+            }
+            // Variable not found, return original
+            return caps[0].to_string();
+        }
+
         // Otherwise, try simple variable lookup
         ctx.get(expr).cloned().unwrap_or_else(|| caps[0].to_string())
     });
 
     Ok(result.into_owned())
+}
+
+/// Parse a filter expression like "var_name | filter_name".
+/// Returns (var_name, filter_name) if valid, None otherwise.
+fn parse_filter_expr(expr: &str) -> Option<(&str, &str)> {
+    // Don't parse date expressions with format as filters (e.g., "today | %Y-%m-%d")
+    if is_date_expr(expr) {
+        return None;
+    }
+
+    let parts: Vec<&str> = expr.splitn(2, '|').collect();
+    if parts.len() == 2 {
+        let var_name = parts[0].trim();
+        let filter = parts[1].trim();
+        if !var_name.is_empty() && !filter.is_empty() {
+            return Some((var_name, filter));
+        }
+    }
+    None
+}
+
+/// Apply a filter to a value.
+fn apply_filter(value: &str, filter: &str) -> String {
+    match filter {
+        "slugify" => slugify(value),
+        "lowercase" | "lower" => value.to_lowercase(),
+        "uppercase" | "upper" => value.to_uppercase(),
+        "trim" => value.trim().to_string(),
+        _ => value.to_string(), // Unknown filter, return unchanged
+    }
+}
+
+/// Convert a string to a URL-friendly slug.
+///
+/// - Converts to lowercase
+/// - Replaces spaces and underscores with hyphens
+/// - Removes non-alphanumeric characters (except hyphens)
+/// - Collapses multiple hyphens into one
+/// - Trims leading/trailing hyphens
+fn slugify(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+
+    for c in s.chars() {
+        if c.is_ascii_alphanumeric() {
+            result.push(c.to_ascii_lowercase());
+        } else if c == ' ' || c == '_' || c == '-' {
+            // Only add hyphen if last char wasn't already a hyphen
+            if !result.ends_with('-') {
+                result.push('-');
+            }
+        }
+        // Other characters are skipped
+    }
+
+    // Trim leading/trailing hyphens
+    result.trim_matches('-').to_string()
 }
 
 /// Resolve the output path for a template.
@@ -191,4 +257,111 @@ pub fn resolve_template_output_path(
         return Ok(Some(path));
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_slugify_basic() {
+        assert_eq!(slugify("Hello World"), "hello-world");
+        assert_eq!(slugify("Test Task"), "test-task");
+    }
+
+    #[test]
+    fn test_slugify_special_chars() {
+        assert_eq!(slugify("Hello, World!"), "hello-world");
+        assert_eq!(slugify("What's up?"), "whats-up");
+        assert_eq!(slugify("foo@bar.com"), "foobarcom");
+    }
+
+    #[test]
+    fn test_slugify_underscores() {
+        assert_eq!(slugify("hello_world"), "hello-world");
+        assert_eq!(slugify("foo_bar_baz"), "foo-bar-baz");
+    }
+
+    #[test]
+    fn test_slugify_multiple_spaces() {
+        assert_eq!(slugify("hello   world"), "hello-world");
+        assert_eq!(slugify("  leading and trailing  "), "leading-and-trailing");
+    }
+
+    #[test]
+    fn test_slugify_mixed() {
+        assert_eq!(slugify("My Task: Do Something!"), "my-task-do-something");
+        assert_eq!(slugify("2024-01-15 Meeting Notes"), "2024-01-15-meeting-notes");
+    }
+
+    #[test]
+    fn test_render_string_with_slugify_filter() {
+        let mut ctx = RenderContext::new();
+        ctx.insert("title".into(), "Hello World".into());
+
+        let result = render_string("{{title | slugify}}", &ctx).unwrap();
+        assert_eq!(result, "hello-world");
+    }
+
+    #[test]
+    fn test_render_string_with_lowercase_filter() {
+        let mut ctx = RenderContext::new();
+        ctx.insert("name".into(), "HELLO".into());
+
+        let result = render_string("{{name | lowercase}}", &ctx).unwrap();
+        assert_eq!(result, "hello");
+
+        let result = render_string("{{name | lower}}", &ctx).unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_render_string_with_uppercase_filter() {
+        let mut ctx = RenderContext::new();
+        ctx.insert("name".into(), "hello".into());
+
+        let result = render_string("{{name | uppercase}}", &ctx).unwrap();
+        assert_eq!(result, "HELLO");
+    }
+
+    #[test]
+    fn test_render_string_filter_in_path() {
+        let mut ctx = RenderContext::new();
+        ctx.insert("vault_root".into(), "/vault".into());
+        ctx.insert("title".into(), "My New Task".into());
+
+        let result =
+            render_string("{{vault_root}}/tasks/{{title | slugify}}.md", &ctx).unwrap();
+        assert_eq!(result, "/vault/tasks/my-new-task.md");
+    }
+
+    #[test]
+    fn test_render_string_unknown_filter() {
+        let mut ctx = RenderContext::new();
+        ctx.insert("name".into(), "hello".into());
+
+        // Unknown filter returns value unchanged
+        let result = render_string("{{name | unknown}}", &ctx).unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_render_string_missing_var_with_filter() {
+        let ctx = RenderContext::new();
+
+        // Missing variable with filter returns original placeholder
+        let result = render_string("{{missing | slugify}}", &ctx).unwrap();
+        assert_eq!(result, "{{missing | slugify}}");
+    }
+
+    #[test]
+    fn test_date_format_not_parsed_as_filter() {
+        let ctx = RenderContext::new();
+
+        // Date expressions with format should still work
+        let result = render_string("{{today | %Y-%m-%d}}", &ctx).unwrap();
+        // Should be a date, not "today" with filter "%Y-%m-%d"
+        assert!(result.contains('-'));
+        assert!(!result.contains("today"));
+    }
 }

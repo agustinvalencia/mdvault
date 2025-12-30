@@ -130,6 +130,41 @@ The context table can contain:
 | `nil` | Empty string |
 | `table`/`function` | Error |
 
+#### Filters
+
+Template expressions support filters using pipe syntax:
+
+```lua
+-- slugify: convert to URL-friendly slug
+mdv.render("{{title | slugify}}", { title = "My New Task!" })
+-- "my-new-task"
+
+-- lowercase/lower: convert to lowercase
+mdv.render("{{name | lowercase}}", { name = "HELLO" })
+-- "hello"
+
+-- uppercase/upper: convert to uppercase
+mdv.render("{{name | upper}}", { name = "hello" })
+-- "HELLO"
+
+-- trim: remove leading/trailing whitespace
+mdv.render("{{text | trim}}", { text = "  hello  " })
+-- "hello"
+```
+
+Filters are commonly used in template frontmatter for output paths:
+
+```yaml
+---
+output: "tasks/{{title | slugify}}.md"
+vars:
+  title:
+    prompt: "Task title"
+---
+```
+
+This creates files like `tasks/my-new-task.md` from titles like "My New Task!".
+
 ### `mdv.is_date_expr(str)`
 
 Check if a string is a valid date expression.
