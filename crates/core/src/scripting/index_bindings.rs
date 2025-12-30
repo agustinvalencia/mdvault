@@ -95,7 +95,7 @@ fn create_backlinks_fn(lua: &Lua) -> LuaResult<Function> {
             None => {
                 return Err(mlua::Error::runtime(
                     "Index database not available. Run 'mdv reindex' first.",
-                ))
+                ));
             }
         };
 
@@ -129,7 +129,8 @@ fn create_backlinks_fn(lua: &Lua) -> LuaResult<Function> {
 
             // Get source note path
             if let Ok(Some(source_note)) = db.get_note_by_id(link.source_id) {
-                link_table.set("source_path", source_note.path.to_string_lossy().to_string())?;
+                link_table
+                    .set("source_path", source_note.path.to_string_lossy().to_string())?;
                 link_table.set("source_title", source_note.title)?;
                 link_table.set("source_type", source_note.note_type.as_str())?;
             }
@@ -172,7 +173,7 @@ fn create_outlinks_fn(lua: &Lua) -> LuaResult<Function> {
             None => {
                 return Err(mlua::Error::runtime(
                     "Index database not available. Run 'mdv reindex' first.",
-                ))
+                ));
             }
         };
 
@@ -258,7 +259,7 @@ fn create_query_fn(lua: &Lua) -> LuaResult<Function> {
             None => {
                 return Err(mlua::Error::runtime(
                     "Index database not available. Run 'mdv reindex' first.",
-                ))
+                ));
             }
         };
 
@@ -385,8 +386,8 @@ mod tests {
         let yaml = json_to_yaml(&json);
 
         if let serde_yaml::Value::Mapping(map) = yaml {
-            assert!(map.contains_key(&serde_yaml::Value::String("string".into())));
-            assert!(map.contains_key(&serde_yaml::Value::String("number".into())));
+            assert!(map.contains_key(serde_yaml::Value::String("string".into())));
+            assert!(map.contains_key(serde_yaml::Value::String("number".into())));
         } else {
             panic!("Expected mapping");
         }

@@ -63,7 +63,7 @@ pub mod vault_bindings;
 pub mod vault_context;
 
 pub use engine::LuaEngine;
-pub use hook_runner::{run_on_create_hook, run_on_update_hook, UpdateHookResult};
+pub use hook_runner::{UpdateHookResult, run_on_create_hook, run_on_update_hook};
 pub use hooks::{HookError, NoteContext};
 pub use types::{SandboxConfig, ScriptingError};
 pub use vault_context::{CurrentNote, VaultContext};

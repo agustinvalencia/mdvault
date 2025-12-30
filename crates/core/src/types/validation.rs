@@ -453,7 +453,11 @@ pub fn check_link_integrity(db: &IndexDb, note_path: &Path) -> LinkIntegrityResu
 ///
 /// This is a convenience function that checks link integrity and adds
 /// any broken links as warnings to the validation result.
-pub fn add_link_integrity_warnings(result: &mut ValidationResult, db: &IndexDb, note_path: &Path) {
+pub fn add_link_integrity_warnings(
+    result: &mut ValidationResult,
+    db: &IndexDb,
+    note_path: &Path,
+) {
     let integrity = check_link_integrity(db, note_path);
 
     for broken in integrity.broken_details {

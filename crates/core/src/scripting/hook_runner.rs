@@ -141,7 +141,11 @@ pub fn run_on_update_hook(
 ) -> Result<UpdateHookResult, HookError> {
     // Skip if no hook defined
     if !typedef.has_on_update_hook {
-        return Ok(UpdateHookResult { modified: false, frontmatter: None, content: None });
+        return Ok(UpdateHookResult {
+            modified: false,
+            frontmatter: None,
+            content: None,
+        });
     }
 
     // Create engine with vault context
@@ -226,7 +230,8 @@ fn lua_table_to_yaml(table: &mlua::Table) -> Result<serde_yaml::Value, HookError
 
         let yaml_key = match key {
             mlua::Value::String(s) => {
-                let str_val = s.to_str().map_err(|e| HookError::LuaError(e.to_string()))?;
+                let str_val =
+                    s.to_str().map_err(|e| HookError::LuaError(e.to_string()))?;
                 serde_yaml::Value::String(str_val.to_string())
             }
             mlua::Value::Integer(i) => serde_yaml::Value::Number(i.into()),
@@ -246,9 +251,9 @@ fn lua_value_to_yaml(value: mlua::Value) -> Result<serde_yaml::Value, HookError>
         mlua::Value::Nil => Ok(serde_yaml::Value::Null),
         mlua::Value::Boolean(b) => Ok(serde_yaml::Value::Bool(b)),
         mlua::Value::Integer(i) => Ok(serde_yaml::Value::Number(i.into())),
-        mlua::Value::Number(n) => Ok(serde_yaml::Value::Number(
-            serde_yaml::Number::from(n),
-        )),
+        mlua::Value::Number(n) => {
+            Ok(serde_yaml::Value::Number(serde_yaml::Number::from(n)))
+        }
         mlua::Value::String(s) => {
             let str_val = s.to_str().map_err(|e| HookError::LuaError(e.to_string()))?;
             Ok(serde_yaml::Value::String(str_val.to_string()))
