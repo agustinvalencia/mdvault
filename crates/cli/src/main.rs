@@ -136,16 +136,29 @@ pub struct MacroArgs {
 }
 
 #[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv new task \"My Task\" --var project=myproject
+  mdv new --template daily
+  mdv new project \"New Project\" --var status=active -o projects/new.md
+")]
 pub struct NewArgs {
-    /// Logical template name (e.g. "daily" or "blog/post")
-    #[arg(long)]
-    pub template: String,
+    /// Note type for scaffolding (e.g., \"task\", \"project\", \"zettel\")
+    /// Creates a note with frontmatter based on the type's schema
+    pub note_type: Option<String>,
 
-    /// Output file path to create (optional if template defines output in frontmatter)
+    /// Note title (used in frontmatter and as heading)
+    pub title: Option<String>,
+
+    /// Use a template file instead of type-based scaffolding
     #[arg(long)]
+    pub template: Option<String>,
+
+    /// Output file path (auto-generated from type/title if not provided)
+    #[arg(long, short)]
     pub output: Option<PathBuf>,
 
-    /// Variables to pass to the template (e.g. --var title="My Note")
+    /// Variables/fields to set (e.g. --var project=myproject)
     #[arg(long = "var", value_parser = parse_key_val)]
     pub vars: Vec<(String, String)>,
 
@@ -331,14 +344,7 @@ fn main() {
             cmd::list_templates::run(cli.config.as_deref(), cli.profile.as_deref())
         }
         Some(Commands::New(args)) => {
-            cmd::new::run(
-                cli.config.as_deref(),
-                cli.profile.as_deref(),
-                &args.template,
-                args.output.as_deref(),
-                &args.vars,
-                args.batch,
-            );
+            cmd::new::run(cli.config.as_deref(), cli.profile.as_deref(), args);
         }
         Some(Commands::Capture(args)) => {
             if args.list {

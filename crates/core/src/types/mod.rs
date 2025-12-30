@@ -33,6 +33,7 @@ pub mod definition;
 pub mod discovery;
 pub mod errors;
 pub mod registry;
+pub mod scaffolding;
 pub mod schema;
 pub mod validation;
 
@@ -41,5 +42,8 @@ pub use definition::{TypeDefinition, TypedefInfo};
 pub use discovery::TypedefRepository;
 pub use errors::{TypedefError, ValidationError, ValidationResult};
 pub use registry::TypeRegistry;
+pub use scaffolding::{
+    default_output_path, generate_scaffolding, get_missing_required_fields,
+};
 pub use schema::{FieldSchema, FieldType};
 pub use validation::validate_note;

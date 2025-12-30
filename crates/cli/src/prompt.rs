@@ -218,6 +218,53 @@ fn dialoguer_error_to_prompt_error(e: dialoguer::Error) -> PromptError {
     }
 }
 
+/// Prompt for a single field value.
+///
+/// This is a simpler interface for prompting for individual fields,
+/// used by type-based scaffolding to collect missing required fields.
+///
+/// # Arguments
+/// * `field` - The field name (used in error messages)
+/// * `prompt` - The prompt text to display
+/// * `enum_hint` - Optional hint for enum values (e.g., "low/medium/high")
+/// * `required` - Whether the field is required
+///
+/// # Returns
+/// The user's input, or an error if cancelled or required field empty.
+pub fn prompt_for_field(
+    field: &str,
+    prompt: &str,
+    enum_hint: Option<&str>,
+    required: bool,
+) -> Result<String, PromptError> {
+    let is_interactive = io::stdin().is_terminal();
+
+    if !is_interactive {
+        return Err(PromptError::MissingRequired(field.to_string()));
+    }
+
+    let theme = ColorfulTheme::default();
+
+    // Build prompt with enum hint if provided
+    let prompt_text = if let Some(hint) = enum_hint {
+        format!("{} [{}]", prompt, hint)
+    } else {
+        prompt.to_string()
+    };
+
+    let input: String = Input::with_theme(&theme)
+        .with_prompt(&prompt_text)
+        .allow_empty(!required)
+        .interact_text()
+        .map_err(dialoguer_error_to_prompt_error)?;
+
+    if required && input.is_empty() {
+        return Err(PromptError::MissingRequired(field.to_string()));
+    }
+
+    Ok(input)
+}
+
 /// Parse --var arguments into a HashMap.
 ///
 /// Expected format: `key=value`

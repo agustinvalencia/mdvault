@@ -1,4 +1,5 @@
-use crate::prompt::{collect_variables, PromptOptions};
+use crate::prompt::{collect_variables, prompt_for_field, PromptOptions};
+use crate::NewArgs;
 use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
@@ -10,19 +11,15 @@ use mdvault_core::templates::engine::{
     build_minimal_context, render, resolve_template_output_path,
 };
 use mdvault_core::templates::repository::{TemplateRepoError, TemplateRepository};
-use mdvault_core::types::{TypeRegistry, TypedefRepository};
+use mdvault_core::types::{
+    default_output_path, generate_scaffolding, get_missing_required_fields, TypeRegistry,
+    TypedefRepository,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-pub fn run(
-    config: Option<&Path>,
-    profile: Option<&str>,
-    template_name: &str,
-    output: Option<&Path>,
-    vars: &[(String, String)],
-    batch: bool,
-) {
+pub fn run(config: Option<&Path>, profile: Option<&str>, args: NewArgs) {
     let cfg = match ConfigLoader::load(config, profile) {
         Ok(rc) => rc,
         Err(e) => {
@@ -35,6 +32,23 @@ pub fn run(
         }
     };
 
+    // Decide between template mode and type-based scaffolding
+    if let Some(ref template_name) = args.template {
+        // Template mode (existing behavior)
+        run_template_mode(&cfg, template_name, &args);
+    } else if let Some(ref type_name) = args.note_type {
+        // Type-based scaffolding mode
+        run_scaffolding_mode(&cfg, type_name, &args);
+    } else {
+        eprintln!("Error: either provide a type name or use --template");
+        eprintln!("Usage: mdv new <type> [title] [--var field=value]");
+        eprintln!("       mdv new --template <name> [--var key=value]");
+        std::process::exit(1);
+    }
+}
+
+/// Run template-based note creation (existing behavior).
+fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) {
     let repo = match TemplateRepository::new(&cfg.templates_dir) {
         Ok(r) => r,
         Err(e) => {
@@ -65,14 +79,19 @@ pub fn run(
     };
 
     // Convert provided vars to HashMap
-    let provided_vars: HashMap<String, String> = vars.iter().cloned().collect();
+    let mut provided_vars: HashMap<String, String> = args.vars.iter().cloned().collect();
+
+    // If title was provided as positional arg, add it to vars
+    if let Some(ref title) = args.title {
+        provided_vars.entry("title".to_string()).or_insert(title.clone());
+    }
 
     // Build minimal context for variable resolution
-    let minimal_ctx = build_minimal_context(&cfg, &info);
+    let minimal_ctx = build_minimal_context(cfg, &info);
 
     // Collect variables (prompt for missing ones if interactive)
     let vars_map = loaded.frontmatter.as_ref().and_then(|fm| fm.vars.as_ref());
-    let prompt_options = PromptOptions { batch_mode: batch };
+    let prompt_options = PromptOptions { batch_mode: args.batch };
 
     let collected = match collect_variables(
         vars_map,
@@ -95,11 +114,11 @@ pub fn run(
     }
 
     // Resolve output path: CLI arg takes precedence, then frontmatter
-    let output_path = if let Some(out) = output {
-        out.to_path_buf()
+    let output_path = if let Some(ref out) = args.output {
+        out.clone()
     } else {
         // Try to get from template frontmatter
-        match resolve_template_output_path(&loaded, &cfg, &ctx) {
+        match resolve_template_output_path(&loaded, cfg, &ctx) {
             Ok(Some(path)) => path,
             Ok(None) => {
                 eprintln!(
@@ -159,8 +178,7 @@ pub fn run(
     }
 
     // Execute on_create hook if type definition exists
-    if let Err(e) = run_on_create_hook_if_exists(&cfg, &repo, &output_path, &rendered) {
-        // Log warning but don't fail - hooks are best-effort
+    if let Err(e) = run_on_create_hook_if_exists(cfg, &output_path, &rendered) {
         eprintln!("Warning: on_create hook failed: {e}");
     }
 
@@ -169,12 +187,165 @@ pub fn run(
     println!("output:   {}", output_path.display());
 }
 
+/// Run type-based scaffolding mode.
+fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
+    // Load type registry
+    let typedef_repo = match TypedefRepository::new(&cfg.typedefs_dir) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to load type definitions: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let type_registry = match TypeRegistry::from_repository(&typedef_repo) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to build type registry: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    // Check if type is known
+    if !type_registry.is_known_type(type_name) {
+        eprintln!("Unknown type: {type_name}");
+        eprintln!("Available types:");
+        for t in type_registry.list_all_types() {
+            eprintln!("  {t}");
+        }
+        std::process::exit(1);
+    }
+
+    // Get type definition (may be None for built-in types without Lua override)
+    let typedef = type_registry.get(type_name);
+
+    // Check if there's a matching template
+    let template_repo = TemplateRepository::new(&cfg.templates_dir).ok();
+    let has_template = template_repo
+        .as_ref()
+        .and_then(|repo| repo.get_by_name(type_name).ok())
+        .is_some();
+
+    // If there's a matching template, use template mode instead
+    if has_template {
+        run_template_mode(cfg, type_name, args);
+        return;
+    }
+
+    // Get title (required for scaffolding)
+    let title = match &args.title {
+        Some(t) => t.clone(),
+        None => {
+            if args.batch {
+                eprintln!("Error: title is required in batch mode");
+                eprintln!("Usage: mdv new {type_name} \"Title\"");
+                std::process::exit(1);
+            }
+            // Prompt for title
+            match prompt_for_field("title", "Note title", None, true) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+    };
+
+    // Collect vars from command line
+    let mut vars: HashMap<String, String> = args.vars.iter().cloned().collect();
+
+    // Prompt for missing required fields
+    if let Some(ref td) = typedef {
+        let missing = get_missing_required_fields(td, &vars);
+
+        if !missing.is_empty() {
+            if args.batch {
+                eprintln!("Error: missing required fields:");
+                for (field, schema) in &missing {
+                    let type_hint = schema
+                        .field_type
+                        .map(|t| t.to_string())
+                        .unwrap_or_else(|| "string".to_string());
+                    eprintln!("  {} ({})", field, type_hint);
+                }
+                std::process::exit(1);
+            }
+
+            // Prompt for each missing field
+            for (field, schema) in missing {
+                let type_hint = schema
+                    .field_type
+                    .map(|t| t.to_string())
+                    .unwrap_or_else(|| "string".to_string());
+
+                let prompt = if let Some(ref desc) = schema.description {
+                    format!("{} ({})", desc, type_hint)
+                } else {
+                    format!("{} ({})", field, type_hint)
+                };
+
+                // For enums, show available values
+                let enum_hint = schema.enum_values.as_ref().map(|v| v.join("/"));
+
+                match prompt_for_field(field, &prompt, enum_hint.as_deref(), true) {
+                    Ok(value) => {
+                        vars.insert(field.clone(), value);
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+        }
+    }
+
+    // Generate output path
+    let output_path = if let Some(ref out) = args.output {
+        out.clone()
+    } else {
+        let rel_path = default_output_path(type_name, &title);
+        cfg.vault_root.join(rel_path)
+    };
+
+    if output_path.exists() {
+        eprintln!("Refusing to overwrite existing file: {}", output_path.display());
+        std::process::exit(1);
+    }
+
+    // Generate scaffolding content
+    let content = generate_scaffolding(type_name, typedef.as_deref(), &title, &vars);
+
+    // Create parent directories
+    if let Some(parent) = output_path.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            eprintln!("Failed to create parent directory {}: {e}", parent.display());
+            std::process::exit(1);
+        }
+    }
+
+    // Write file
+    if let Err(e) = fs::write(&output_path, &content) {
+        eprintln!("Failed to write output file {}: {e}", output_path.display());
+        std::process::exit(1);
+    }
+
+    // Execute on_create hook if defined
+    if let Err(e) = run_on_create_hook_if_exists(cfg, &output_path, &content) {
+        eprintln!("Warning: on_create hook failed: {e}");
+    }
+
+    println!("OK   mdv new");
+    println!("type:   {}", type_name);
+    println!("output: {}", output_path.display());
+}
+
 /// Extract note type from rendered content's frontmatter.
 fn extract_note_type(content: &str) -> Option<String> {
     let parsed = parse_frontmatter(content).ok()?;
     let fm = parsed.frontmatter?;
 
-    // Frontmatter has fields: HashMap<String, Value>
     if let Some(serde_yaml::Value::String(t)) = fm.fields.get("type") {
         return Some(t.clone());
     }
@@ -184,7 +355,6 @@ fn extract_note_type(content: &str) -> Option<String> {
 /// Run on_create hook if the note type has one defined.
 fn run_on_create_hook_if_exists(
     cfg: &ResolvedConfig,
-    _template_repo: &TemplateRepository,
     output_path: &Path,
     content: &str,
 ) -> Result<(), String> {
@@ -206,7 +376,7 @@ fn run_on_create_hook_if_exists(
         _ => return Ok(()), // No hook defined
     };
 
-    // Load all repositories for VaultContext (create fresh instances)
+    // Load all repositories for VaultContext
     let template_repo =
         TemplateRepository::new(&cfg.templates_dir).map_err(|e| e.to_string())?;
     let capture_repo =
