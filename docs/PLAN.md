@@ -84,16 +84,20 @@ The existing codebase provides:
   - [x] List item count (min/max)
   - [x] Custom validate() hooks in Lua
   - [ ] Link integrity (target exists)
-- [ ] Linting system
-  - [ ] `mdv lint` — report issues (validate covers most of this)
-  - [ ] `mdv lint --fix` — auto-fix safe issues
-  - [ ] Severity levels (error, warning, info)
-- [ ] Note scaffolding
-  - [ ] Type-aware templates
-  - [ ] Auto-populate required fields
-  - [ ] Link to daily note on creation
-- [ ] Hook integration
-  - [ ] Call on_create() during template rendering
+- [x] Linting system
+  - [x] `mdv lint` — alias for validate
+  - [x] `mdv validate --fix` — auto-fix safe issues (missing defaults, enum case)
+  - [x] Per-file validation (`mdv validate path/to/note.md`)
+  - [x] Severity levels (errors vs warnings in output)
+- [x] Note scaffolding
+  - [x] Type-aware creation (`mdv new task "Title"`)
+  - [x] Auto-populate required fields from schema defaults
+  - [x] Auto-generate output paths (`tasks/my-title.md`)
+  - [x] Template filters (`{{title | slugify}}`)
+  - [ ] Link to daily note on creation (via on_create hook)
+- [x] Hook integration
+  - [x] Call on_create() during `mdv new`
+  - [x] Vault operations in hooks (`mdv.template()`, `mdv.capture()`, `mdv.macro()`)
   - [ ] Call on_update() during capture operations
 
 ### Phase 3: Search and Retrieval
