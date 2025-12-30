@@ -331,6 +331,10 @@ pub struct ValidateArgs {
     /// Quiet mode - output paths only (shorthand for --output quiet)
     #[arg(long, short)]
     pub quiet: bool,
+
+    /// Check link integrity (report broken links as warnings)
+    #[arg(long)]
+    pub check_links: bool,
 }
 
 fn parse_key_val(s: &str) -> Result<(String, String), String> {

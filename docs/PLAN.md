@@ -61,10 +61,10 @@ The existing codebase provides:
   - [x] Lifecycle hooks (on_create, on_update) - stored, ready for integration
   - [x] TypeRegistry for built-in + custom types
   - [x] `mdv validate` CLI command
-- [ ] Vault context bindings
-  - [ ] Expose `mdv.current_note()`
-  - [ ] Expose `mdv.backlinks()`, `mdv.outlinks()`
-  - [ ] Expose `mdv.query()` for index queries
+- [x] Vault context bindings
+  - [x] Expose `mdv.current_note()`
+  - [x] Expose `mdv.backlinks()`, `mdv.outlinks()`
+  - [x] Expose `mdv.query()` for index queries
 
 ### Phase 2: Structure Enforcement
 
@@ -83,7 +83,7 @@ The existing codebase provides:
   - [x] String length and pattern (regex)
   - [x] List item count (min/max)
   - [x] Custom validate() hooks in Lua
-  - [ ] Link integrity (target exists)
+  - [x] Link integrity (target exists) - via `--check-links` flag
 - [x] Linting system
   - [x] `mdv lint` — alias for validate
   - [x] `mdv validate --fix` — auto-fix safe issues (missing defaults, enum case)
@@ -98,7 +98,7 @@ The existing codebase provides:
 - [x] Hook integration
   - [x] Call on_create() during `mdv new`
   - [x] Vault operations in hooks (`mdv.template()`, `mdv.capture()`, `mdv.macro()`)
-  - [ ] Call on_update() during capture operations
+  - [x] Call on_update() during capture operations
 
 ### Phase 3: Search and Retrieval
 

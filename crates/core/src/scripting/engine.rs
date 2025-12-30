@@ -6,6 +6,7 @@
 use mlua::{Lua, Result as LuaResult, StdLib, Value};
 
 use super::bindings::register_mdv_table;
+use super::index_bindings::register_index_bindings;
 use super::types::{SandboxConfig, ScriptingError};
 use super::vault_bindings::register_vault_bindings;
 use super::vault_context::VaultContext;
@@ -63,7 +64,7 @@ impl LuaEngine {
     /// Create a new Lua engine with vault context for hook execution.
     ///
     /// This provides access to `mdv.template()`, `mdv.capture()`, `mdv.macro()`
-    /// in addition to the standard sandboxed bindings.
+    /// and index query functions in addition to the standard sandboxed bindings.
     ///
     /// # Example
     ///
@@ -76,6 +77,11 @@ impl LuaEngine {
     /// // Now Lua scripts can use vault operations
     /// engine.eval_string(r#"
     ///     local ok, err = mdv.capture("log-to-daily", { text = "Hello" })
+    /// "#)?;
+    ///
+    /// // And query the index (if available)
+    /// engine.eval_string(r#"
+    ///     local tasks = mdv.query({ type = "task" })
     /// "#)?;
     /// ```
     pub fn with_vault_context(
@@ -99,6 +105,9 @@ impl LuaEngine {
 
         // Register vault operation bindings
         register_vault_bindings(&lua, vault_ctx)?;
+
+        // Register index query bindings (uses VaultContext from app_data)
+        register_index_bindings(&lua)?;
 
         Ok(Self { lua, config })
     }

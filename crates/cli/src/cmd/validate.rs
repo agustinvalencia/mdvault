@@ -6,8 +6,8 @@ use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::index::IndexDb;
 use mdvault_core::types::{
-    apply_fixes, try_fix_note, validate_note, TypeRegistry, TypedefRepository,
-    ValidationResult,
+    add_link_integrity_warnings, apply_fixes, try_fix_note, validate_note, TypeRegistry,
+    TypedefRepository, ValidationResult,
 };
 
 use crate::{OutputFormat, ValidateArgs};
@@ -45,6 +45,32 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
         return;
     }
 
+    // Open index database if needed (for querying notes or link checking)
+    let index_path = rc.vault_root.join(".mdvault/index.db");
+    let index_db: Option<IndexDb> = if args.path.is_none() || args.check_links {
+        match IndexDb::open(&index_path) {
+            Ok(db) => Some(db),
+            Err(e) => {
+                if args.path.is_none() {
+                    // Index is required for index-based mode
+                    eprintln!("Error opening index: {}", e);
+                    eprintln!("Hint: Run 'mdv reindex' to build the index first.");
+                    std::process::exit(1);
+                } else if args.check_links {
+                    // Index is optional for single-file mode with link checking
+                    eprintln!(
+                        "Warning: Cannot check links - index not available. Run 'mdv reindex' first."
+                    );
+                    None
+                } else {
+                    None
+                }
+            }
+        }
+    } else {
+        None
+    };
+
     // Check if we're validating a specific file or using the index
     let notes_to_validate = if let Some(ref path) = args.path {
         // Single file mode
@@ -70,18 +96,16 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
         // Extract note type from frontmatter
         let note_type = extract_note_type(&content);
 
-        vec![NoteInfo { path: full_path, note_type, content }]
+        // Compute relative path for link checking
+        let relative_path = full_path
+            .strip_prefix(&rc.vault_root)
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|_| full_path.clone());
+
+        vec![NoteInfo { path: full_path, relative_path, note_type, content }]
     } else {
-        // Index-based mode
-        let index_path = rc.vault_root.join(".mdvault/index.db");
-        let db = match IndexDb::open(&index_path) {
-            Ok(db) => db,
-            Err(e) => {
-                eprintln!("Error opening index: {}", e);
-                eprintln!("Hint: Run 'mdv reindex' to build the index first.");
-                std::process::exit(1);
-            }
-        };
+        // Index-based mode - index_db is guaranteed to be Some here
+        let db = index_db.as_ref().unwrap();
 
         // Query notes to validate
         let query = mdvault_core::index::NoteQuery {
@@ -109,6 +133,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
                 let content = std::fs::read_to_string(&full_path).unwrap_or_default();
                 NoteInfo {
                     path: full_path,
+                    relative_path: n.path,
                     note_type: n.note_type.as_str().to_string(),
                     content,
                 }
@@ -134,12 +159,6 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
         total += 1;
         let note_type = &note.note_type;
 
-        // Skip notes without type definitions (unless we have a custom type for them)
-        if !registry.has_definition(note_type) && note_type == "none" {
-            valid_count += 1;
-            continue;
-        }
-
         // Parse frontmatter
         let frontmatter: serde_yaml::Value = parse_frontmatter(&note.content)
             .ok()
@@ -153,18 +172,38 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
             })
             .unwrap_or(serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
 
-        let result = validate_note(
-            &registry,
-            note_type,
-            &note.path.to_string_lossy(),
-            &frontmatter,
-            &note.content,
-        );
-
-        if result.valid {
-            valid_count += 1;
+        // Run type-based validation (skip for untyped notes without custom definitions)
+        let mut result = if !registry.has_definition(note_type) && note_type == "none" {
+            ValidationResult::default()
         } else {
-            // Try to fix if --fix is set
+            validate_note(
+                &registry,
+                note_type,
+                &note.path.to_string_lossy(),
+                &frontmatter,
+                &note.content,
+            )
+        };
+
+        // Check link integrity if requested and index is available
+        if args.check_links {
+            if let Some(ref db) = index_db {
+                add_link_integrity_warnings(&mut result, db, &note.relative_path);
+            }
+        }
+
+        // Determine if note is valid (errors only, warnings don't count)
+        let has_errors = !result.errors.is_empty();
+        let has_warnings = !result.warnings.is_empty();
+
+        if !has_errors && !has_warnings {
+            valid_count += 1;
+        } else if !has_errors {
+            // Only warnings, still valid but add to results for display
+            valid_count += 1;
+            results.push((note.path.clone(), note_type.clone(), result, None));
+        } else {
+            // Has errors - try to fix if --fix is set
             let fixes = if args.fix {
                 let fix_result =
                     try_fix_note(&registry, note_type, &note.content, &result.errors);
@@ -229,6 +268,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
 /// Information about a note to validate.
 struct NoteInfo {
     path: std::path::PathBuf,
+    relative_path: std::path::PathBuf,
     note_type: String,
     content: String,
 }

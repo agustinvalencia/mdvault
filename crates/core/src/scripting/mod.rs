@@ -39,6 +39,10 @@
 //! - `mdv.template(name, vars?)` - Render a template by name
 //! - `mdv.capture(name, vars?)` - Execute a capture workflow
 //! - `mdv.macro(name, vars?)` - Execute a macro workflow
+//! - `mdv.current_note()` - Get the current note being processed
+//! - `mdv.backlinks(path)` - Get notes linking to a path
+//! - `mdv.outlinks(path)` - Get notes a path links to
+//! - `mdv.query(opts)` - Query the vault index
 //!
 //! # Security
 //!
@@ -53,12 +57,13 @@ pub mod bindings;
 pub mod engine;
 pub mod hook_runner;
 pub mod hooks;
+pub mod index_bindings;
 pub mod types;
 pub mod vault_bindings;
 pub mod vault_context;
 
 pub use engine::LuaEngine;
-pub use hook_runner::run_on_create_hook;
+pub use hook_runner::{run_on_create_hook, run_on_update_hook, UpdateHookResult};
 pub use hooks::{HookError, NoteContext};
 pub use types::{SandboxConfig, ScriptingError};
-pub use vault_context::VaultContext;
+pub use vault_context::{CurrentNote, VaultContext};

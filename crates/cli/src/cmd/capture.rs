@@ -1,14 +1,19 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::prompt::{collect_variables, PromptOptions};
 use mdvault_core::captures::{CaptureRepoError, CaptureRepository, CaptureSpec};
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::{apply_ops, parse, serialize};
+use mdvault_core::macros::MacroRepository;
 use mdvault_core::markdown_ast::{MarkdownAstError, MarkdownEditor, SectionMatch};
+use mdvault_core::scripting::{run_on_update_hook, NoteContext, VaultContext};
 use mdvault_core::templates::engine::render_string as engine_render_string;
+use mdvault_core::templates::repository::TemplateRepository;
+use mdvault_core::types::{TypeRegistry, TypedefRepository};
 
 use chrono::Local;
 use regex::Regex;
@@ -232,6 +237,9 @@ pub fn run(
         std::process::exit(1);
     }
 
+    // 9. Run on_update hook if defined for this note type
+    run_on_update_hook_if_needed(&cfg, &target_file, &result_content);
+
     println!("OK   mdv capture");
     println!("capture: {}", capture_name);
     println!("target:  {}", target_file.display());
@@ -240,6 +248,129 @@ pub fn run(
     }
     if loaded.spec.frontmatter.is_some() {
         println!("frontmatter: modified");
+    }
+}
+
+/// Run on_update hook for the target note if its type has one defined.
+fn run_on_update_hook_if_needed(cfg: &ResolvedConfig, target_file: &Path, content: &str) {
+    // Parse frontmatter to get note type
+    let parsed = match parse(content) {
+        Ok(p) => p,
+        Err(_) => return, // Can't parse, skip hook
+    };
+
+    // Get note type from frontmatter
+    let note_type = parsed
+        .frontmatter
+        .as_ref()
+        .and_then(|fm| fm.fields.get("type"))
+        .and_then(|v| match v {
+            serde_yaml::Value::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .unwrap_or("none");
+
+    // Skip if no type or "none" type
+    if note_type == "none" {
+        return;
+    }
+
+    // Load type definitions
+    let typedef_repo = match TypedefRepository::new(&cfg.typedefs_dir) {
+        Ok(r) => r,
+        Err(_) => return, // Can't load types, skip hook
+    };
+
+    let registry = match TypeRegistry::from_repository(&typedef_repo) {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+
+    // Get type definition
+    let typedef = match registry.get(note_type) {
+        Some(td) => td,
+        None => return, // No definition for this type
+    };
+
+    // Skip if no on_update hook
+    if !typedef.has_on_update_hook {
+        return;
+    }
+
+    // Build note context
+    let frontmatter = parsed
+        .frontmatter
+        .as_ref()
+        .map(|fm| {
+            let mut map = serde_yaml::Mapping::new();
+            for (k, v) in &fm.fields {
+                map.insert(serde_yaml::Value::String(k.clone()), v.clone());
+            }
+            serde_yaml::Value::Mapping(map)
+        })
+        .unwrap_or(serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
+
+    let note_ctx = NoteContext {
+        path: target_file.to_path_buf(),
+        note_type: note_type.to_string(),
+        frontmatter,
+        content: content.to_string(),
+    };
+
+    // Build vault context (with repositories for vault operations)
+    // Note: We don't need full repositories for the hook - we just need the registry
+    // Use ok() to convert Result to Option and skip if loading fails
+    let capture_repo = CaptureRepository::new(&cfg.captures_dir).ok();
+    let template_repo = TemplateRepository::new(&cfg.templates_dir).ok();
+    let macro_repo = MacroRepository::new(&cfg.macros_dir).ok();
+
+    // If any required repository is missing, skip the hook
+    let (capture_repo, template_repo, macro_repo) =
+        match (capture_repo, template_repo, macro_repo) {
+            (Some(c), Some(t), Some(m)) => (c, t, m),
+            _ => return, // Can't create vault context without all repos
+        };
+
+    let vault_ctx = VaultContext::from_arcs(
+        Arc::new(cfg.clone()),
+        Arc::new(template_repo),
+        Arc::new(capture_repo),
+        Arc::new(macro_repo),
+        Arc::new(registry),
+    );
+
+    // Run the hook
+    match run_on_update_hook(&typedef, &note_ctx, vault_ctx) {
+        Ok(result) => {
+            if result.modified {
+                // Build updated document
+                let mut updated_parsed = parsed;
+
+                if let Some(serde_yaml::Value::Mapping(map)) = result.frontmatter {
+                    let mut fields = HashMap::new();
+                    for (k, v) in map {
+                        if let serde_yaml::Value::String(key) = k {
+                            fields.insert(key, v);
+                        }
+                    }
+                    updated_parsed.frontmatter =
+                        Some(mdvault_core::frontmatter::Frontmatter { fields });
+                }
+
+                if let Some(new_content) = result.content {
+                    updated_parsed.body = new_content;
+                }
+
+                // Write back
+                let final_content = serialize(&updated_parsed);
+                if let Err(e) = fs::write(target_file, &final_content) {
+                    eprintln!("Warning: Failed to apply on_update hook changes: {e}");
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: on_update hook failed: {e}");
+        }
     }
 }
 

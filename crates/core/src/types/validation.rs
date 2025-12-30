@@ -1,11 +1,14 @@
 //! Note validation against type definitions.
 
+use std::path::Path;
+
 use regex::Regex;
 
 use super::definition::TypeDefinition;
 use super::errors::{ValidationError, ValidationResult};
 use super::registry::TypeRegistry;
 use super::schema::{FieldSchema, FieldType};
+use crate::index::IndexDb;
 use crate::scripting::LuaEngine;
 
 /// Validate a note's frontmatter against its type definition.
@@ -368,6 +371,104 @@ pub fn yaml_to_lua_table(
             Ok(mlua::Value::Table(table))
         }
         serde_yaml::Value::Tagged(tagged) => yaml_to_lua_table(lua, &tagged.value),
+    }
+}
+
+/// Result of link integrity check.
+#[derive(Debug, Clone, Default)]
+pub struct LinkIntegrityResult {
+    /// Total number of outgoing links checked.
+    pub total_links: usize,
+    /// Number of broken links (unresolved targets).
+    pub broken_links: usize,
+    /// List of broken link details: (target_path, link_text, link_type).
+    pub broken_details: Vec<BrokenLink>,
+}
+
+/// Information about a broken link.
+#[derive(Debug, Clone)]
+pub struct BrokenLink {
+    /// The target path that doesn't exist.
+    pub target_path: String,
+    /// The display text of the link (if any).
+    pub link_text: Option<String>,
+    /// The type of link (wikilink, markdown, frontmatter).
+    pub link_type: String,
+}
+
+/// Check link integrity for a note.
+///
+/// This function checks all outgoing links from a note and reports which ones
+/// point to non-existent targets. Broken links are returned as part of the result
+/// so they can be added as warnings to the validation output.
+///
+/// # Arguments
+///
+/// * `db` - The vault index database
+/// * `note_path` - Path to the note (relative to vault root)
+///
+/// # Returns
+///
+/// A `LinkIntegrityResult` containing the total links checked and any broken links found.
+pub fn check_link_integrity(db: &IndexDb, note_path: &Path) -> LinkIntegrityResult {
+    let mut result = LinkIntegrityResult::default();
+
+    // Get the note from the index
+    let note = match db.get_note_by_path(note_path) {
+        Ok(Some(n)) => n,
+        Ok(None) => return result, // Note not in index
+        Err(_) => return result,   // DB error, skip
+    };
+
+    let note_id = match note.id {
+        Some(id) => id,
+        None => return result,
+    };
+
+    // Get all outgoing links
+    let links = match db.get_outgoing_links(note_id) {
+        Ok(l) => l,
+        Err(_) => return result,
+    };
+
+    result.total_links = links.len();
+
+    // Check each link for resolution
+    for link in links {
+        if link.target_id.is_none() {
+            // This link is unresolved (broken)
+            result.broken_links += 1;
+            result.broken_details.push(BrokenLink {
+                target_path: link.target_path.clone(),
+                link_text: link.link_text.clone(),
+                link_type: link.link_type.as_str().to_string(),
+            });
+        }
+    }
+
+    result
+}
+
+/// Add link integrity warnings to a validation result.
+///
+/// This is a convenience function that checks link integrity and adds
+/// any broken links as warnings to the validation result.
+pub fn add_link_integrity_warnings(result: &mut ValidationResult, db: &IndexDb, note_path: &Path) {
+    let integrity = check_link_integrity(db, note_path);
+
+    for broken in integrity.broken_details {
+        let warning = if let Some(text) = broken.link_text {
+            format!(
+                "broken {} link '{}' -> '{}' (target does not exist)",
+                broken.link_type, text, broken.target_path
+            )
+        } else {
+            format!(
+                "broken {} link to '{}' (target does not exist)",
+                broken.link_type, broken.target_path
+            )
+        };
+        result.add_warning(warning);
     }
 }
 
