@@ -29,6 +29,7 @@
 //! }
 //! ```
 
+pub mod autofix;
 pub mod definition;
 pub mod discovery;
 pub mod errors;
@@ -38,6 +39,7 @@ pub mod schema;
 pub mod validation;
 
 // Re-export commonly used types
+pub use autofix::{FixResult, apply_fixes, try_fix_note};
 pub use definition::{TypeDefinition, TypedefInfo};
 pub use discovery::TypedefRepository;
 pub use errors::{TypedefError, ValidationError, ValidationResult};

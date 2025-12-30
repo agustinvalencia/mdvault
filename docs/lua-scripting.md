@@ -446,22 +446,97 @@ return {
 }
 ```
 
+### Creating Notes with Type Scaffolding
+
+Use `mdv new` with a type name to create notes with auto-generated frontmatter:
+
+```bash
+# Create a task with frontmatter from schema
+mdv new task "Implement feature X"
+# Creates: tasks/implement-feature-x.md
+
+# Provide field values via --var
+mdv new task "Fix bug" --var project=mdvault --var priority=high
+
+# Create a project note
+mdv new project "Network Slicing Research" --var status=planning
+
+# Specify custom output path
+mdv new task "Custom location" -o notes/custom.md
+
+# Batch mode (no prompts, fail on missing required fields)
+mdv new task "Batch task" --batch --var project=myproject
+```
+
+The generated note includes:
+- `type` field set to the type name
+- `title` field from the positional argument
+- Fields from schema with defaults or provided values
+- `created` field with current date
+- A heading matching the title
+
+Example output:
+```yaml
+---
+type: task
+title: Implement feature X
+status: open        # from schema default
+priority: medium    # from schema default
+created: 2025-12-30
+---
+
+# Implement feature X
+
+```
+
+If a template exists with the same name as the type (e.g., `task.md`), it will be used instead of scaffolding.
+
 ### Validating Notes
 
-Use the `mdv validate` command to validate notes:
+Use `mdv validate` (or `mdv lint`) to validate notes against their type schemas:
 
 ```bash
 # Validate all notes in the vault
 mdv validate
 
+# Validate a specific file
+mdv validate path/to/note.md
+
 # Validate only notes of a specific type
 mdv validate --type task
+
+# Auto-fix safe issues (missing defaults, enum case)
+mdv validate --fix
 
 # Show available type definitions
 mdv validate --list-types
 
 # JSON output for scripting
 mdv validate --json
+
+# Quiet mode (paths only)
+mdv validate -q
+```
+
+#### Auto-fix Capabilities
+
+The `--fix` flag automatically corrects:
+- **Missing required fields**: Adds fields that have default values defined in the schema
+- **Enum case normalization**: Fixes "OPEN" to "open" if the schema expects lowercase
+
+Example:
+```bash
+$ mdv validate tasks/my-task.md
+Validation Results: 0 valid, 1 with errors (of 1 total)
+
+tasks/my-task.md  [type: task]
+  - missing required field: status
+
+$ mdv validate tasks/my-task.md --fix
+Validation Results: 0 valid, 1 fixed, 0 with errors (of 1 total)
+
+tasks/my-task.md  [type: task]
+  + Added missing field 'status' with default 'open'
 ```
 
 ## Vault Operations

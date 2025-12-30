@@ -26,20 +26,22 @@ mdvault is undergoing a significant expansion. The core templating and capture s
 ### Working Now
 
 - **Templates**: Create notes from templates with variable substitution
+- **Type-Aware Scaffolding**: `mdv new task "My Task"` creates notes with schema-based frontmatter
 - **Captures**: Quick append to existing notes (daily logs, project notes)
 - **Macros**: Multi-step workflow automation
 - **Date Math**: Expressions like `{{today + 1d}}` or `{{today + monday}}`
+- **Template Filters**: `{{title | slugify}}`, `{{name | lowercase}}`, etc.
 - **TUI**: Interactive palette for templates, captures, and macros
 - **Vault Indexing**: SQLite-based index with note metadata, link graph, and incremental updates
 - **Index Queries**: List notes, find backlinks/outlinks, detect orphans via CLI
 - **Lua Scripting**: Sandboxed Lua runtime with access to date math and template engines
+- **Type System**: Lua-based type definitions with schemas, validation, and lifecycle hooks
+- **Validation**: `mdv validate` checks notes against type schemas with auto-fix support
 - **MCP Server**: Basic vault browsing and note operations
 
 ### In Development
-- User-defined type system via Lua (validation rules, required fields)
 - Contextual search (graph neighbourhood + temporal signals)
-- Structure validation and linting
-- Type-specific workflows (task, project, zettel, daily, weekly)
+- Safe note renaming with reference updates
 
 ## Installation
 
@@ -93,6 +95,7 @@ mdv
 |---------|-------------|
 | `mdv` | Launch interactive TUI |
 | `mdv doctor` | Validate configuration |
+| `mdv new <type> "Title"` | Create note with type-based scaffolding |
 | `mdv new --template <name>` | Create note from template |
 | `mdv capture <name>` | Run a capture workflow |
 | `mdv macro <name>` | Execute a multi-step macro |
@@ -101,12 +104,14 @@ mdv
 | `mdv list` | List notes with filters (type, date, limit) |
 | `mdv links <note>` | Show backlinks and outgoing links |
 | `mdv orphans` | Find notes with no incoming links |
+| `mdv validate` | Validate notes against type schemas |
+| `mdv validate --fix` | Auto-fix safe validation issues |
 
 See `mdv --help` for full options.
 
-## Vault Structure (Planned)
+## Note Types
 
-mdvault will enforce note types via frontmatter:
+mdvault enforces note types via frontmatter. Types can be customized with Lua definitions in `~/.config/mdvault/types/`:
 
 | Type | Purpose | Required Fields |
 |------|---------|-----------------|

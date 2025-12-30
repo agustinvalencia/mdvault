@@ -88,6 +88,10 @@ enum Commands {
 
     /// Validate notes against type definitions
     Validate(ValidateArgs),
+
+    /// Lint notes (alias for validate)
+    #[command(hide = true)]
+    Lint(ValidateArgs),
 }
 
 #[derive(Debug, Args)]
@@ -290,11 +294,16 @@ pub struct OrphansArgs {
 #[command(after_help = "\
 Examples:
   mdv validate                          # Validate all notes
+  mdv validate path/to/note.md          # Validate specific file
   mdv validate --type task              # Validate only task notes
+  mdv validate --fix                    # Auto-fix safe issues
   mdv validate --list-types             # Show available type definitions
   mdv validate --json                   # JSON output
 ")]
 pub struct ValidateArgs {
+    /// Specific note path to validate (relative to vault root)
+    pub path: Option<String>,
+
     /// Only validate notes of this type
     #[arg(long)]
     pub r#type: Option<String>,
@@ -302,6 +311,10 @@ pub struct ValidateArgs {
     /// Maximum number of notes to validate
     #[arg(long, short = 'n')]
     pub limit: Option<u32>,
+
+    /// Auto-fix safe issues (missing defaults, enum case normalization)
+    #[arg(long)]
+    pub fix: bool,
 
     /// List available type definitions
     #[arg(long)]
@@ -390,7 +403,7 @@ fn main() {
         Some(Commands::Orphans(args)) => {
             cmd::orphans::run(cli.config.as_deref(), cli.profile.as_deref(), args);
         }
-        Some(Commands::Validate(args)) => {
+        Some(Commands::Validate(args)) | Some(Commands::Lint(args)) => {
             cmd::validate::run(cli.config.as_deref(), cli.profile.as_deref(), args);
         }
     }
