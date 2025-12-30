@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::Path;
 
 use mdvault_core::config::loader::ConfigLoader;
-use mdvault_core::index::{IndexBuilder, IndexDb};
+use mdvault_core::index::{DerivedIndexBuilder, IndexBuilder, IndexDb};
 
 /// Run the reindex command.
 pub fn run(config: Option<&Path>, profile: Option<&str>, verbose: bool, force: bool) {
@@ -88,6 +88,40 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, verbose: bool, force: b
             println!("  Links indexed:  {}", stats.links_indexed);
             println!("  Broken links:   {}", stats.broken_links);
             println!("  Duration:       {}ms", stats.duration_ms);
+
+            // Compute derived indices
+            if verbose {
+                println!();
+                println!("Computing derived indices...");
+            }
+            let derived_builder = DerivedIndexBuilder::new(&db);
+            match derived_builder.compute_all() {
+                Ok(derived_stats) => {
+                    println!();
+                    println!("Derived indices:");
+                    println!(
+                        "  Dailies processed:    {}",
+                        derived_stats.dailies_processed
+                    );
+                    println!(
+                        "  Activity records:     {}",
+                        derived_stats.activity_records
+                    );
+                    println!(
+                        "  Activity summaries:   {}",
+                        derived_stats.summaries_computed
+                    );
+                    println!(
+                        "  Cooccurrence pairs:   {}",
+                        derived_stats.cooccurrence_pairs
+                    );
+                    println!("  Duration:             {}ms", derived_stats.duration_ms);
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to compute derived indices: {}", e);
+                }
+            }
+
             println!();
             println!("Index stored at: {}", index_path.display());
         }

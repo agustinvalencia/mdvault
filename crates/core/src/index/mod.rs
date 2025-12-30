@@ -23,13 +23,17 @@
 
 pub mod builder;
 pub mod db;
+pub mod derived;
 pub mod schema;
+pub mod search;
 pub mod types;
 
 pub use builder::{BuilderError, FileChange, IndexBuilder, IndexStats, ProgressCallback};
 pub use db::{IndexDb, IndexError};
+pub use derived::{DerivedError, DerivedIndexBuilder, DerivedStats};
 pub use schema::{SCHEMA_VERSION, SchemaError};
+pub use search::{MatchSource, SearchEngine, SearchMode, SearchQuery, SearchResult};
 pub use types::{
-    ActivitySummary, IndexedLink, IndexedNote, LinkType, NoteQuery, NoteType,
-    ProjectStatus, TaskStatus, TemporalActivity,
+    ActivitySummary, AggregateActivity, CooccurrencePair, IndexedLink, IndexedNote,
+    LinkType, NoteQuery, NoteType, ProjectStatus, TaskStatus, TemporalActivity,
 };

@@ -104,18 +104,18 @@ The existing codebase provides:
 
 **Goal**: Implement contextual search beyond keyword matching.
 
-- [ ] Derived indices
-  - [ ] `activity_summary` (last_seen, access counts, staleness score)
-  - [ ] `note_cooccurrence` (notes appearing together in dailies)
+- [x] Derived indices
+  - [x] `activity_summary` (last_seen, access counts, staleness score)
+  - [x] `note_cooccurrence` (notes appearing together in dailies)
   - [ ] `context_paths` (traversal paths between notes)
-- [ ] Search modes
-  - [ ] Direct match (notes matching query)
-  - [ ] Graph neighbourhood (linked notes within N hops)
-  - [ ] Temporal context (recent dailies referencing matches)
-  - [ ] Cooccurrence (notes that appeared together)
-- [ ] Temporal weighting
-  - [ ] Favour recently active notes
-  - [ ] Track access patterns
+- [x] Search modes
+  - [x] Direct match (notes matching query)
+  - [x] Graph neighbourhood (linked notes within N hops)
+  - [x] Temporal context (recent dailies referencing matches)
+  - [x] Cooccurrence (notes that appeared together)
+- [x] Temporal weighting
+  - [x] Favour recently active notes (`--boost` flag)
+  - [x] Track access patterns (activity_summary table)
   - [ ] Detect activity clusters
 - [ ] Type-specific behaviours
   - [ ] Tasks: parse TODO syntax, filter by status/project

@@ -92,6 +92,12 @@ enum Commands {
     /// Lint notes (alias for validate)
     #[command(hide = true)]
     Lint(ValidateArgs),
+
+    /// Search notes with contextual expansion
+    Search(SearchArgs),
+
+    /// Find stale notes (not referenced in recent dailies)
+    Stale(StaleArgs),
 }
 
 #[derive(Debug, Args)]
@@ -337,6 +343,102 @@ pub struct ValidateArgs {
     pub check_links: bool,
 }
 
+/// Search mode for result expansion.
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+pub enum SearchModeArg {
+    /// Only return notes directly matching the query
+    #[default]
+    Direct,
+    /// Include linked notes within 2 hops
+    Neighbourhood,
+    /// Include recent dailies referencing matches
+    Temporal,
+    /// Include notes that cooccur with matches
+    Cooccurrence,
+    /// Full contextual search (all modes)
+    Full,
+}
+
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv search \"parser\"                     # Direct search for 'parser'
+  mdv search \"parser\" --mode full         # Search with full context
+  mdv search \"fix bug\" --type task        # Search only task notes
+  mdv search --type task --mode full       # All tasks with context
+  mdv search \"ML\" --boost                 # Boost recently active notes
+")]
+pub struct SearchArgs {
+    /// Search query (matches title and path)
+    pub query: Option<String>,
+
+    /// Filter by note type
+    #[arg(long)]
+    pub r#type: Option<NoteTypeArg>,
+
+    /// Search mode for context expansion
+    #[arg(long, value_enum, default_value = "direct")]
+    pub mode: SearchModeArg,
+
+    /// Boost recently active notes
+    #[arg(long)]
+    pub boost: bool,
+
+    /// Maximum number of results
+    #[arg(long, short = 'n')]
+    pub limit: Option<u32>,
+
+    /// Output format
+    #[arg(long, short, value_enum, default_value = "table")]
+    pub output: OutputFormat,
+
+    /// Output as JSON (shorthand for --output json)
+    #[arg(long)]
+    pub json: bool,
+
+    /// Quiet mode - output paths only (shorthand for --output quiet)
+    #[arg(long, short)]
+    pub quiet: bool,
+}
+
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv stale                              # List all stale notes
+  mdv stale --type task                  # Only stale tasks
+  mdv stale --threshold 0.7              # Higher staleness threshold
+  mdv stale --days 90                    # Notes not seen in 90 days
+")]
+pub struct StaleArgs {
+    /// Filter by note type
+    #[arg(long)]
+    pub r#type: Option<NoteTypeArg>,
+
+    /// Minimum staleness score (0.0-1.0, default 0.5)
+    #[arg(long, default_value = "0.5")]
+    pub threshold: f64,
+
+    /// Show notes not seen for this many days (alternative to threshold)
+    #[arg(long)]
+    pub days: Option<u32>,
+
+    /// Maximum number of results
+    #[arg(long, short = 'n')]
+    pub limit: Option<u32>,
+
+    /// Output format
+    #[arg(long, short, value_enum, default_value = "table")]
+    pub output: OutputFormat,
+
+    /// Output as JSON (shorthand for --output json)
+    #[arg(long)]
+    pub json: bool,
+
+    /// Quiet mode - output paths only (shorthand for --output quiet)
+    #[arg(long, short)]
+    pub quiet: bool,
+}
+
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
     let pos =
         s.find('=').ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
@@ -409,6 +511,12 @@ fn main() {
         }
         Some(Commands::Validate(args)) | Some(Commands::Lint(args)) => {
             cmd::validate::run(cli.config.as_deref(), cli.profile.as_deref(), args);
+        }
+        Some(Commands::Search(args)) => {
+            cmd::search::run(cli.config.as_deref(), cli.profile.as_deref(), args);
+        }
+        Some(Commands::Stale(args)) => {
+            cmd::stale::run(cli.config.as_deref(), cli.profile.as_deref(), args);
         }
     }
 }

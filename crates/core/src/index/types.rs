@@ -242,3 +242,29 @@ pub struct NoteQuery {
     /// Offset for pagination.
     pub offset: Option<u32>,
 }
+
+/// Aggregate activity data for computing summaries.
+#[derive(Debug, Clone)]
+pub struct AggregateActivity {
+    /// Note ID.
+    pub note_id: i64,
+    /// Last seen date as ISO string.
+    pub last_seen: Option<String>,
+    /// Reference count in last 30 days.
+    pub access_count_30d: i32,
+    /// Reference count in last 90 days.
+    pub access_count_90d: i32,
+}
+
+/// A cooccurrence pair: two notes that appear together in daily notes.
+#[derive(Debug, Clone)]
+pub struct CooccurrencePair {
+    /// First note ID.
+    pub note_a_id: i64,
+    /// Second note ID.
+    pub note_b_id: i64,
+    /// Number of daily notes they share.
+    pub shared_count: i32,
+    /// Most recent shared daily date.
+    pub most_recent: Option<String>,
+}

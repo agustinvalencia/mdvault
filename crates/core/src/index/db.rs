@@ -446,6 +446,332 @@ impl IndexDb {
         )?;
         Ok(())
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Derived Index Operations
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Clear derived tables (temporal_activity, activity_summary, note_cooccurrence).
+    pub fn clear_derived_tables(&self) -> Result<(), IndexError> {
+        self.conn.execute_batch(
+            "DELETE FROM temporal_activity;
+             DELETE FROM activity_summary;
+             DELETE FROM note_cooccurrence;",
+        )?;
+        Ok(())
+    }
+
+    /// Get notes filtered by type.
+    pub fn get_notes_by_type(
+        &self,
+        type_str: &str,
+    ) -> Result<Vec<IndexedNote>, IndexError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, path, note_type, title, created_at, modified_at, frontmatter_json, content_hash
+             FROM notes WHERE note_type = ?1",
+        )?;
+
+        let notes = stmt
+            .query_map([type_str], Self::row_to_note)?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(notes)
+    }
+
+    /// Count temporal activity records.
+    pub fn count_temporal_activity(&self) -> Result<i64, IndexError> {
+        let count: i64 =
+            self.conn.query_row("SELECT COUNT(*) FROM temporal_activity", [], |row| {
+                row.get(0)
+            })?;
+        Ok(count)
+    }
+
+    /// Insert a temporal activity record.
+    pub fn insert_temporal_activity(
+        &self,
+        note_id: i64,
+        daily_id: i64,
+        activity_date: &str,
+        context: Option<&str>,
+    ) -> Result<i64, IndexError> {
+        self.conn.execute(
+            "INSERT INTO temporal_activity (note_id, daily_id, activity_date, context)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![note_id, daily_id, activity_date, context],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Aggregate activity data for computing summaries.
+    ///
+    /// Returns aggregated activity counts for each note that has temporal activity.
+    pub fn aggregate_activity(
+        &self,
+        thirty_days_ago: &str,
+        ninety_days_ago: &str,
+    ) -> Result<Vec<super::types::AggregateActivity>, IndexError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                note_id,
+                MAX(activity_date) as last_seen,
+                SUM(CASE WHEN activity_date >= ?1 THEN 1 ELSE 0 END) as count_30d,
+                SUM(CASE WHEN activity_date >= ?2 THEN 1 ELSE 0 END) as count_90d
+             FROM temporal_activity
+             GROUP BY note_id",
+        )?;
+
+        let results = stmt
+            .query_map([thirty_days_ago, ninety_days_ago], |row| {
+                Ok(super::types::AggregateActivity {
+                    note_id: row.get(0)?,
+                    last_seen: row.get(1)?,
+                    access_count_30d: row.get(2)?,
+                    access_count_90d: row.get(3)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Upsert an activity summary for a note.
+    pub fn upsert_activity_summary(
+        &self,
+        note_id: i64,
+        last_seen: Option<&str>,
+        access_count_30d: i32,
+        access_count_90d: i32,
+        staleness_score: f64,
+    ) -> Result<(), IndexError> {
+        self.conn.execute(
+            "INSERT INTO activity_summary (note_id, last_seen, access_count_30d, access_count_90d, staleness_score)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(note_id) DO UPDATE SET
+                last_seen = excluded.last_seen,
+                access_count_30d = excluded.access_count_30d,
+                access_count_90d = excluded.access_count_90d,
+                staleness_score = excluded.staleness_score",
+            params![note_id, last_seen, access_count_30d, access_count_90d, staleness_score],
+        )?;
+        Ok(())
+    }
+
+    /// Compute cooccurrence pairs from temporal activity.
+    ///
+    /// Finds pairs of notes that are referenced in the same daily notes.
+    pub fn compute_cooccurrence_pairs(
+        &self,
+    ) -> Result<Vec<super::types::CooccurrencePair>, IndexError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                a.note_id as note_a,
+                b.note_id as note_b,
+                COUNT(DISTINCT a.daily_id) as shared_count,
+                MAX(a.activity_date) as most_recent
+             FROM temporal_activity a
+             JOIN temporal_activity b ON a.daily_id = b.daily_id
+             WHERE a.note_id < b.note_id
+             GROUP BY a.note_id, b.note_id
+             HAVING shared_count > 0",
+        )?;
+
+        let pairs = stmt
+            .query_map([], |row| {
+                Ok(super::types::CooccurrencePair {
+                    note_a_id: row.get(0)?,
+                    note_b_id: row.get(1)?,
+                    shared_count: row.get(2)?,
+                    most_recent: row.get(3)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(pairs)
+    }
+
+    /// Upsert a note cooccurrence record.
+    pub fn upsert_cooccurrence(
+        &self,
+        note_a: i64,
+        note_b: i64,
+        shared_count: i32,
+        most_recent: Option<&str>,
+    ) -> Result<(), IndexError> {
+        self.conn.execute(
+            "INSERT INTO note_cooccurrence (note_a_id, note_b_id, shared_daily_count, most_recent)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(note_a_id, note_b_id) DO UPDATE SET
+                shared_daily_count = excluded.shared_daily_count,
+                most_recent = excluded.most_recent",
+            params![note_a, note_b, shared_count, most_recent],
+        )?;
+        Ok(())
+    }
+
+    /// Get activity summary for a note.
+    pub fn get_activity_summary(
+        &self,
+        note_id: i64,
+    ) -> Result<Option<super::types::ActivitySummary>, IndexError> {
+        self.conn
+            .query_row(
+                "SELECT note_id, last_seen, access_count_30d, access_count_90d, staleness_score
+                 FROM activity_summary WHERE note_id = ?1",
+                [note_id],
+                |row| {
+                    let last_seen_str: Option<String> = row.get(1)?;
+                    Ok(super::types::ActivitySummary {
+                        note_id: row.get(0)?,
+                        last_seen: last_seen_str.and_then(|s| {
+                            chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok()
+                        }),
+                        access_count_30d: row.get::<_, i32>(2)? as u32,
+                        access_count_90d: row.get::<_, i32>(3)? as u32,
+                        staleness_score: row.get(4)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    /// Get cooccurrent notes for a given note.
+    ///
+    /// Returns notes that frequently appear together with the given note in dailies.
+    pub fn get_cooccurrent_notes(
+        &self,
+        note_id: i64,
+        limit: u32,
+    ) -> Result<Vec<(IndexedNote, i32)>, IndexError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT n.id, n.path, n.note_type, n.title, n.created_at, n.modified_at,
+                    n.frontmatter_json, n.content_hash, c.shared_daily_count
+             FROM note_cooccurrence c
+             JOIN notes n ON (
+                 CASE WHEN c.note_a_id = ?1 THEN c.note_b_id ELSE c.note_a_id END = n.id
+             )
+             WHERE c.note_a_id = ?1 OR c.note_b_id = ?1
+             ORDER BY c.shared_daily_count DESC
+             LIMIT ?2",
+        )?;
+
+        let results = stmt
+            .query_map(params![note_id, limit], |row| {
+                let note = Self::row_to_note(row)?;
+                let count: i32 = row.get(8)?;
+                Ok((note, count))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Get stale notes (high staleness score).
+    ///
+    /// Returns notes ordered by staleness score descending.
+    pub fn get_stale_notes(
+        &self,
+        min_staleness: f64,
+        note_type: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<Vec<(IndexedNote, f64)>, IndexError> {
+        let mut sql = String::from(
+            "SELECT n.id, n.path, n.note_type, n.title, n.created_at, n.modified_at,
+                    n.frontmatter_json, n.content_hash, s.staleness_score
+             FROM notes n
+             LEFT JOIN activity_summary s ON n.id = s.note_id
+             WHERE COALESCE(s.staleness_score, 1.0) >= ?1",
+        );
+
+        if note_type.is_some() {
+            sql.push_str(" AND n.note_type = ?2");
+        }
+
+        sql.push_str(" ORDER BY COALESCE(s.staleness_score, 1.0) DESC");
+
+        if let Some(limit) = limit {
+            sql.push_str(&format!(" LIMIT {}", limit));
+        }
+
+        let mut stmt = self.conn.prepare(&sql)?;
+
+        let results = if let Some(nt) = note_type {
+            stmt.query_map(params![min_staleness, nt], |row| {
+                let note = Self::row_to_note(row)?;
+                let staleness: Option<f64> = row.get(8)?;
+                Ok((note, staleness.unwrap_or(1.0)))
+            })?
+            .filter_map(|r| r.ok())
+            .collect()
+        } else {
+            stmt.query_map([min_staleness], |row| {
+                let note = Self::row_to_note(row)?;
+                let staleness: Option<f64> = row.get(8)?;
+                Ok((note, staleness.unwrap_or(1.0)))
+            })?
+            .filter_map(|r| r.ok())
+            .collect()
+        };
+
+        Ok(results)
+    }
+
+    /// Get notes not seen in a number of days.
+    pub fn get_notes_not_seen_in_days(
+        &self,
+        days: u32,
+        note_type: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<Vec<(IndexedNote, Option<String>)>, IndexError> {
+        let cutoff_date = (chrono::Utc::now() - chrono::Duration::days(days as i64))
+            .format("%Y-%m-%d")
+            .to_string();
+
+        let mut sql = String::from(
+            "SELECT n.id, n.path, n.note_type, n.title, n.created_at, n.modified_at,
+                    n.frontmatter_json, n.content_hash, s.last_seen
+             FROM notes n
+             LEFT JOIN activity_summary s ON n.id = s.note_id
+             WHERE s.last_seen IS NULL OR s.last_seen < ?1",
+        );
+
+        if note_type.is_some() {
+            sql.push_str(" AND n.note_type = ?2");
+        }
+
+        sql.push_str(" ORDER BY s.last_seen ASC NULLS FIRST");
+
+        if let Some(limit) = limit {
+            sql.push_str(&format!(" LIMIT {}", limit));
+        }
+
+        let mut stmt = self.conn.prepare(&sql)?;
+
+        let results = if let Some(nt) = note_type {
+            stmt.query_map(params![&cutoff_date, nt], |row| {
+                let note = Self::row_to_note(row)?;
+                let last_seen: Option<String> = row.get(8)?;
+                Ok((note, last_seen))
+            })?
+            .filter_map(|r| r.ok())
+            .collect()
+        } else {
+            stmt.query_map([&cutoff_date], |row| {
+                let note = Self::row_to_note(row)?;
+                let last_seen: Option<String> = row.get(8)?;
+                Ok((note, last_seen))
+            })?
+            .filter_map(|r| r.ok())
+            .collect()
+        };
+
+        Ok(results)
+    }
 }
 
 #[cfg(test)]
