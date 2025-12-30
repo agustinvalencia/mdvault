@@ -346,14 +346,22 @@ end
 
 ### Lifecycle Hooks
 
-Lifecycle hooks are called during note operations:
+Lifecycle hooks are called during note operations. The `on_create` hook is executed after a note is created via `mdv new`.
 
 ```lua
 -- Called when creating a new note of this type
 on_create = function(note)
     -- Add automatic timestamps
     note.frontmatter.created_at = mdv.date("now", "%Y-%m-%dT%H:%M:%S")
-    note.frontmatter.status = "draft"
+
+    -- Log to daily note using a capture
+    local ok, err = mdv.capture("log-to-daily", {
+        text = "Created: [[" .. note.path .. "]]"
+    })
+    if not ok then
+        print("Warning: " .. err)
+    end
+
     return note
 end
 
@@ -369,7 +377,7 @@ on_update = function(note, previous)
 end
 ```
 
-> **Note**: Lifecycle hooks are currently stored but not yet integrated into the template and capture workflows. This integration is planned for a future release.
+> **Note**: The `on_update` hook is defined but not yet called automatically. The `on_create` hook is fully integrated with `mdv new`.
 
 ### Built-in Types
 
@@ -421,9 +429,111 @@ mdv validate --list-types
 mdv validate --json
 ```
 
-## Future: Vault Context
+## Vault Operations
 
-Additional bindings will expose vault context in a future release:
+When running inside lifecycle hooks, the `mdv` table provides access to vault operations. These functions allow hooks to render templates, execute captures, and run macros.
+
+### `mdv.template(name, vars?)`
+
+Render a template by name and return its content.
+
+```lua
+-- Returns: (content, nil) on success, (nil, error) on failure
+local content, err = mdv.template("meeting-summary", {
+    title = note.frontmatter.title,
+    date = mdv.date("today")
+})
+
+if err then
+    print("Template error: " .. err)
+else
+    print(content)
+end
+```
+
+### `mdv.capture(name, vars?)`
+
+Execute a capture workflow (append content to a target file).
+
+```lua
+-- Returns: (true, nil) on success, (false, error) on failure
+local ok, err = mdv.capture("log-to-daily", {
+    text = "Created task: [[" .. note.path .. "]]"
+})
+
+if not ok then
+    print("Capture error: " .. err)
+end
+```
+
+### `mdv.macro(name, vars?)`
+
+Execute a macro workflow (multi-step operations).
+
+```lua
+-- Returns: (true, nil) on success, (false, error) on failure
+local ok, err = mdv.macro("on-task-created", {
+    task_path = note.path,
+    project = note.frontmatter.project
+})
+
+if not ok then
+    print("Macro error: " .. err)
+end
+```
+
+> **Note**: Shell steps in macros are NOT executed from hooks (no `--trust` context). Only template and capture steps will run.
+
+### Error Handling
+
+All vault operations return two values for graceful error handling:
+
+| Function | Success Return | Failure Return |
+|----------|----------------|----------------|
+| `mdv.template()` | `(content, nil)` | `(nil, error_message)` |
+| `mdv.capture()` | `(true, nil)` | `(false, error_message)` |
+| `mdv.macro()` | `(true, nil)` | `(false, error_message)` |
+
+Hooks should check for errors but failures are non-fatal—the CLI logs a warning but the note creation still succeeds.
+
+### Complete Hook Example
+
+```lua
+-- ~/.config/mdvault/types/task.lua
+return {
+    name = "task",
+    schema = {
+        title = { type = "string", required = true },
+        status = { type = "string", enum = { "open", "in-progress", "done" } },
+        project = { type = "reference" }
+    },
+
+    on_create = function(note)
+        -- Log task creation to daily note
+        local ok, err = mdv.capture("log-to-daily", {
+            text = string.format("- Created task: [[%s]] (%s)",
+                note.path,
+                note.frontmatter.title or "untitled")
+        })
+
+        if not ok then
+            print("Warning: could not log to daily: " .. err)
+        end
+
+        -- Optionally run a macro for additional setup
+        mdv.macro("setup-task-reminders", {
+            task_path = note.path,
+            due = note.frontmatter.due
+        })
+
+        return note
+    end
+}
+```
+
+## Future: Extended Vault Context
+
+Additional bindings are planned for future releases:
 
 ```lua
 -- Planned API

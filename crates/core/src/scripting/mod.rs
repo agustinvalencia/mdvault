@@ -35,6 +35,11 @@
 //! - `mdv.render(template, context)` - Render templates with variables
 //! - `mdv.is_date_expr(str)` - Check if a string is a date expression
 //!
+//! With vault context (via `LuaEngine::with_vault_context`):
+//! - `mdv.template(name, vars?)` - Render a template by name
+//! - `mdv.capture(name, vars?)` - Execute a capture workflow
+//! - `mdv.macro(name, vars?)` - Execute a macro workflow
+//!
 //! # Security
 //!
 //! By default, the Lua environment is sandboxed to prevent:
@@ -46,7 +51,14 @@
 
 pub mod bindings;
 pub mod engine;
+pub mod hook_runner;
+pub mod hooks;
 pub mod types;
+pub mod vault_bindings;
+pub mod vault_context;
 
 pub use engine::LuaEngine;
+pub use hook_runner::run_on_create_hook;
+pub use hooks::{HookError, NoteContext};
 pub use types::{SandboxConfig, ScriptingError};
+pub use vault_context::VaultContext;

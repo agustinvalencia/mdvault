@@ -304,7 +304,9 @@ fn run_validate_hook(
 }
 
 /// Convert a serde_yaml::Value to a Lua value.
-fn yaml_to_lua_table(lua: &mlua::Lua, value: &serde_yaml::Value) -> mlua::Result<mlua::Value> {
+///
+/// This is used to pass frontmatter data to Lua hooks.
+pub fn yaml_to_lua_table(lua: &mlua::Lua, value: &serde_yaml::Value) -> mlua::Result<mlua::Value> {
     match value {
         serde_yaml::Value::Null => Ok(mlua::Value::Nil),
         serde_yaml::Value::Bool(b) => Ok(mlua::Value::Boolean(*b)),

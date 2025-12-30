@@ -1,10 +1,16 @@
 use crate::prompt::{collect_variables, PromptOptions};
+use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
+use mdvault_core::config::types::ResolvedConfig;
+use mdvault_core::frontmatter::parse as parse_frontmatter;
+use mdvault_core::macros::MacroRepository;
+use mdvault_core::scripting::{run_on_create_hook, NoteContext, VaultContext};
 use mdvault_core::templates::discovery::TemplateInfo;
 use mdvault_core::templates::engine::{
     build_minimal_context, render, resolve_template_output_path,
 };
 use mdvault_core::templates::repository::{TemplateRepoError, TemplateRepository};
+use mdvault_core::types::{TypeRegistry, TypedefRepository};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -147,12 +153,98 @@ pub fn run(
         }
     }
 
-    if let Err(e) = fs::write(&output_path, rendered) {
+    if let Err(e) = fs::write(&output_path, &rendered) {
         eprintln!("Failed to write output file {}: {e}", output_path.display());
         std::process::exit(1);
+    }
+
+    // Execute on_create hook if type definition exists
+    if let Err(e) = run_on_create_hook_if_exists(&cfg, &repo, &output_path, &rendered) {
+        // Log warning but don't fail - hooks are best-effort
+        eprintln!("Warning: on_create hook failed: {e}");
     }
 
     println!("OK   mdv new");
     println!("template: {}", template_name);
     println!("output:   {}", output_path.display());
+}
+
+/// Extract note type from rendered content's frontmatter.
+fn extract_note_type(content: &str) -> Option<String> {
+    let parsed = parse_frontmatter(content).ok()?;
+    let fm = parsed.frontmatter?;
+
+    // Frontmatter has fields: HashMap<String, Value>
+    if let Some(serde_yaml::Value::String(t)) = fm.fields.get("type") {
+        return Some(t.clone());
+    }
+    None
+}
+
+/// Run on_create hook if the note type has one defined.
+fn run_on_create_hook_if_exists(
+    cfg: &ResolvedConfig,
+    _template_repo: &TemplateRepository,
+    output_path: &Path,
+    content: &str,
+) -> Result<(), String> {
+    // Extract note type from frontmatter
+    let note_type = match extract_note_type(content) {
+        Some(t) => t,
+        None => return Ok(()), // No type specified, nothing to do
+    };
+
+    // Load type registry
+    let typedef_repo =
+        TypedefRepository::new(&cfg.typedefs_dir).map_err(|e| e.to_string())?;
+    let type_registry =
+        TypeRegistry::from_repository(&typedef_repo).map_err(|e| e.to_string())?;
+
+    // Check if type has on_create hook
+    let typedef = match type_registry.get(&note_type) {
+        Some(td) if td.has_on_create_hook => td,
+        _ => return Ok(()), // No hook defined
+    };
+
+    // Load all repositories for VaultContext (create fresh instances)
+    let template_repo =
+        TemplateRepository::new(&cfg.templates_dir).map_err(|e| e.to_string())?;
+    let capture_repo =
+        CaptureRepository::new(&cfg.captures_dir).map_err(|e| e.to_string())?;
+    let macro_repo = MacroRepository::new(&cfg.macros_dir).map_err(|e| e.to_string())?;
+
+    // Build VaultContext
+    let vault_ctx = VaultContext::new(
+        cfg.clone(),
+        template_repo,
+        capture_repo,
+        macro_repo,
+        type_registry,
+    );
+
+    // Parse frontmatter for NoteContext
+    let parsed = parse_frontmatter(content).map_err(|e| e.to_string())?;
+
+    // Convert Frontmatter to serde_yaml::Value
+    let frontmatter = match parsed.frontmatter {
+        Some(fm) => {
+            let mut mapping = serde_yaml::Mapping::new();
+            for (k, v) in fm.fields {
+                mapping.insert(serde_yaml::Value::String(k), v);
+            }
+            serde_yaml::Value::Mapping(mapping)
+        }
+        None => serde_yaml::Value::Null,
+    };
+
+    // Build NoteContext
+    let note_ctx = NoteContext::new(
+        output_path.to_path_buf(),
+        note_type,
+        frontmatter,
+        content.to_string(),
+    );
+
+    // Run the hook
+    run_on_create_hook(&typedef, &note_ctx, vault_ctx).map_err(|e| e.to_string())
 }

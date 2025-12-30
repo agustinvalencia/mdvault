@@ -7,6 +7,8 @@ use mlua::{Lua, Result as LuaResult, StdLib, Value};
 
 use super::bindings::register_mdv_table;
 use super::types::{SandboxConfig, ScriptingError};
+use super::vault_bindings::register_vault_bindings;
+use super::vault_context::VaultContext;
 
 /// A sandboxed Lua execution environment.
 ///
@@ -56,6 +58,49 @@ impl LuaEngine {
     /// Create a new engine with default restrictive sandbox.
     pub fn sandboxed() -> Result<Self, ScriptingError> {
         Self::new(SandboxConfig::restricted())
+    }
+
+    /// Create a new Lua engine with vault context for hook execution.
+    ///
+    /// This provides access to `mdv.template()`, `mdv.capture()`, `mdv.macro()`
+    /// in addition to the standard sandboxed bindings.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use mdvault_core::scripting::{LuaEngine, VaultContext, SandboxConfig};
+    ///
+    /// let vault_ctx = VaultContext::new(config, templates, captures, macros, types);
+    /// let engine = LuaEngine::with_vault_context(SandboxConfig::restricted(), vault_ctx)?;
+    ///
+    /// // Now Lua scripts can use vault operations
+    /// engine.eval_string(r#"
+    ///     local ok, err = mdv.capture("log-to-daily", { text = "Hello" })
+    /// "#)?;
+    /// ```
+    pub fn with_vault_context(
+        config: SandboxConfig,
+        vault_ctx: VaultContext,
+    ) -> Result<Self, ScriptingError> {
+        // Create Lua with restricted standard library
+        let libs = StdLib::TABLE | StdLib::STRING | StdLib::UTF8 | StdLib::MATH;
+        let lua = Lua::new_with(libs, mlua::LuaOptions::default())?;
+
+        // Apply memory limit if configured
+        if config.memory_limit > 0 {
+            lua.set_memory_limit(config.memory_limit)?;
+        }
+
+        // Remove dangerous globals
+        Self::apply_sandbox(&lua)?;
+
+        // Register standard mdv bindings
+        register_mdv_table(&lua)?;
+
+        // Register vault operation bindings
+        register_vault_bindings(&lua, vault_ctx)?;
+
+        Ok(Self { lua, config })
     }
 
     /// Execute a Lua script and return the result.
