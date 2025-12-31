@@ -39,6 +39,7 @@
 //! - `mdv.template(name, vars?)` - Render a template by name
 //! - `mdv.capture(name, vars?)` - Execute a capture workflow
 //! - `mdv.macro(name, vars?)` - Execute a macro workflow
+//! - `mdv.read_note(path)` - Read a note's content and frontmatter
 //! - `mdv.current_note()` - Get the current note being processed
 //! - `mdv.backlinks(path)` - Get notes linking to a path
 //! - `mdv.outlinks(path)` - Get notes a path links to

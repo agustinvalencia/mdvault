@@ -4,6 +4,7 @@
 //! - `mdv.template(name, vars?)` - Render a template by name
 //! - `mdv.capture(name, vars?)` - Execute a capture workflow
 //! - `mdv.macro(name, vars?)` - Execute a macro workflow
+//! - `mdv.read_note(path)` - Read a note's content and frontmatter
 
 use std::collections::HashMap;
 use std::fs;
@@ -16,6 +17,7 @@ use super::vault_context::VaultContext;
 use crate::captures::CaptureSpec;
 use crate::config::types::ResolvedConfig;
 use crate::frontmatter::{apply_ops, parse, serialize};
+use crate::types::validation::yaml_to_lua_table;
 use crate::macros::runner::{MacroRunError, RunContext, RunOptions, StepExecutor};
 use crate::macros::types::{CaptureStep, ShellStep, StepResult, TemplateStep};
 use crate::markdown_ast::{MarkdownEditor, SectionMatch};
@@ -34,6 +36,7 @@ pub fn register_vault_bindings(lua: &Lua, ctx: VaultContext) -> LuaResult<()> {
     mdv.set("template", create_template_fn(lua)?)?;
     mdv.set("capture", create_capture_fn(lua)?)?;
     mdv.set("macro", create_macro_fn(lua)?)?;
+    mdv.set("read_note", create_read_note_fn(lua)?)?;
 
     Ok(())
 }
@@ -224,6 +227,112 @@ fn create_macro_fn(lua: &Lua) -> LuaResult<Function> {
                 Value::String(lua.create_string(&result.message)?),
             ]))
         }
+    })
+}
+
+/// Create the `mdv.read_note(path)` function.
+///
+/// Reads a note from the vault and returns its content and frontmatter.
+///
+/// Returns: `(note_table, nil)` on success, `(nil, error)` on failure.
+///
+/// The note table contains:
+/// - `path`: The resolved path to the note
+/// - `content`: The full file content including frontmatter
+/// - `body`: The note body without frontmatter
+/// - `frontmatter`: A table with frontmatter fields (if present)
+/// - `title`: The title from frontmatter (if present)
+/// - `type`: The note type from frontmatter (if present)
+///
+/// # Examples (in Lua)
+///
+/// ```lua
+/// local note, err = mdv.read_note("projects/my-project.md")
+/// if err then
+///     print("Error: " .. err)
+/// else
+///     print("Title: " .. (note.title or "untitled"))
+///     if note.frontmatter then
+///         print("Status: " .. (note.frontmatter.status or "unknown"))
+///     end
+/// end
+/// ```
+fn create_read_note_fn(lua: &Lua) -> LuaResult<Function> {
+    lua.create_function(|lua, path: String| {
+        let ctx = lua
+            .app_data_ref::<VaultContext>()
+            .ok_or_else(|| mlua::Error::runtime("VaultContext not available"))?;
+
+        // Resolve path relative to vault root
+        let resolved_path = if path.ends_with(".md") {
+            path.clone()
+        } else {
+            format!("{}.md", path)
+        };
+
+        let full_path = if Path::new(&resolved_path).is_absolute() {
+            std::path::PathBuf::from(&resolved_path)
+        } else {
+            ctx.vault_root.join(&resolved_path)
+        };
+
+        // Read file content
+        let content = match fs::read_to_string(&full_path) {
+            Ok(c) => c,
+            Err(e) => {
+                return Ok(MultiValue::from_vec(vec![
+                    Value::Nil,
+                    Value::String(lua.create_string(format!(
+                        "failed to read '{}': {}",
+                        full_path.display(),
+                        e
+                    ))?),
+                ]));
+            }
+        };
+
+        // Parse frontmatter
+        let parsed = match parse(&content) {
+            Ok(p) => p,
+            Err(e) => {
+                return Ok(MultiValue::from_vec(vec![
+                    Value::Nil,
+                    Value::String(lua.create_string(format!(
+                        "failed to parse frontmatter: {}",
+                        e
+                    ))?),
+                ]));
+            }
+        };
+
+        // Build note table
+        let note_table = lua.create_table()?;
+        note_table.set("path", resolved_path)?;
+        note_table.set("content", content)?;
+        note_table.set("body", parsed.body.clone())?;
+
+        // Add frontmatter if present
+        if let Some(ref fm) = parsed.frontmatter {
+            // Convert frontmatter to serde_yaml::Value for yaml_to_lua_table
+            let fm_yaml = serde_yaml::to_value(fm)
+                .map_err(|e| mlua::Error::runtime(format!("failed to serialize frontmatter: {}", e)))?;
+
+            let fm_table = yaml_to_lua_table(lua, &fm_yaml)?;
+            note_table.set("frontmatter", fm_table)?;
+
+            // Extract common fields for convenience
+            if let Some(title) = fm.fields.get("title").and_then(|v| v.as_str()) {
+                note_table.set("title", title)?;
+            }
+            if let Some(note_type) = fm.fields.get("type").and_then(|v| v.as_str()) {
+                note_table.set("type", note_type)?;
+            }
+        }
+
+        Ok(MultiValue::from_vec(vec![
+            Value::Table(note_table),
+            Value::Nil,
+        ]))
     })
 }
 

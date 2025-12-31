@@ -594,6 +594,39 @@ end
 
 > **Note**: Shell steps in macros are NOT executed from hooks (no `--trust` context). Only template and capture steps will run.
 
+### `mdv.read_note(path)`
+
+Read a note's content and frontmatter by path.
+
+```lua
+-- Returns: (note_table, nil) on success, (nil, error) on failure
+local note, err = mdv.read_note("projects/my-project.md")
+if err then
+    print("Error: " .. err)
+else
+    print("Title: " .. (note.title or "untitled"))
+    print("Body length: " .. #note.body)
+    if note.frontmatter then
+        print("Status: " .. (note.frontmatter.status or "unknown"))
+    end
+end
+```
+
+The returned note table contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `path` | string | The resolved path to the note |
+| `content` | string | Full file content including frontmatter |
+| `body` | string | Note body without frontmatter |
+| `frontmatter` | table or nil | Frontmatter fields as a Lua table |
+| `title` | string or nil | Title from frontmatter (convenience field) |
+| `type` | string or nil | Note type from frontmatter (convenience field) |
+
+Path resolution:
+- Relative paths are resolved from the vault root
+- The `.md` extension is optional (automatically appended if missing)
+
 ### Error Handling
 
 All vault operations return two values for graceful error handling:
@@ -603,6 +636,7 @@ All vault operations return two values for graceful error handling:
 | `mdv.template()` | `(content, nil)` | `(nil, error_message)` |
 | `mdv.capture()` | `(true, nil)` | `(false, error_message)` |
 | `mdv.macro()` | `(true, nil)` | `(false, error_message)` |
+| `mdv.read_note()` | `(note_table, nil)` | `(nil, error_message)` |
 
 Hooks should check for errors but failures are non-fatal—the CLI logs a warning but the note creation still succeeds.
 
@@ -641,16 +675,65 @@ return {
 }
 ```
 
-## Future: Extended Vault Context
+### Inheriting Fields from Parent Notes
 
-Additional bindings are planned for future releases:
+Use `mdv.read_note()` to inherit fields from a parent note. This is useful when child notes should share properties with their parent:
 
 ```lua
--- Planned API
-local note = mdv.current_note()
-local backlinks = mdv.backlinks(note.path)
-local tasks = mdv.query({ type = "task", status = "open" })
+-- ~/.config/mdvault/types/task.lua
+return {
+    name = "task",
+    schema = {
+        title = { type = "string", required = true },
+        status = { type = "string", enum = { "open", "in-progress", "done" } },
+        project = { type = "reference" },
+        context = { type = "string" }  -- inherited from project
+    },
+
+    on_create = function(note)
+        -- If task has a project reference, inherit context from it
+        if note.frontmatter.project then
+            local project, err = mdv.read_note(note.frontmatter.project)
+            if project and project.frontmatter then
+                -- Inherit context if not already set
+                if not note.frontmatter.context and project.frontmatter.context then
+                    note.frontmatter.context = project.frontmatter.context
+                end
+            end
+        end
+
+        return note
+    end
+}
 ```
+
+With this configuration, when you create a task:
+
+```bash
+mdv new task "Implement feature" --var project=projects/api-redesign
+```
+
+The task will automatically inherit the `context` field from `projects/api-redesign.md` if that project has one defined.
+
+## Index Query Functions
+
+These functions require the vault index (run `mdv reindex` first):
+
+```lua
+-- Get current note being processed
+local note = mdv.current_note()
+
+-- Get notes linking to a path
+local backlinks = mdv.backlinks(note.path)
+
+-- Get notes a path links to
+local outlinks = mdv.outlinks(note.path)
+
+-- Query the vault index
+local tasks = mdv.query({ type = "task", limit = 10 })
+```
+
+> **Note**: These functions require running `mdv reindex` first to build the vault index.
 
 ## Examples
 
