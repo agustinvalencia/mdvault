@@ -10,8 +10,8 @@ expression: result.content
 
 - Feature with `inline code`
 - Feature with [link](https://example.com)
-
 - Complex item with `code` and **bold**
+
 ### Changed
 
 ```rust

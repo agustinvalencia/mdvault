@@ -66,24 +66,37 @@ pub fn insert_into_section(
             result
         }
         InsertPosition::End => {
-            // Insert at the end of the section content
-            let mut result = String::with_capacity(input.len() + fragment.len() + 2);
-            result.push_str(&input[..bounds.content_end]);
+            // Insert at the end of the section content, but before trailing blank lines
+            // This preserves section separator formatting
+            let section_content = &input[bounds.content_start..bounds.content_end];
+            let trimmed_end = find_content_end_before_blanks(section_content);
+            let insert_point = bounds.content_start + trimmed_end;
 
-            // Add newline before fragment if content doesn't end with one
-            if bounds.content_end > 0 && !input[..bounds.content_end].ends_with('\n') {
+            let mut result = String::with_capacity(input.len() + fragment.len() + 2);
+            result.push_str(&input[..insert_point]);
+
+            // Ensure there's a newline before the fragment
+            if insert_point > 0 && !input[..insert_point].ends_with('\n') {
                 result.push('\n');
             }
 
             // Add the fragment
             result.push_str(fragment);
 
-            // Ensure fragment ends with newline before next section
+            // Ensure fragment ends with newline
             if !fragment.ends_with('\n') {
                 result.push('\n');
             }
 
-            // Add rest of document
+            // Add the trailing blank lines and rest of document
+            // If there were trailing blanks, add one blank line for section separation
+            let had_trailing_blanks = trimmed_end < section_content.len();
+            if had_trailing_blanks && bounds.content_end < input.len() {
+                // There's a next section, add a blank line separator
+                result.push('\n');
+            }
+
+            // Add rest of document (starting from the next section)
             result.push_str(&input[bounds.content_end..]);
             result
         }
@@ -196,6 +209,32 @@ fn line_start_offset(input: &str, line_num: usize) -> usize {
     }
 
     input.len()
+}
+
+/// Find the end of actual content, before any trailing blank lines.
+/// Returns a byte offset relative to the start of the input string.
+fn find_content_end_before_blanks(content: &str) -> usize {
+    // Work backwards from the end to find the last non-blank line
+    let bytes = content.as_bytes();
+    let mut end = bytes.len();
+
+    // Skip trailing whitespace/newlines
+    while end > 0 && (bytes[end - 1] == b'\n' || bytes[end - 1] == b' ' || bytes[end - 1] == b'\t')
+    {
+        end -= 1;
+    }
+
+    // Now find the end of the last content line (include its newline)
+    // We want to return the position after the newline of the last content line
+    if end < bytes.len() {
+        // Find the newline after the content
+        if let Some(newline_offset) = bytes[end..].iter().position(|&b| b == b'\n') {
+            return end + newline_offset + 1;
+        }
+    }
+
+    // No trailing newline found, return the trimmed position
+    end
 }
 
 /// Find all headings in the document

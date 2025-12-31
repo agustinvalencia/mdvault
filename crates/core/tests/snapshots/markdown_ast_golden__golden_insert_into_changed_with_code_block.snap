@@ -19,8 +19,8 @@ fn example() {
     println!("# This is not a heading");
 }
 ```
-
 - New change entry
+
 ### Deprecated
 
 - Old API

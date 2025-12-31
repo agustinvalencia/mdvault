@@ -458,3 +458,86 @@ fn preserves_wikilinks_in_inserted_content() {
         result.content
     );
 }
+
+// === Blank line handling tests ===
+
+#[test]
+fn insert_at_end_preserves_section_separator() {
+    // This is the exact case from the user report:
+    // When inserting at end of section 1, the new text should appear
+    // after existing content, with the blank line separator maintained
+    // between sections.
+    let input = r#"# section 1
+- content1
+- other content
+
+# another section
+- more text
+"#;
+
+    let result = MarkdownEditor::insert_into_section(
+        input,
+        &SectionMatch::new("section 1"),
+        "- new text\n",
+        InsertPosition::End,
+    )
+    .unwrap();
+
+    // Expected output:
+    // # section 1
+    // - content1
+    // - other content
+    // - new text
+    //
+    // # another section
+    // - more text
+
+    let expected = r#"# section 1
+- content1
+- other content
+- new text
+
+# another section
+- more text
+"#;
+
+    assert_eq!(
+        result.content, expected,
+        "\nExpected:\n{}\n\nGot:\n{}\n",
+        expected, result.content
+    );
+}
+
+#[test]
+fn insert_at_end_with_multiple_blank_lines() {
+    // Multiple blank lines should be normalized to one
+    let input = "# Section\n- item1\n\n\n\n# Next\n";
+
+    let result = MarkdownEditor::insert_into_section(
+        input,
+        &SectionMatch::new("Section"),
+        "- item2\n",
+        InsertPosition::End,
+    )
+    .unwrap();
+
+    // New item should be right after item1, with one blank line before Next
+    assert!(result.content.contains("- item1\n- item2\n"));
+    assert!(result.content.contains("\n\n# Next"));
+}
+
+#[test]
+fn insert_at_end_of_last_section_no_trailing_blank() {
+    // Last section shouldn't add extra blank lines at EOF
+    let input = "# Only Section\n- item1\n";
+
+    let result = MarkdownEditor::insert_into_section(
+        input,
+        &SectionMatch::new("Only Section"),
+        "- item2\n",
+        InsertPosition::End,
+    )
+    .unwrap();
+
+    assert_eq!(result.content, "# Only Section\n- item1\n- item2\n");
+}
