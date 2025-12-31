@@ -9,7 +9,7 @@ This document tracks the implementation phases for evolving mdvault from a templ
 - Type-aware note scaffolding (`mdv new task "Title"`)
 - Capture workflows for appending to notes
 - Macro system for multi-step automation
-- Date math expressions (`today + 7d`, `monday`, `next week`)
+- Date math expressions (`today + 7d`, `monday`, `2025-01-15 + 7d`, `2025-W03`, `week_start`)
 - TUI for interactive vault browsing
 
 **Index & Search:**

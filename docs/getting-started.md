@@ -263,11 +263,75 @@ mdv list --modified-before "yesterday"
 mdv list --modified-after "monday"
 mdv list --modified-after "last friday"
 
+# ISO date literals (absolute dates)
+mdv list --modified-after "2025-01-15"
+mdv list --modified-before "2025-01-15 + 7d"
+
 # In templates
-{{today}}           # 2025-12-31
-{{today + 7d}}      # One week from now
-{{monday}}          # This week's Monday
-{{next week}}       # Next week's Monday
+{{today}}              # 2025-12-31
+{{today + 7d}}         # One week from now
+{{monday}}             # This week's Monday
+{{2025-01-15}}         # Specific date
+{{2025-01-15 + 7d}}    # Specific date + offset
+{{2025-01-15 | %A}}    # Day name for specific date
+```
+
+### Supported Bases
+
+| Base | Description | Example |
+|------|-------------|---------|
+| `today` | Current date | `today + 1d` |
+| `now` | Current datetime | `now + 2h` |
+| `time` | Current time | `time - 30m` |
+| `week` | Current ISO week number | `week + 1w` |
+| `year` | Current year | `year - 1y` |
+| `week_start` | Monday of current week | `week_start + 1w` |
+| `week_end` | Sunday of current week | `week_end` |
+| `YYYY-MM-DD` | ISO date literal | `2025-01-15 + 7d` |
+| `YYYY-Www` | ISO week (Monday) | `2025-W03 + 6d` |
+
+### Supported Offsets
+
+| Unit | Description | Example |
+|------|-------------|---------|
+| `d` | Days | `today + 7d` |
+| `w` | Weeks | `today - 2w` |
+| `M` | Months | `today + 1M` |
+| `y` | Years | `today - 1y` |
+| `h` | Hours | `now + 2h` |
+| `m` | Minutes | `now - 30m` |
+| weekday | Relative weekday | `today + friday` |
+
+### Weekly Note Example
+
+Generate links to all dailies in a weekly template:
+
+```markdown
+---
+type: weekly
+week: {{week | %Y-W%V}}
+---
+
+# Week {{week}}
+
+## Daily Notes
+- [[{{week_start}}]] Monday
+- [[{{week_start + 1d}}]] Tuesday
+- [[{{week_start + 2d}}]] Wednesday
+- [[{{week_start + 3d}}]] Thursday
+- [[{{week_start + 4d}}]] Friday
+- [[{{week_start + 5d}}]] Saturday
+- [[{{week_start + 6d}}]] Sunday
+```
+
+Or for a specific week using ISO notation:
+
+```markdown
+## Week 3, 2025
+- [[{{2025-W03}}]] Monday
+- [[{{2025-W03 + 1d}}]] Tuesday
+...
+- [[{{2025-W03 + 6d}}]] Sunday
 ```
 
 ## Output Formats

@@ -45,6 +45,14 @@ pub enum DateBase {
     Week,
     /// Current year (YYYY)
     Year,
+    /// Literal date (e.g., 2025-01-15)
+    Literal(NaiveDate),
+    /// Monday of current week
+    WeekStart,
+    /// Sunday of current week
+    WeekEnd,
+    /// ISO week notation (e.g., 2025-W01) - resolves to Monday of that week
+    IsoWeek { year: i32, week: u32 },
 }
 
 /// A duration offset to apply.
@@ -103,7 +111,9 @@ pub fn parse_date_expr(input: &str) -> Result<DateExpr, DateMathError> {
     };
 
     // Parse base and offset
-    let re = Regex::new(r"^(\w+)\s*([+-])?\s*(\w+)?$").expect("valid regex");
+    // The base can be a keyword (today, now, etc.) or an ISO date (2025-01-15)
+    // ISO dates contain hyphens, so we need a more flexible pattern
+    let re = Regex::new(r"^([\w-]+)\s*([+-])?\s*(\w+)?$").expect("valid regex");
 
     if let Some(caps) = re.captures(expr_part) {
         let base_str = &caps[1];
@@ -131,8 +141,34 @@ fn parse_base(s: &str) -> Result<DateBase, DateMathError> {
         "date" => Ok(DateBase::Date),
         "week" => Ok(DateBase::Week),
         "year" => Ok(DateBase::Year),
-        _ => Err(DateMathError::InvalidExpression(format!("unknown base: {s}"))),
+        "week_start" => Ok(DateBase::WeekStart),
+        "week_end" => Ok(DateBase::WeekEnd),
+        _ => {
+            // Try parsing as ISO week notation (YYYY-Www or YYYY-Ww)
+            if let Some(iso_week) = parse_iso_week_notation(s) {
+                return Ok(iso_week);
+            }
+            // Try parsing as ISO 8601 date literal (YYYY-MM-DD)
+            if let Ok(date) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+                return Ok(DateBase::Literal(date));
+            }
+            Err(DateMathError::InvalidExpression(format!("unknown base: {s}")))
+        }
     }
+}
+
+/// Parse ISO week notation (e.g., 2025-W01, 2025-W1)
+fn parse_iso_week_notation(s: &str) -> Option<DateBase> {
+    let re = Regex::new(r"^(\d{4})-[Ww](\d{1,2})$").expect("valid regex");
+    if let Some(caps) = re.captures(s) {
+        let year: i32 = caps[1].parse().ok()?;
+        let week: u32 = caps[2].parse().ok()?;
+        // Validate week number (1-53)
+        if (1..=53).contains(&week) {
+            return Some(DateBase::IsoWeek { year, week });
+        }
+    }
+    None
 }
 
 fn parse_offset(op: &str, operand: &str) -> Result<DateOffset, DateMathError> {
@@ -219,7 +255,40 @@ pub fn evaluate_date_expr(expr: &DateExpr) -> String {
             let date = apply_date_offset(today, &expr.offset);
             format_year(date, expr.format.as_deref())
         }
+        DateBase::Literal(base_date) => {
+            let date = apply_date_offset(base_date, &expr.offset);
+            format_date(date, expr.format.as_deref())
+        }
+        DateBase::WeekStart => {
+            let monday = get_week_start(today);
+            let date = apply_date_offset(monday, &expr.offset);
+            format_date(date, expr.format.as_deref())
+        }
+        DateBase::WeekEnd => {
+            let sunday = get_week_end(today);
+            let date = apply_date_offset(sunday, &expr.offset);
+            format_date(date, expr.format.as_deref())
+        }
+        DateBase::IsoWeek { year, week } => {
+            // Get Monday of the specified ISO week
+            let monday = NaiveDate::from_isoywd_opt(year, week, Weekday::Mon)
+                .unwrap_or(today);
+            let date = apply_date_offset(monday, &expr.offset);
+            format_date(date, expr.format.as_deref())
+        }
     }
+}
+
+/// Get the Monday of the week containing the given date.
+fn get_week_start(date: NaiveDate) -> NaiveDate {
+    let days_from_monday = date.weekday().num_days_from_monday() as i64;
+    date - Duration::days(days_from_monday)
+}
+
+/// Get the Sunday of the week containing the given date.
+fn get_week_end(date: NaiveDate) -> NaiveDate {
+    let days_to_sunday = 6 - date.weekday().num_days_from_monday() as i64;
+    date + Duration::days(days_to_sunday)
 }
 
 fn apply_date_offset(date: NaiveDate, offset: &DateOffset) -> NaiveDate {
@@ -379,17 +448,77 @@ fn format_year(date: NaiveDate, format: Option<&str>) -> String {
     date.format(fmt).to_string()
 }
 
+/// Check if a string looks like an ISO 8601 date (YYYY-MM-DD).
+fn looks_like_iso_date(s: &str) -> bool {
+    // Quick check: must be at least 10 chars and match pattern
+    if s.len() < 10 {
+        return false;
+    }
+    let bytes = s.as_bytes();
+    // Check pattern: DDDD-DD-DD where D is digit
+    bytes[0].is_ascii_digit()
+        && bytes[1].is_ascii_digit()
+        && bytes[2].is_ascii_digit()
+        && bytes[3].is_ascii_digit()
+        && bytes[4] == b'-'
+        && bytes[5].is_ascii_digit()
+        && bytes[6].is_ascii_digit()
+        && bytes[7] == b'-'
+        && bytes[8].is_ascii_digit()
+        && bytes[9].is_ascii_digit()
+}
+
+/// Check if a string looks like an ISO week notation (YYYY-Www or YYYY-Ww).
+fn looks_like_iso_week(s: &str) -> bool {
+    // Pattern: YYYY-Wxx or YYYY-Wx (7-8 chars minimum)
+    if s.len() < 7 {
+        return false;
+    }
+    let bytes = s.as_bytes();
+    // Check: 4 digits, hyphen, W/w, 1-2 digits
+    bytes[0].is_ascii_digit()
+        && bytes[1].is_ascii_digit()
+        && bytes[2].is_ascii_digit()
+        && bytes[3].is_ascii_digit()
+        && bytes[4] == b'-'
+        && (bytes[5] == b'W' || bytes[5] == b'w')
+        && bytes[6].is_ascii_digit()
+        && (s.len() == 7 || (s.len() >= 8 && bytes[7].is_ascii_digit()))
+}
+
 /// Check if a string looks like a date math expression.
 ///
-/// Returns true for strings like "today", "now + 1d", "time - 2h", "week", "year", etc.
+/// Returns true for strings like "today", "now + 1d", "time - 2h", "week", "year",
+/// "week_start", "week_end", ISO date literals like "2025-01-15",
+/// or ISO week notation like "2025-W01".
 pub fn is_date_expr(s: &str) -> bool {
-    let s = s.trim().to_lowercase();
-    s.starts_with("today")
-        || s.starts_with("now")
-        || s.starts_with("time")
-        || s.starts_with("date")
-        || s.starts_with("week")
-        || s.starts_with("year")
+    let s = s.trim();
+    let lower = s.to_lowercase();
+
+    // Check for keyword-based expressions
+    // Note: "week" matches week, week_start, week_end
+    if lower.starts_with("today")
+        || lower.starts_with("now")
+        || lower.starts_with("time")
+        || lower.starts_with("date")
+        || lower.starts_with("week")
+        || lower.starts_with("year")
+    {
+        return true;
+    }
+
+    // Extract the base part (before any + or - operator with space, or format specifier)
+    let base_part = if let Some(idx) = s.find(['+', '|']) {
+        s[..idx].trim()
+    } else if let Some(idx) = s.rfind(" -") {
+        // Use rfind for " -" to avoid matching the hyphens in the date/week
+        s[..idx].trim()
+    } else {
+        s
+    };
+
+    // Check for ISO date literal or ISO week notation
+    looks_like_iso_date(base_part) || looks_like_iso_week(base_part)
 }
 
 /// Evaluate a date expression string if it is one, otherwise return None.
@@ -605,5 +734,338 @@ mod tests {
         assert!(is_date_expr("week + 1w"));
         assert!(is_date_expr("year"));
         assert!(is_date_expr("year - 1y"));
+    }
+
+    // Tests for ISO date literals
+
+    #[test]
+    fn test_parse_iso_date_literal() {
+        let expr = parse_date_expr("2025-01-15").unwrap();
+        assert_eq!(
+            expr.base,
+            DateBase::Literal(NaiveDate::from_ymd_opt(2025, 1, 15).unwrap())
+        );
+        assert_eq!(expr.offset, DateOffset::None);
+        assert!(expr.format.is_none());
+    }
+
+    #[test]
+    fn test_parse_iso_date_with_offset() {
+        let expr = parse_date_expr("2025-01-15 + 7d").unwrap();
+        assert_eq!(
+            expr.base,
+            DateBase::Literal(NaiveDate::from_ymd_opt(2025, 1, 15).unwrap())
+        );
+        assert_eq!(
+            expr.offset,
+            DateOffset::Duration { amount: 7, unit: DurationUnit::Days }
+        );
+    }
+
+    #[test]
+    fn test_parse_iso_date_minus_offset() {
+        let expr = parse_date_expr("2025-01-15 - 3d").unwrap();
+        assert_eq!(
+            expr.base,
+            DateBase::Literal(NaiveDate::from_ymd_opt(2025, 1, 15).unwrap())
+        );
+        assert_eq!(
+            expr.offset,
+            DateOffset::Duration { amount: -3, unit: DurationUnit::Days }
+        );
+    }
+
+    #[test]
+    fn test_parse_iso_date_with_weekday() {
+        let expr = parse_date_expr("2025-01-15 - monday").unwrap();
+        assert_eq!(
+            expr.base,
+            DateBase::Literal(NaiveDate::from_ymd_opt(2025, 1, 15).unwrap())
+        );
+        assert_eq!(
+            expr.offset,
+            DateOffset::Weekday { weekday: Weekday::Mon, direction: Direction::Previous }
+        );
+    }
+
+    #[test]
+    fn test_parse_iso_date_with_format() {
+        let expr = parse_date_expr("2025-01-15 | %A").unwrap();
+        assert_eq!(
+            expr.base,
+            DateBase::Literal(NaiveDate::from_ymd_opt(2025, 1, 15).unwrap())
+        );
+        assert_eq!(expr.format, Some("%A".to_string()));
+    }
+
+    #[test]
+    fn test_evaluate_iso_date_literal() {
+        let expr = parse_date_expr("2025-01-15").unwrap();
+        let result = evaluate_date_expr(&expr);
+        assert_eq!(result, "2025-01-15");
+    }
+
+    #[test]
+    fn test_evaluate_iso_date_plus_days() {
+        let expr = parse_date_expr("2025-01-15 + 7d").unwrap();
+        let result = evaluate_date_expr(&expr);
+        assert_eq!(result, "2025-01-22");
+    }
+
+    #[test]
+    fn test_evaluate_iso_date_minus_days() {
+        let expr = parse_date_expr("2025-01-15 - 5d").unwrap();
+        let result = evaluate_date_expr(&expr);
+        assert_eq!(result, "2025-01-10");
+    }
+
+    #[test]
+    fn test_evaluate_iso_date_plus_weeks() {
+        let expr = parse_date_expr("2025-01-15 + 2w").unwrap();
+        let result = evaluate_date_expr(&expr);
+        assert_eq!(result, "2025-01-29");
+    }
+
+    #[test]
+    fn test_evaluate_iso_date_plus_months() {
+        let expr = parse_date_expr("2025-01-15 + 1M").unwrap();
+        let result = evaluate_date_expr(&expr);
+        assert_eq!(result, "2025-02-15");
+    }
+
+    #[test]
+    fn test_evaluate_iso_date_with_format() {
+        let expr = parse_date_expr("2025-01-15 | %A").unwrap();
+        let result = evaluate_date_expr(&expr);
+        assert_eq!(result, "Wednesday"); // 2025-01-15 is a Wednesday
+    }
+
+    #[test]
+    fn test_evaluate_iso_date_weekday_offset() {
+        // 2025-01-15 is Wednesday, previous Monday is 2025-01-13
+        let expr = parse_date_expr("2025-01-15 - monday").unwrap();
+        let result = evaluate_date_expr(&expr);
+        assert_eq!(result, "2025-01-13");
+    }
+
+    #[test]
+    fn test_evaluate_iso_date_next_weekday() {
+        // 2025-01-15 is Wednesday, next Friday is 2025-01-17
+        let expr = parse_date_expr("2025-01-15 + friday").unwrap();
+        let result = evaluate_date_expr(&expr);
+        assert_eq!(result, "2025-01-17");
+    }
+
+    #[test]
+    fn test_is_date_expr_iso_literal() {
+        assert!(is_date_expr("2025-01-15"));
+        assert!(is_date_expr("2025-01-15 + 7d"));
+        assert!(is_date_expr("2025-01-15 - 3d"));
+        assert!(is_date_expr("2025-01-15 | %A"));
+        assert!(is_date_expr("1999-12-31"));
+        assert!(!is_date_expr("2025-1-15")); // Invalid format (single digit month)
+        assert!(!is_date_expr("25-01-15"));  // Invalid format (2-digit year)
+    }
+
+    #[test]
+    fn test_try_evaluate_iso_date() {
+        assert_eq!(
+            try_evaluate_date_expr("2025-01-15"),
+            Some("2025-01-15".to_string())
+        );
+        assert_eq!(
+            try_evaluate_date_expr("2025-01-15 + 1d"),
+            Some("2025-01-16".to_string())
+        );
+    }
+
+    #[test]
+    fn test_invalid_iso_date() {
+        // Invalid date should fail parsing
+        assert!(parse_date_expr("2025-13-45").is_err());
+        assert!(parse_date_expr("not-a-date").is_err());
+    }
+
+    // Tests for week_start and week_end
+
+    #[test]
+    fn test_parse_week_start() {
+        let expr = parse_date_expr("week_start").unwrap();
+        assert_eq!(expr.base, DateBase::WeekStart);
+        assert_eq!(expr.offset, DateOffset::None);
+    }
+
+    #[test]
+    fn test_parse_week_end() {
+        let expr = parse_date_expr("week_end").unwrap();
+        assert_eq!(expr.base, DateBase::WeekEnd);
+        assert_eq!(expr.offset, DateOffset::None);
+    }
+
+    #[test]
+    fn test_parse_week_start_with_offset() {
+        let expr = parse_date_expr("week_start + 1w").unwrap();
+        assert_eq!(expr.base, DateBase::WeekStart);
+        assert_eq!(
+            expr.offset,
+            DateOffset::Duration { amount: 1, unit: DurationUnit::Weeks }
+        );
+    }
+
+    #[test]
+    fn test_evaluate_week_start() {
+        // Test that week_start returns a Monday
+        let expr = parse_date_expr("week_start").unwrap();
+        let result = evaluate_date_expr(&expr);
+        let date = NaiveDate::parse_from_str(&result, "%Y-%m-%d").unwrap();
+        assert_eq!(date.weekday(), Weekday::Mon);
+    }
+
+    #[test]
+    fn test_evaluate_week_end() {
+        // Test that week_end returns a Sunday
+        let expr = parse_date_expr("week_end").unwrap();
+        let result = evaluate_date_expr(&expr);
+        let date = NaiveDate::parse_from_str(&result, "%Y-%m-%d").unwrap();
+        assert_eq!(date.weekday(), Weekday::Sun);
+    }
+
+    #[test]
+    fn test_week_start_and_end_same_week() {
+        // week_start and week_end should be 6 days apart
+        let start_expr = parse_date_expr("week_start").unwrap();
+        let end_expr = parse_date_expr("week_end").unwrap();
+        let start = NaiveDate::parse_from_str(&evaluate_date_expr(&start_expr), "%Y-%m-%d").unwrap();
+        let end = NaiveDate::parse_from_str(&evaluate_date_expr(&end_expr), "%Y-%m-%d").unwrap();
+        assert_eq!((end - start).num_days(), 6);
+    }
+
+    #[test]
+    fn test_week_start_next_week() {
+        // week_start + 1w should be 7 days after week_start
+        let this_week = parse_date_expr("week_start").unwrap();
+        let next_week = parse_date_expr("week_start + 1w").unwrap();
+        let this_monday = NaiveDate::parse_from_str(&evaluate_date_expr(&this_week), "%Y-%m-%d").unwrap();
+        let next_monday = NaiveDate::parse_from_str(&evaluate_date_expr(&next_week), "%Y-%m-%d").unwrap();
+        assert_eq!((next_monday - this_monday).num_days(), 7);
+    }
+
+    // Tests for ISO week notation
+
+    #[test]
+    fn test_parse_iso_week_notation() {
+        let expr = parse_date_expr("2025-W01").unwrap();
+        assert_eq!(expr.base, DateBase::IsoWeek { year: 2025, week: 1 });
+        assert_eq!(expr.offset, DateOffset::None);
+    }
+
+    #[test]
+    fn test_parse_iso_week_notation_lowercase() {
+        let expr = parse_date_expr("2025-w15").unwrap();
+        assert_eq!(expr.base, DateBase::IsoWeek { year: 2025, week: 15 });
+    }
+
+    #[test]
+    fn test_parse_iso_week_with_offset() {
+        let expr = parse_date_expr("2025-W01 + 6d").unwrap();
+        assert_eq!(expr.base, DateBase::IsoWeek { year: 2025, week: 1 });
+        assert_eq!(
+            expr.offset,
+            DateOffset::Duration { amount: 6, unit: DurationUnit::Days }
+        );
+    }
+
+    #[test]
+    fn test_evaluate_iso_week_monday() {
+        // 2025-W01 should resolve to Monday of that week
+        let expr = parse_date_expr("2025-W01").unwrap();
+        let result = evaluate_date_expr(&expr);
+        let date = NaiveDate::parse_from_str(&result, "%Y-%m-%d").unwrap();
+        assert_eq!(date.weekday(), Weekday::Mon);
+        // Week 1 of 2025 starts on 2024-12-30 (ISO week definition)
+        assert_eq!(result, "2024-12-30");
+    }
+
+    #[test]
+    fn test_evaluate_iso_week_sunday() {
+        // 2025-W01 + 6d should give Sunday of that week
+        let expr = parse_date_expr("2025-W01 + 6d").unwrap();
+        let result = evaluate_date_expr(&expr);
+        let date = NaiveDate::parse_from_str(&result, "%Y-%m-%d").unwrap();
+        assert_eq!(date.weekday(), Weekday::Sun);
+        assert_eq!(result, "2025-01-05");
+    }
+
+    #[test]
+    fn test_evaluate_iso_week_specific() {
+        // 2025-W03 should start on 2025-01-13 (Monday)
+        let expr = parse_date_expr("2025-W03").unwrap();
+        let result = evaluate_date_expr(&expr);
+        assert_eq!(result, "2025-01-13");
+    }
+
+    #[test]
+    fn test_iso_week_all_days() {
+        // Test generating all days of a week
+        let monday = evaluate_date_expr(&parse_date_expr("2025-W03").unwrap());
+        let tuesday = evaluate_date_expr(&parse_date_expr("2025-W03 + 1d").unwrap());
+        let wednesday = evaluate_date_expr(&parse_date_expr("2025-W03 + 2d").unwrap());
+        let thursday = evaluate_date_expr(&parse_date_expr("2025-W03 + 3d").unwrap());
+        let friday = evaluate_date_expr(&parse_date_expr("2025-W03 + 4d").unwrap());
+        let saturday = evaluate_date_expr(&parse_date_expr("2025-W03 + 5d").unwrap());
+        let sunday = evaluate_date_expr(&parse_date_expr("2025-W03 + 6d").unwrap());
+
+        assert_eq!(monday, "2025-01-13");
+        assert_eq!(tuesday, "2025-01-14");
+        assert_eq!(wednesday, "2025-01-15");
+        assert_eq!(thursday, "2025-01-16");
+        assert_eq!(friday, "2025-01-17");
+        assert_eq!(saturday, "2025-01-18");
+        assert_eq!(sunday, "2025-01-19");
+    }
+
+    #[test]
+    fn test_iso_week_with_format() {
+        let expr = parse_date_expr("2025-W03 | %A").unwrap();
+        let result = evaluate_date_expr(&expr);
+        assert_eq!(result, "Monday");
+    }
+
+    #[test]
+    fn test_is_date_expr_week_start_end() {
+        assert!(is_date_expr("week_start"));
+        assert!(is_date_expr("week_end"));
+        assert!(is_date_expr("week_start + 1w"));
+        assert!(is_date_expr("week_end - 1d"));
+    }
+
+    #[test]
+    fn test_is_date_expr_iso_week() {
+        assert!(is_date_expr("2025-W01"));
+        assert!(is_date_expr("2025-w15"));
+        assert!(is_date_expr("2025-W01 + 6d"));
+        assert!(is_date_expr("2025-W52 | %A"));
+        assert!(!is_date_expr("2025-W")); // incomplete
+        assert!(!is_date_expr("W01")); // missing year
+    }
+
+    #[test]
+    fn test_try_evaluate_iso_week() {
+        assert_eq!(
+            try_evaluate_date_expr("2025-W03"),
+            Some("2025-01-13".to_string())
+        );
+        assert_eq!(
+            try_evaluate_date_expr("2025-W03 + 6d"),
+            Some("2025-01-19".to_string())
+        );
+    }
+
+    #[test]
+    fn test_invalid_iso_week() {
+        // Week 0 is invalid
+        assert!(parse_date_expr("2025-W00").is_err());
+        // Week 54+ is invalid
+        assert!(parse_date_expr("2025-W54").is_err());
     }
 }
