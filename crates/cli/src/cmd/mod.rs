@@ -8,6 +8,7 @@ pub mod new;
 pub mod orphans;
 pub mod output;
 pub mod reindex;
+pub mod rename;
 pub mod search;
 pub mod stale;
 pub mod validate;

@@ -173,6 +173,26 @@ mdv stale --days 90
 mdv stale --type task
 ```
 
+### Renaming Notes
+
+The `rename` command safely renames a note and updates all references to it across your vault:
+
+```bash
+# Rename a note and update all references
+mdv rename old-note.md new-note.md
+
+# Preview changes without modifying files
+mdv rename old-note.md new-note.md --dry-run
+
+# Skip confirmation prompt
+mdv rename old-note.md new-note.md --yes
+```
+
+Reference types updated automatically:
+- Wikilinks: `[[old-note]]`, `[[old-note|alias]]`, `[[old-note#section]]`
+- Markdown links: `[text](old-note.md)`, `[text](../path/old-note.md)`
+- Frontmatter references: `project: old-note`, `related: [old-note, other]`
+
 ### Validation
 
 ```bash

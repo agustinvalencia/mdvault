@@ -98,6 +98,9 @@ enum Commands {
 
     /// Find stale notes (not referenced in recent dailies)
     Stale(StaleArgs),
+
+    /// Rename a note and update all references to it
+    Rename(RenameArgs),
 }
 
 #[derive(Debug, Args)]
@@ -439,6 +442,29 @@ pub struct StaleArgs {
     pub quiet: bool,
 }
 
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv rename old.md new.md              # Rename note and update references
+  mdv rename old.md new.md --dry-run    # Preview changes without modifying files
+  mdv rename old.md new.md --yes        # Skip confirmation prompt
+")]
+pub struct RenameArgs {
+    /// Source file path (relative to vault root)
+    pub source: std::path::PathBuf,
+
+    /// Destination file path (relative to vault root)
+    pub dest: std::path::PathBuf,
+
+    /// Preview changes without modifying files
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Skip confirmation prompt
+    #[arg(long, short)]
+    pub yes: bool,
+}
+
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
     let pos =
         s.find('=').ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
@@ -517,6 +543,9 @@ fn main() {
         }
         Some(Commands::Stale(args)) => {
             cmd::stale::run(cli.config.as_deref(), cli.profile.as_deref(), args);
+        }
+        Some(Commands::Rename(args)) => {
+            cmd::rename::run(cli.config.as_deref(), cli.profile.as_deref(), args);
         }
     }
 }

@@ -145,22 +145,21 @@ This document tracks the implementation phases for evolving mdvault from a templ
 
 **Goal**: Safe note renaming with reference updates.
 
-- [ ] Reference detection
-  - [ ] Wikilinks: `[[note]]`, `[[path/note]]`, `[[note|alias]]`
-  - [ ] Markdown links: `[text](path/note.md)`
-  - [ ] Frontmatter references: `project: note-name`
-- [ ] Format-preserving updates
-  - [ ] Maintain original link style
-  - [ ] Preserve aliases
-  - [ ] Handle relative paths correctly
-- [ ] Rename workflow
-  - [ ] Preview all changes
-  - [ ] Atomic file + index updates
-  - [ ] Dry-run mode
-- [ ] Edge cases
-  - [ ] Ambiguous references
-  - [ ] Case-sensitivity
-  - [ ] Broken links reporting
+- [x] Reference detection
+  - [x] Wikilinks: `[[note]]`, `[[path/note]]`, `[[note|alias]]`, `[[note#section]]`
+  - [x] Markdown links: `[text](path/note.md)`, `[text](../relative/note.md)`
+  - [x] Frontmatter references: `project: note-name`, `related: [note1, note2]`
+- [x] Format-preserving updates
+  - [x] Maintain original link style
+  - [x] Preserve aliases and section anchors
+  - [x] Handle relative paths correctly
+- [x] Rename workflow
+  - [x] Preview all changes (`--dry-run`)
+  - [x] Atomic file + index updates
+  - [x] Confirmation prompt (skip with `--yes`)
+- [x] Edge cases
+  - [x] Case-insensitive matching
+  - [x] Ambiguous reference warnings
 
 ### Phase 5: MCP Integration
 
@@ -257,6 +256,13 @@ mdv validate --check-links                  # Include link integrity
 mdv validate --list-types                   # Show type definitions
 ```
 
+#### Rename & Reference Management
+```bash
+mdv rename old.md new.md              # Rename note and update all references
+mdv rename old.md new.md --dry-run    # Preview changes without modifying files
+mdv rename old.md new.md --yes        # Skip confirmation prompt
+```
+
 #### Utility
 ```bash
 mdv doctor                                  # Check configuration
@@ -273,12 +279,6 @@ mdv done tasks/impl.md "Done"   # Complete task, update daily
 mdv today                       # Show due tasks, recent activity
 mdv review                      # Interactive triage
 mdv weekly-planning             # Create/open weekly note
-```
-
-#### Rename & Reference Management
-```bash
-mdv rename old.md new.md        # Rename with reference updates
-mdv rename old.md new.md --dry-run
 ```
 
 #### Advanced Search

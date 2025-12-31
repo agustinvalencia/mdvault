@@ -21,6 +21,7 @@ pub mod frontmatter;
 pub mod index;
 pub mod macros;
 pub mod markdown_ast;
+pub mod rename;
 pub mod scripting;
 pub mod templates;
 pub mod types;
