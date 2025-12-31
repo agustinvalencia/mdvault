@@ -2,15 +2,33 @@
 
 This document tracks the implementation phases for evolving mdvault from a templating tool into a comprehensive vault management system.
 
-## Current State
+## Current State (v0.1.0)
 
-The existing codebase provides:
-- Template rendering with variable substitution
+**Core Features:**
+- Template rendering with variable substitution and filters (`slugify`, `upper`, `lower`, `trim`)
+- Type-aware note scaffolding (`mdv new task "Title"`)
 - Capture workflows for appending to notes
 - Macro system for multi-step automation
-- Date math expressions
-- TUI for interactive use
-- Basic MCP server with note browsing
+- Date math expressions (`today + 7d`, `monday`, `next week`)
+- TUI for interactive vault browsing
+
+**Index & Search:**
+- SQLite-based index with notes, links, and derived tables
+- Incremental reindexing with content hash change detection
+- Contextual search with graph neighbourhood, temporal context, and cooccurrence
+- Staleness detection for finding neglected notes
+- Backlinks, outlinks, and orphan note discovery
+
+**Validation & Types:**
+- Lua-based type definition system
+- Schema validation (required fields, enums, constraints)
+- Custom validation functions in Lua
+- Lifecycle hooks (on_create, on_update)
+- Auto-fix for safe issues (missing defaults, enum case normalization)
+- Link integrity checking
+
+**MCP Integration:**
+- Basic MCP server with note browsing (Phase 5 pending full implementation)
 
 ## Implementation Phases
 
@@ -178,49 +196,96 @@ The existing codebase provides:
 - [ ] Multi-vault support
 - [ ] Collaborative features
 
-## CLI Commands (Target State)
+## CLI Commands
 
-### Creation Commands
+### Currently Implemented
 
+#### Note Creation
 ```bash
-mdv task new "Implement feature X" --project MyProject
-mdv project new "OtherProject" --status planning
-mdv zettel new "Quantum AI notes" --tags ai,research
-mdv quick "Investigate Mamba for RAN"
+mdv new task "Implement feature X" --var project=myproject
+mdv new project "My Project" --var status=active
+mdv new zettel "Research notes" --var tags=ml,research
+mdv new --template daily                    # Use template instead of type
+mdv new task "Title" -o custom/path.md      # Custom output path
 ```
 
-### Workflow Commands
+#### Capture & Macros
+```bash
+mdv capture --list                          # List available captures
+mdv capture inbox --var text="Quick note"   # Append to inbox
+mdv macro --list                            # List available macros
+mdv macro weekly-review                     # Run a macro workflow
+```
 
+#### Index & Query
+```bash
+mdv reindex                                 # Incremental reindex
+mdv reindex --force                         # Full rebuild
+mdv list                                    # List all notes
+mdv list --type task                        # Filter by type
+mdv list --modified-after "today - 7d"      # Date filtering
+mdv list --json                             # JSON output
+mdv links notes/my-note.md                  # Show all links
+mdv links notes/my-note.md --backlinks      # Only backlinks
+mdv orphans                                 # Find orphan notes
+```
+
+#### Search
+```bash
+mdv search "query"                          # Direct text search
+mdv search "query" --mode full              # Full contextual search
+mdv search "query" --mode neighbourhood     # Include linked notes
+mdv search "query" --mode temporal          # Include referencing dailies
+mdv search "query" --type task --boost      # Type filter + temporal boost
+```
+
+#### Staleness Detection
+```bash
+mdv stale                                   # Notes with staleness > 0.5
+mdv stale --threshold 0.7                   # Higher threshold
+mdv stale --days 90                         # Not seen in 90 days
+mdv stale --type task                       # Only stale tasks
+```
+
+#### Validation
+```bash
+mdv validate                                # Validate all notes
+mdv validate path/to/note.md                # Validate specific file
+mdv validate --type task                    # Validate only tasks
+mdv validate --fix                          # Auto-fix safe issues
+mdv validate --check-links                  # Include link integrity
+mdv validate --list-types                   # Show type definitions
+```
+
+#### Utility
+```bash
+mdv doctor                                  # Check configuration
+mdv list-templates                          # Show available templates
+mdv                                         # Launch TUI (no subcommand)
+```
+
+### Planned (Not Yet Implemented)
+
+#### Workflow Commands
 ```bash
 mdv workon MyProject            # Open project, show tasks, log session
 mdv done tasks/impl.md "Done"   # Complete task, update daily
 mdv today                       # Show due tasks, recent activity
 mdv review                      # Interactive triage
 mdv weekly-planning             # Create/open weekly note
-mdv rename notte.md note.md     # Rename and reindex notes
 ```
 
-### Search Commands
-
+#### Rename & Reference Management
 ```bash
-mdv find "an interesting topic" --context full
-mdv timeline "MyProject" --since "2 weeks ago"
+mdv rename old.md new.md        # Rename with reference updates
+mdv rename old.md new.md --dry-run
+```
+
+#### Advanced Search
+```bash
+mdv timeline "Project" --since "2 weeks ago"
 mdv related-to notes/mcp.md --depth 2
-mdv stale --threshold 30d
-mdv orphans
-mdv stuck
-```
-
-### Maintenance Commands
-
-```bash
-mdv validate                    # Validate notes against type definitions
-mdv validate --type task        # Validate only task notes
-mdv validate --list-types       # Show available type definitions
-mdv lint
-mdv lint --fix
-mdv reindex
-mdv health
+mdv stuck                       # Tasks in-progress >14 days
 ```
 
 ## Success Criteria

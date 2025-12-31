@@ -214,80 +214,114 @@ mdvault lint --interactive      # Guided fixing
 
 ## CLI Design
 
-### Opinionated Commands (Not Generic CRUD)
+The CLI uses the `mdv` command (short for mdvault). Commands are designed to be intuitive and composable.
 
-**Creation Commands** (with scaffolding):
+### Currently Implemented Commands
+
+**Note Creation** (with type-aware scaffolding):
 ```bash
-mdvault task new "Implement feature X" --project RAN-optimization
-  # Creates task with proper frontmatter
-  # Links to project
-  # Adds entry to today's daily
-  # Prompts for status if missing
+mdv new task "Implement feature X" --var project=myproject
+  # Creates task with proper frontmatter from type schema
+  # Auto-generates path: tasks/implement-feature-x.md
+  # Runs on_create hook if defined
 
-mdvault project new "Network Slicing Research" --status planning
+mdv new project "Network Slicing Research" --var status=active
   # Creates project note with scaffolding
-  # Generates task list section
-  # Links to today's daily
 
-mdvault zettel new "KAN architecture notes" --tags ml,kan,research
+mdv new zettel "KAN architecture notes" --var tags=ml,kan
   # Creates zettel with tags
-  # Optionally links to today's daily
 
-mdvault quick "Investigate Mamba for RAN"
-  # Quick capture: creates note with type: none
-  # Adds to today's daily
-  # Can triage later
+mdv new --template daily
+  # Create from template instead of type
+
+mdv new task "Title" -o custom/path.md
+  # Custom output path
 ```
+
+**Capture and Macros**:
+```bash
+mdv capture --list              # List available captures
+mdv capture inbox --var text="Quick note"
+                                # Append to inbox
+mdv macro --list                # List available macros
+mdv macro weekly-review         # Run a macro workflow
+```
+
+**Index and Query**:
+```bash
+mdv reindex                     # Incremental reindex
+mdv reindex --force             # Full rebuild
+mdv list                        # List all notes
+mdv list --type task            # Filter by type
+mdv list --modified-after "today - 7d"
+                                # Date math filtering
+mdv list --json                 # JSON output
+mdv links notes/my-note.md      # Show all links
+mdv links notes/my-note.md --backlinks
+                                # Only backlinks
+mdv orphans                     # Find orphan notes
+```
+
+**Search** (contextual with multiple modes):
+```bash
+mdv search "query"              # Direct text search
+mdv search "query" --mode full  # Full contextual search
+                                # (graph + temporal + cooccurrence)
+mdv search "query" --mode neighbourhood
+                                # Include linked notes
+mdv search "query" --mode temporal
+                                # Include referencing dailies
+mdv search "query" --type task --boost
+                                # Type filter + temporal boost
+```
+
+**Staleness Detection**:
+```bash
+mdv stale                       # Notes with staleness > 0.5
+mdv stale --threshold 0.7       # Higher threshold
+mdv stale --days 90             # Not seen in 90 days
+mdv stale --type task           # Only stale tasks
+```
+
+**Validation**:
+```bash
+mdv validate                    # Validate all notes
+mdv validate path/to/note.md    # Validate specific file
+mdv validate --type task        # Validate only tasks
+mdv validate --fix              # Auto-fix safe issues
+mdv validate --check-links      # Include link integrity
+mdv validate --list-types       # Show type definitions
+```
+
+**Utility**:
+```bash
+mdv doctor                      # Check configuration
+mdv list-templates              # Show available templates
+mdv                             # Launch TUI (no subcommand)
+```
+
+### Planned Commands (Not Yet Implemented)
 
 **Workflow Commands**:
 ```bash
-mdvault workon RAN-optimization
-  # Opens project
-  # Shows open tasks
-  # Creates daily entry "Started work on [project]"
-  # Displays recent activity and relevant zettels
-
-mdvault done "tasks/implement-search.md" "Implemented basic indexing"
-  # Marks task complete
-  # Adds completion note to today's daily
-  # Updates project status if appropriate
-
-mdvault today
-  # Shows tasks due/overdue
-  # Lists recent project activity
-  # Surfaces stale items needing attention
-  # Suggests next actions
-
-mdvault review
-  # Interactive triage for untyped notes
-  # Fix validation issues
-  # Classify pending items
-
-mdvault weekly-planning
-  # Creates/opens current week's weekly note
-  # Shows open tasks across projects
-  # Prompts for weekly goals
+mdv workon MyProject            # Open project, show tasks, log session
+mdv done tasks/impl.md "Done"   # Complete task, update daily
+mdv today                       # Show due tasks, recent activity
+mdv review                      # Interactive triage
+mdv weekly-planning             # Create/open weekly note
 ```
 
-**Search and Discovery**:
+**Advanced Search**:
 ```bash
-mdvault find "KAN distillation" --context full
-  # Shows matches + neighbourhood + temporal activity
+mdv timeline "Project" --since "2 weeks ago"
+mdv related-to notes/mcp.md --depth 2
+mdv stuck                       # Tasks in-progress >14 days
+```
 
-mdvault timeline "RAN optimization" --since "2 weeks ago"
-  # Chronological view of all activity
-
-mdvault related-to "notes/mcp-architecture.md" --depth 2
-  # Graph traversal: related notes within N hops
-
-mdvault stale --threshold 30d
-  # Projects/tasks not touched in 30 days
-
-mdvault orphans
-  # Notes never linked from dailies
-
-mdvault stuck
-  # Tasks "in-progress" for >14 days
+**Rename and Reference Management**:
+```bash
+mdv rename old.md new.md        # Rename with reference updates
+mdv rename old.md new.md --dry-run
 ```
 
 ### Configuration
@@ -678,35 +712,43 @@ normalize_note_names(
 
 ## Implementation Phases
 
-### Phase 1: Core Infrastructure
-- SQLite index (nodes, edges, temporal activity)
-- Frontmatter parsing and validation
-- Basic search (structural + content)
-- Link graph construction
+### Phase 1: Core Infrastructure ✓ Complete
+- SQLite index (notes, links, temporal_activity tables)
+- Frontmatter parsing with JSON storage
+- Incremental reindexing with content hash change detection
+- Basic CLI queries: `mdv list`, `mdv links`, `mdv orphans`
 
-### Phase 2: Structure Enforcement
-- Type-specific validation rules
-- Required field checking
-- Linting system with auto-fix
-- Note creation with scaffolding
+### Phase 1.5: Lua Scripting Layer ✓ Complete
+- mlua-based sandboxed Lua runtime
+- Type definitions in `~/.config/mdvault/types/*.lua`
+- Schema validation (required fields, enums, constraints)
+- Custom validate() hooks and lifecycle hooks (on_create, on_update)
+- Vault context bindings (`mdv.current_note()`, `mdv.backlinks()`, etc.)
 
-### Phase 3: Advanced Search & Retrieval
-- Contextual search (graph + temporal)
-- Cooccurrence tracking
-- Anomaly detection (stale, orphaned, stuck)
-- Proactive surfacing (`mdvault today`, `mdvault health`)
+### Phase 2: Structure Enforcement ✓ Complete
+- Type-aware note scaffolding (`mdv new task "Title"`)
+- Schema-driven validation with auto-fix
+- Link integrity checking (`--check-links`)
+- Template filters (`{{title | slugify}}`)
+- on_create and on_update hook integration
 
-### Phase 4: Rename & Reference Management
+### Phase 3: Advanced Search & Retrieval ✓ Complete
+- Derived indices (activity_summary, note_cooccurrence)
+- Contextual search with multiple modes (direct, neighbourhood, temporal, cooccurrence, full)
+- Temporal boosting for recent notes
+- Staleness detection (`mdv stale`)
+
+### Phase 4: Rename & Reference Management (Planned)
 - Reference detection (wikilinks, markdown, frontmatter)
 - Format-preserving updates
 - Atomic rename operations
 - Index consistency maintenance
 
-### Phase 5: MCP Integration
-- Basic tools (create, search, update)
-- Workflow tools (workon, done, review)
-- Context-aware retrieval
-- Proactive maintenance prompts
+### Phase 5: MCP Integration (Planned)
+- Task management tools (search, create, complete)
+- Project context retrieval
+- Knowledge search tools
+- Maintenance and health tools
 
 ### Phase 6: Advanced Features (Future)
 - Semantic search (embeddings)
