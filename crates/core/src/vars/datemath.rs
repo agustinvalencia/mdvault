@@ -271,8 +271,8 @@ pub fn evaluate_date_expr(expr: &DateExpr) -> String {
         }
         DateBase::IsoWeek { year, week } => {
             // Get Monday of the specified ISO week
-            let monday = NaiveDate::from_isoywd_opt(year, week, Weekday::Mon)
-                .unwrap_or(today);
+            let monday =
+                NaiveDate::from_isoywd_opt(year, week, Weekday::Mon).unwrap_or(today);
             let date = apply_date_offset(monday, &expr.offset);
             format_date(date, expr.format.as_deref())
         }
@@ -864,15 +864,12 @@ mod tests {
         assert!(is_date_expr("2025-01-15 | %A"));
         assert!(is_date_expr("1999-12-31"));
         assert!(!is_date_expr("2025-1-15")); // Invalid format (single digit month)
-        assert!(!is_date_expr("25-01-15"));  // Invalid format (2-digit year)
+        assert!(!is_date_expr("25-01-15")); // Invalid format (2-digit year)
     }
 
     #[test]
     fn test_try_evaluate_iso_date() {
-        assert_eq!(
-            try_evaluate_date_expr("2025-01-15"),
-            Some("2025-01-15".to_string())
-        );
+        assert_eq!(try_evaluate_date_expr("2025-01-15"), Some("2025-01-15".to_string()));
         assert_eq!(
             try_evaluate_date_expr("2025-01-15 + 1d"),
             Some("2025-01-16".to_string())
@@ -935,8 +932,11 @@ mod tests {
         // week_start and week_end should be 6 days apart
         let start_expr = parse_date_expr("week_start").unwrap();
         let end_expr = parse_date_expr("week_end").unwrap();
-        let start = NaiveDate::parse_from_str(&evaluate_date_expr(&start_expr), "%Y-%m-%d").unwrap();
-        let end = NaiveDate::parse_from_str(&evaluate_date_expr(&end_expr), "%Y-%m-%d").unwrap();
+        let start =
+            NaiveDate::parse_from_str(&evaluate_date_expr(&start_expr), "%Y-%m-%d")
+                .unwrap();
+        let end = NaiveDate::parse_from_str(&evaluate_date_expr(&end_expr), "%Y-%m-%d")
+            .unwrap();
         assert_eq!((end - start).num_days(), 6);
     }
 
@@ -945,8 +945,12 @@ mod tests {
         // week_start + 1w should be 7 days after week_start
         let this_week = parse_date_expr("week_start").unwrap();
         let next_week = parse_date_expr("week_start + 1w").unwrap();
-        let this_monday = NaiveDate::parse_from_str(&evaluate_date_expr(&this_week), "%Y-%m-%d").unwrap();
-        let next_monday = NaiveDate::parse_from_str(&evaluate_date_expr(&next_week), "%Y-%m-%d").unwrap();
+        let this_monday =
+            NaiveDate::parse_from_str(&evaluate_date_expr(&this_week), "%Y-%m-%d")
+                .unwrap();
+        let next_monday =
+            NaiveDate::parse_from_str(&evaluate_date_expr(&next_week), "%Y-%m-%d")
+                .unwrap();
         assert_eq!((next_monday - this_monday).num_days(), 7);
     }
 
@@ -1051,10 +1055,7 @@ mod tests {
 
     #[test]
     fn test_try_evaluate_iso_week() {
-        assert_eq!(
-            try_evaluate_date_expr("2025-W03"),
-            Some("2025-01-13".to_string())
-        );
+        assert_eq!(try_evaluate_date_expr("2025-W03"), Some("2025-01-13".to_string()));
         assert_eq!(
             try_evaluate_date_expr("2025-W03 + 6d"),
             Some("2025-01-19".to_string())

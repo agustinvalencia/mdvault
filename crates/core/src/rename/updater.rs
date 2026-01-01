@@ -15,7 +15,8 @@ pub fn update_reference(reference: &Reference, new_basename: &str) -> String {
         ReferenceType::Wikilink => {
             if reference.uses_full_path() {
                 // Preserve path structure: [[path/old]] -> [[path/new]]
-                let new_path = update_path_in_reference(&reference.target_as_written, new_basename);
+                let new_path =
+                    update_path_in_reference(&reference.target_as_written, new_basename);
                 format!("[[{}]]", new_path)
             } else {
                 format!("[[{}]]", new_basename)
@@ -25,7 +26,8 @@ pub fn update_reference(reference: &Reference, new_basename: &str) -> String {
         ReferenceType::WikilinkWithAlias => {
             let alias = reference.alias.as_deref().unwrap_or("");
             if reference.uses_full_path() {
-                let new_path = update_path_in_reference(&reference.target_as_written, new_basename);
+                let new_path =
+                    update_path_in_reference(&reference.target_as_written, new_basename);
                 format!("[[{}|{}]]", new_path, alias)
             } else {
                 format!("[[{}|{}]]", new_basename, alias)
@@ -35,7 +37,8 @@ pub fn update_reference(reference: &Reference, new_basename: &str) -> String {
         ReferenceType::WikilinkWithSection => {
             let section = reference.section.as_deref().unwrap_or("");
             if reference.uses_full_path() {
-                let new_path = update_path_in_reference(&reference.target_as_written, new_basename);
+                let new_path =
+                    update_path_in_reference(&reference.target_as_written, new_basename);
                 format!("[[{}#{}]]", new_path, section)
             } else {
                 format!("[[{}#{}]]", new_basename, section)
@@ -46,7 +49,8 @@ pub fn update_reference(reference: &Reference, new_basename: &str) -> String {
             let section = reference.section.as_deref().unwrap_or("");
             let alias = reference.alias.as_deref().unwrap_or("");
             if reference.uses_full_path() {
-                let new_path = update_path_in_reference(&reference.target_as_written, new_basename);
+                let new_path =
+                    update_path_in_reference(&reference.target_as_written, new_basename);
                 format!("[[{}#{}|{}]]", new_path, section, alias)
             } else {
                 format!("[[{}#{}|{}]]", new_basename, section, alias)
@@ -59,7 +63,8 @@ pub fn update_reference(reference: &Reference, new_basename: &str) -> String {
             format!("[{}]({})", link_text, new_url)
         }
 
-        ReferenceType::FrontmatterField { .. } | ReferenceType::FrontmatterList { .. } => {
+        ReferenceType::FrontmatterField { .. }
+        | ReferenceType::FrontmatterList { .. } => {
             // Frontmatter references are just the basename
             new_basename.to_string()
         }
@@ -246,7 +251,12 @@ mod tests {
 
     #[test]
     fn test_update_wikilink_with_alias() {
-        let mut reference = make_reference("[[old-note|My Alias]]", ReferenceType::WikilinkWithAlias, 0, 21);
+        let mut reference = make_reference(
+            "[[old-note|My Alias]]",
+            ReferenceType::WikilinkWithAlias,
+            0,
+            21,
+        );
         reference.alias = Some("My Alias".to_string());
 
         let result = update_reference(&reference, "new-note");
@@ -255,7 +265,12 @@ mod tests {
 
     #[test]
     fn test_update_wikilink_with_section() {
-        let mut reference = make_reference("[[old-note#section]]", ReferenceType::WikilinkWithSection, 0, 20);
+        let mut reference = make_reference(
+            "[[old-note#section]]",
+            ReferenceType::WikilinkWithSection,
+            0,
+            20,
+        );
         reference.section = Some("section".to_string());
 
         let result = update_reference(&reference, "new-note");
@@ -264,7 +279,8 @@ mod tests {
 
     #[test]
     fn test_update_wikilink_preserves_path() {
-        let mut reference = make_reference("[[tasks/old-note]]", ReferenceType::Wikilink, 0, 18);
+        let mut reference =
+            make_reference("[[tasks/old-note]]", ReferenceType::Wikilink, 0, 18);
         reference.target_as_written = "tasks/old-note".to_string();
 
         let result = update_reference(&reference, "new-note");
@@ -273,7 +289,12 @@ mod tests {
 
     #[test]
     fn test_update_markdown_link() {
-        let mut reference = make_reference("[link text](./old-note.md)", ReferenceType::MarkdownLink, 0, 26);
+        let mut reference = make_reference(
+            "[link text](./old-note.md)",
+            ReferenceType::MarkdownLink,
+            0,
+            26,
+        );
         reference.alias = Some("link text".to_string());
         reference.target_as_written = "./old-note.md".to_string();
 
@@ -283,7 +304,12 @@ mod tests {
 
     #[test]
     fn test_update_markdown_link_relative() {
-        let mut reference = make_reference("[text](../tasks/old-note.md)", ReferenceType::MarkdownLink, 0, 28);
+        let mut reference = make_reference(
+            "[text](../tasks/old-note.md)",
+            ReferenceType::MarkdownLink,
+            0,
+            28,
+        );
         reference.alias = Some("text".to_string());
         reference.target_as_written = "../tasks/old-note.md".to_string();
 
@@ -300,9 +326,7 @@ mod tests {
             start: 20,
             end: 28,
             original: "old-note".to_string(),
-            ref_type: ReferenceType::FrontmatterField {
-                field: "project".to_string(),
-            },
+            ref_type: ReferenceType::FrontmatterField { field: "project".to_string() },
             alias: None,
             section: None,
             target_as_written: "old-note".to_string(),
@@ -325,7 +349,12 @@ mod tests {
     fn test_apply_updates_multiple() {
         let content = "First [[old-note]] and second [[old-note|alias]].";
         let ref1 = make_reference("[[old-note]]", ReferenceType::Wikilink, 6, 18);
-        let mut ref2 = make_reference("[[old-note|alias]]", ReferenceType::WikilinkWithAlias, 30, 48);
+        let mut ref2 = make_reference(
+            "[[old-note|alias]]",
+            ReferenceType::WikilinkWithAlias,
+            30,
+            48,
+        );
         ref2.alias = Some("alias".to_string());
 
         let result = apply_updates(content, &[ref1, ref2], "new-note");

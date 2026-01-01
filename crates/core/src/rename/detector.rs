@@ -40,17 +40,13 @@ pub fn find_references_in_content(
     let mut references = Vec::new();
 
     // Get the target's basename and relative path for matching
-    let target_basename = target_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
+    let target_basename = target_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
-    let target_rel = target_path
-        .strip_prefix(vault_root)
-        .unwrap_or(target_path);
+    let target_rel = target_path.strip_prefix(vault_root).unwrap_or(target_path);
 
     // Find references in body content
-    let body_refs = find_body_references(content, source_path, target_basename, target_rel);
+    let body_refs =
+        find_body_references(content, source_path, target_basename, target_rel);
     references.extend(body_refs);
 
     // Find references in frontmatter
@@ -177,49 +173,49 @@ fn find_frontmatter_references(
             // Handle single string value
             if let Some(s) = value.as_str()
                 && matches_frontmatter_ref(s, target_basename)
-                    && let Some((start, end)) =
-                        find_frontmatter_field_value(content, field, s, &fm_bounds)
-                    {
-                        references.push(Reference {
-                            source_path: source_path.to_path_buf(),
-                            line_number: 0, // Frontmatter
-                            column: 0,
-                            start,
-                            end,
-                            original: s.to_string(),
-                            ref_type: ReferenceType::FrontmatterField {
-                                field: field.to_string(),
-                            },
-                            alias: None,
-                            section: None,
-                            target_as_written: s.to_string(),
-                        });
-                    }
+                && let Some((start, end)) =
+                    find_frontmatter_field_value(content, field, s, &fm_bounds)
+            {
+                references.push(Reference {
+                    source_path: source_path.to_path_buf(),
+                    line_number: 0, // Frontmatter
+                    column: 0,
+                    start,
+                    end,
+                    original: s.to_string(),
+                    ref_type: ReferenceType::FrontmatterField {
+                        field: field.to_string(),
+                    },
+                    alias: None,
+                    section: None,
+                    target_as_written: s.to_string(),
+                });
+            }
 
             // Handle array of strings
             if let Some(arr) = value.as_sequence() {
                 for (idx, item) in arr.iter().enumerate() {
                     if let Some(s) = item.as_str()
                         && matches_frontmatter_ref(s, target_basename)
-                            && let Some((start, end)) =
-                                find_frontmatter_list_item(content, field, s, idx, &fm_bounds)
-                            {
-                                references.push(Reference {
-                                    source_path: source_path.to_path_buf(),
-                                    line_number: 0,
-                                    column: 0,
-                                    start,
-                                    end,
-                                    original: s.to_string(),
-                                    ref_type: ReferenceType::FrontmatterList {
-                                        field: field.to_string(),
-                                        index: idx,
-                                    },
-                                    alias: None,
-                                    section: None,
-                                    target_as_written: s.to_string(),
-                                });
-                            }
+                        && let Some((start, end)) =
+                            find_frontmatter_list_item(content, field, s, idx, &fm_bounds)
+                    {
+                        references.push(Reference {
+                            source_path: source_path.to_path_buf(),
+                            line_number: 0,
+                            column: 0,
+                            start,
+                            end,
+                            original: s.to_string(),
+                            ref_type: ReferenceType::FrontmatterList {
+                                field: field.to_string(),
+                                index: idx,
+                            },
+                            alias: None,
+                            section: None,
+                            target_as_written: s.to_string(),
+                        });
+                    }
                 }
             }
         }
@@ -272,9 +268,7 @@ fn matches_target(reference: &str, target_basename: &str, target_rel: &Path) -> 
 /// Check if a markdown link URL matches the target note.
 fn matches_markdown_target(url: &str, target_basename: &str, target_rel: &Path) -> bool {
     // Normalize the URL path
-    let url_normalized = url
-        .trim_start_matches("./")
-        .trim_start_matches("../");
+    let url_normalized = url.trim_start_matches("./").trim_start_matches("../");
 
     let url_lower = url_normalized.to_lowercase();
     let basename_lower = target_basename.to_lowercase();
@@ -381,11 +375,8 @@ fn find_frontmatter_list_item(
     let after_field = &fm_content[field_pos..];
 
     // Look for "- value" pattern (YAML list item)
-    let list_patterns = [
-        format!("- {}", value),
-        format!("- '{}'", value),
-        format!("- \"{}\"", value),
-    ];
+    let list_patterns =
+        [format!("- {}", value), format!("- '{}'", value), format!("- \"{}\"", value)];
 
     for pattern in &list_patterns {
         if let Some(pos) = after_field.find(pattern.as_str()) {
@@ -445,9 +436,8 @@ pub fn find_references_in_file(
     target_path: &Path,
     vault_root: &Path,
 ) -> Result<Vec<Reference>, RenameError> {
-    let content = std::fs::read_to_string(source_path).map_err(|e| RenameError::ReadError {
-        path: source_path.to_path_buf(),
-        source: e,
+    let content = std::fs::read_to_string(source_path).map_err(|e| {
+        RenameError::ReadError { path: source_path.to_path_buf(), source: e }
     })?;
 
     Ok(find_references_in_content(&content, source_path, target_path, vault_root))
@@ -606,10 +596,7 @@ project: my-note
         );
 
         assert_eq!(refs.len(), 1);
-        assert!(matches!(
-            refs[0].ref_type,
-            ReferenceType::FrontmatterField { .. }
-        ));
+        assert!(matches!(refs[0].ref_type, ReferenceType::FrontmatterField { .. }));
     }
 
     #[test]
@@ -631,9 +618,6 @@ related:
         );
 
         assert_eq!(refs.len(), 1);
-        assert!(matches!(
-            refs[0].ref_type,
-            ReferenceType::FrontmatterList { .. }
-        ));
+        assert!(matches!(refs[0].ref_type, ReferenceType::FrontmatterList { .. }));
     }
 }

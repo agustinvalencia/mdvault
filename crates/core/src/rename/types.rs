@@ -101,7 +101,8 @@ impl Reference {
     pub fn is_frontmatter(&self) -> bool {
         matches!(
             self.ref_type,
-            ReferenceType::FrontmatterField { .. } | ReferenceType::FrontmatterList { .. }
+            ReferenceType::FrontmatterField { .. }
+                | ReferenceType::FrontmatterList { .. }
         )
     }
 

@@ -55,14 +55,12 @@ pub fn generate_preview(
         .map_err(|e| RenameError::IndexError(e.to_string()))?
         .ok_or_else(|| RenameError::NoteNotInIndex(old_abs.clone()))?;
 
-    let note_id = note.id.ok_or_else(|| {
-        RenameError::IndexError("Note has no ID".to_string())
-    })?;
+    let note_id =
+        note.id.ok_or_else(|| RenameError::IndexError("Note has no ID".to_string()))?;
 
     // Get backlinks from index to find files that reference this note
-    let backlinks = db
-        .get_backlinks(note_id)
-        .map_err(|e| RenameError::IndexError(e.to_string()))?;
+    let backlinks =
+        db.get_backlinks(note_id).map_err(|e| RenameError::IndexError(e.to_string()))?;
 
     // Find all references by parsing the source files
     let mut all_references = Vec::new();
@@ -80,21 +78,18 @@ pub fn generate_preview(
 
     // Scan each file for exact reference positions
     for source_path in files_to_scan.keys() {
-        let content = fs::read_to_string(source_path).map_err(|e| RenameError::ReadError {
-            path: source_path.clone(),
-            source: e,
+        let content = fs::read_to_string(source_path).map_err(|e| {
+            RenameError::ReadError { path: source_path.clone(), source: e }
         })?;
 
-        let refs = find_references_in_content(&content, source_path, &old_abs, vault_root);
+        let refs =
+            find_references_in_content(&content, source_path, &old_abs, vault_root);
         all_references.extend(refs);
     }
 
     // Get the new basename for reference updates
-    let new_basename = new_abs
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unnamed")
-        .to_string();
+    let new_basename =
+        new_abs.file_stem().and_then(|s| s.to_str()).unwrap_or("unnamed").to_string();
 
     // Generate file changes
     let mut changes = Vec::new();
@@ -110,9 +105,8 @@ pub fn generate_preview(
     }
 
     for (source_path, refs) in refs_by_file {
-        let content = fs::read_to_string(&source_path).map_err(|e| RenameError::ReadError {
-            path: source_path.clone(),
-            source: e,
+        let content = fs::read_to_string(&source_path).map_err(|e| {
+            RenameError::ReadError { path: source_path.clone(), source: e }
         })?;
 
         let new_content = apply_updates(&content, &refs, &new_basename);
@@ -172,9 +166,8 @@ pub fn execute_rename(
     let mut references_updated = 0;
 
     for change in &preview.changes {
-        fs::write(&change.path, &change.new_content).map_err(|e| RenameError::WriteError {
-            path: change.path.clone(),
-            source: e,
+        fs::write(&change.path, &change.new_content).map_err(|e| {
+            RenameError::WriteError { path: change.path.clone(), source: e }
         })?;
 
         files_modified.push(change.path.clone());
@@ -183,12 +176,13 @@ pub fn execute_rename(
 
     // Create parent directory for new path if needed
     if let Some(parent) = preview.new_path.parent()
-        && !parent.exists() {
-            fs::create_dir_all(parent).map_err(|e| RenameError::WriteError {
-                path: parent.to_path_buf(),
-                source: e,
-            })?;
-        }
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent).map_err(|e| RenameError::WriteError {
+            path: parent.to_path_buf(),
+            source: e,
+        })?;
+    }
 
     // Rename the file itself
     fs::rename(&preview.old_path, &preview.new_path).map_err(RenameError::RenameError)?;
@@ -201,8 +195,7 @@ pub fn execute_rename(
         .map_err(|e| RenameError::IndexError(e.to_string()))?;
 
     // Re-resolve link targets after the rename
-    db.resolve_link_targets()
-        .map_err(|e| RenameError::IndexError(e.to_string()))?;
+    db.resolve_link_targets().map_err(|e| RenameError::IndexError(e.to_string()))?;
 
     Ok(RenameResult {
         old_path: preview.old_path,
@@ -224,10 +217,7 @@ fn update_note_path(
     // Update the notes table
     conn.execute(
         "UPDATE notes SET path = ?1 WHERE path = ?2",
-        rusqlite::params![
-            new_path.to_string_lossy(),
-            old_path.to_string_lossy(),
-        ],
+        rusqlite::params![new_path.to_string_lossy(), old_path.to_string_lossy(),],
     )?;
 
     // Update target_path in links table where it matches the old path
@@ -237,10 +227,7 @@ fn update_note_path(
     // Update exact matches
     conn.execute(
         "UPDATE links SET target_path = ?1 WHERE target_path = ?2",
-        rusqlite::params![
-            new_path.to_string_lossy(),
-            old_path.to_string_lossy(),
-        ],
+        rusqlite::params![new_path.to_string_lossy(), old_path.to_string_lossy(),],
     )?;
 
     // Update basename-only matches
@@ -376,11 +363,7 @@ mod tests {
         let old_id = db.insert_note(&sample_note("old.md")).unwrap();
 
         // Create source note with reference
-        create_note(
-            temp_dir.path(),
-            "source.md",
-            "# Source\n\nSee [[old]] for details.",
-        );
+        create_note(temp_dir.path(), "source.md", "# Source\n\nSee [[old]] for details.");
         let source_id = db.insert_note(&sample_note("source.md")).unwrap();
 
         // Add link in index
@@ -410,7 +393,8 @@ mod tests {
         assert_eq!(result.files_modified.len(), 1);
 
         // Verify file content was updated
-        let source_content = fs::read_to_string(temp_dir.path().join("source.md")).unwrap();
+        let source_content =
+            fs::read_to_string(temp_dir.path().join("source.md")).unwrap();
         assert!(source_content.contains("[[new]]"));
         assert!(!source_content.contains("[[old]]"));
     }

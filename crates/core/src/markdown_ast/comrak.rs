@@ -219,7 +219,8 @@ fn find_content_end_before_blanks(content: &str) -> usize {
     let mut end = bytes.len();
 
     // Skip trailing whitespace/newlines
-    while end > 0 && (bytes[end - 1] == b'\n' || bytes[end - 1] == b' ' || bytes[end - 1] == b'\t')
+    while end > 0
+        && (bytes[end - 1] == b'\n' || bytes[end - 1] == b' ' || bytes[end - 1] == b'\t')
     {
         end -= 1;
     }

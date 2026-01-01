@@ -108,14 +108,8 @@ fn print_error(e: &RenameError) {
 }
 
 fn print_preview(preview: &RenamePreview, vault_root: &Path) {
-    let old_rel = preview
-        .old_path
-        .strip_prefix(vault_root)
-        .unwrap_or(&preview.old_path);
-    let new_rel = preview
-        .new_path
-        .strip_prefix(vault_root)
-        .unwrap_or(&preview.new_path);
+    let old_rel = preview.old_path.strip_prefix(vault_root).unwrap_or(&preview.old_path);
+    let new_rel = preview.new_path.strip_prefix(vault_root).unwrap_or(&preview.new_path);
 
     println!("Renaming: {} -> {}", old_rel.display(), new_rel.display());
     println!();
