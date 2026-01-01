@@ -3,6 +3,13 @@ name = "mdvault-core"
 version = "0.1.0"
 edition = "2024"
 description = "Core library for mdvault - markdown vault management"
+license = "MIT"
+repository = "https://github.com/agustinvalencia/mdvault"
+homepage = "https://github.com/agustinvalencia/mdvault"
+documentation = "https://docs.rs/mdvault-core"
+readme = "../../README.md"
+keywords = ["markdown", "notes", "vault", "knowledge-base", "cli"]
+categories = ["command-line-utilities", "text-processing"]
 
 [lib]
 name = "mdvault_core"

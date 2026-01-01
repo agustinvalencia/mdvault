@@ -2,7 +2,13 @@
 name = "mdvault"
 version = "0.1.0"
 edition = "2021"
-description = "Your markdown vault on the command line"
+description = "CLI tool for managing markdown vaults with structured notes, validation, and search"
+license = "MIT"
+repository = "https://github.com/agustinvalencia/mdvault"
+homepage = "https://github.com/agustinvalencia/mdvault"
+readme = "../../README.md"
+keywords = ["markdown", "notes", "vault", "knowledge-base", "cli"]
+categories = ["command-line-utilities", "text-processing"]
 
 [[bin]]
 name = "mdv"

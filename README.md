@@ -41,18 +41,42 @@ mdvault is undergoing a significant expansion. The core templating and capture s
 
 ### In Development
 - Contextual search (graph neighbourhood + temporal signals)
-- Safe note renaming with reference updates
+- MCP tools for task and project management
 
 ## Installation
 
+### Pre-built Binaries (Recommended)
+
+Download the latest release for your platform from the [Releases page](https://github.com/agustinvalencia/mdvault/releases).
+
 ```bash
-cargo install --path crates/cli
+# macOS/Linux: Extract and move to PATH
+tar xzf mdv-*.tar.gz
+sudo mv mdv /usr/local/bin/
+
+# Verify installation
+mdv --version
 ```
 
-Or build from source:
+### Homebrew (macOS/Linux)
 
 ```bash
+brew install agustinvalencia/tap/mdvault
+```
+
+### Cargo (Rust)
+
+```bash
+cargo install mdvault
+```
+
+### Build from Source
+
+```bash
+git clone https://github.com/agustinvalencia/mdvault.git
+cd mdvault
 cargo build --release
+# Binary is at target/release/mdv
 ```
 
 ## Quick Start
@@ -106,6 +130,9 @@ mdv
 | `mdv orphans` | Find notes with no incoming links |
 | `mdv validate` | Validate notes against type schemas |
 | `mdv validate --fix` | Auto-fix safe validation issues |
+| `mdv rename <old> <new>` | Rename note and update all references |
+| `mdv search <query>` | Search notes with contextual matching |
+| `mdv stale` | Find neglected notes |
 
 See `mdv --help` for full options.
 
