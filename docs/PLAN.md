@@ -112,7 +112,7 @@ This document tracks the implementation phases for evolving mdvault from a templ
   - [x] Auto-populate required fields from schema defaults
   - [x] Auto-generate output paths (`tasks/my-title.md`)
   - [x] Template filters (`{{title | slugify}}`)
-  - [ ] Link to daily note on creation (via on_create hook)
+  - [x] Link to daily note on creation (via on_create hook + capture with create_if_missing)
 - [x] Hook integration
   - [x] Call on_create() during `mdv new`
   - [x] Vault operations in hooks (`mdv.template()`, `mdv.capture()`, `mdv.macro()`)

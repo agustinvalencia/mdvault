@@ -85,14 +85,23 @@ created: {{today}}
 Captures append content to existing files. Example `~/.config/mdvault/captures/inbox.yaml`:
 
 ```yaml
-target: inbox.md
-section: "## Inbox"
-template: "- [ ] {{text}} ({{now}})"
-variables:
+name: inbox
+description: Quick capture to inbox
+
+target:
+  file: "inbox.md"
+  section: "Inbox"
+  position: end
+
+content: "- [ ] {{text}} ({{time}})"
+
+vars:
   text:
     required: true
     prompt: "What to capture?"
 ```
+
+Use `create_if_missing: true` in the target to auto-create the file if it doesn't exist (useful for daily notes).
 
 ## Common Workflows
 

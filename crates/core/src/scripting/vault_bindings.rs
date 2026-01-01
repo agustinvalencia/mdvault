@@ -17,11 +17,11 @@ use super::vault_context::VaultContext;
 use crate::captures::CaptureSpec;
 use crate::config::types::ResolvedConfig;
 use crate::frontmatter::{apply_ops, parse, serialize};
-use crate::types::validation::yaml_to_lua_table;
 use crate::macros::runner::{MacroRunError, RunContext, RunOptions, StepExecutor};
 use crate::macros::types::{CaptureStep, ShellStep, StepResult, TemplateStep};
 use crate::markdown_ast::{MarkdownEditor, SectionMatch};
 use crate::templates::engine::render_string;
+use crate::types::validation::yaml_to_lua_table;
 
 /// Register vault operation bindings on an existing mdv table.
 ///
@@ -264,11 +264,8 @@ fn create_read_note_fn(lua: &Lua) -> LuaResult<Function> {
             .ok_or_else(|| mlua::Error::runtime("VaultContext not available"))?;
 
         // Resolve path relative to vault root
-        let resolved_path = if path.ends_with(".md") {
-            path.clone()
-        } else {
-            format!("{}.md", path)
-        };
+        let resolved_path =
+            if path.ends_with(".md") { path.clone() } else { format!("{}.md", path) };
 
         let full_path = if Path::new(&resolved_path).is_absolute() {
             std::path::PathBuf::from(&resolved_path)
@@ -297,10 +294,9 @@ fn create_read_note_fn(lua: &Lua) -> LuaResult<Function> {
             Err(e) => {
                 return Ok(MultiValue::from_vec(vec![
                     Value::Nil,
-                    Value::String(lua.create_string(format!(
-                        "failed to parse frontmatter: {}",
-                        e
-                    ))?),
+                    Value::String(
+                        lua.create_string(format!("failed to parse frontmatter: {}", e))?,
+                    ),
                 ]));
             }
         };
@@ -314,8 +310,9 @@ fn create_read_note_fn(lua: &Lua) -> LuaResult<Function> {
         // Add frontmatter if present
         if let Some(ref fm) = parsed.frontmatter {
             // Convert frontmatter to serde_yaml::Value for yaml_to_lua_table
-            let fm_yaml = serde_yaml::to_value(fm)
-                .map_err(|e| mlua::Error::runtime(format!("failed to serialize frontmatter: {}", e)))?;
+            let fm_yaml = serde_yaml::to_value(fm).map_err(|e| {
+                mlua::Error::runtime(format!("failed to serialize frontmatter: {}", e))
+            })?;
 
             let fm_table = yaml_to_lua_table(lua, &fm_yaml)?;
             note_table.set("frontmatter", fm_table)?;
@@ -329,10 +326,7 @@ fn create_read_note_fn(lua: &Lua) -> LuaResult<Function> {
             }
         }
 
-        Ok(MultiValue::from_vec(vec![
-            Value::Table(note_table),
-            Value::Nil,
-        ]))
+        Ok(MultiValue::from_vec(vec![Value::Table(note_table), Value::Nil]))
     })
 }
 
@@ -386,10 +380,38 @@ fn execute_capture(
         render_string(&spec.target.file, vars).map_err(|e| e.to_string())?;
     let target_file = resolve_target_path(&config.vault_root, &target_file_raw);
 
-    // Read existing file
-    let existing_content = fs::read_to_string(&target_file).map_err(|e| {
-        format!("failed to read target file {}: {}", target_file.display(), e)
-    })?;
+    // Read existing file or create if missing
+    let existing_content = match fs::read_to_string(&target_file) {
+        Ok(content) => content,
+        Err(e)
+            if e.kind() == std::io::ErrorKind::NotFound
+                && spec.target.create_if_missing =>
+        {
+            // Create the file with minimal structure
+            let content = create_minimal_note(vars, spec.target.section.as_deref());
+
+            // Ensure parent directory exists
+            if let Some(parent) = target_file.parent() {
+                fs::create_dir_all(parent).map_err(|e| {
+                    format!("failed to create directory {}: {}", parent.display(), e)
+                })?;
+            }
+
+            // Write the new file
+            fs::write(&target_file, &content).map_err(|e| {
+                format!("failed to create target file {}: {}", target_file.display(), e)
+            })?;
+
+            content
+        }
+        Err(e) => {
+            return Err(format!(
+                "failed to read target file {}: {}",
+                target_file.display(),
+                e
+            ));
+        }
+    };
 
     // Execute capture operations
     let (result_content, _section_info) =
@@ -400,6 +422,21 @@ fn execute_capture(
         .map_err(|e| format!("failed to write to {}: {}", target_file.display(), e))?;
 
     Ok(())
+}
+
+/// Create a minimal note structure for auto-created files.
+fn create_minimal_note(vars: &HashMap<String, String>, section: Option<&str>) -> String {
+    let date = vars.get("date").map(|s| s.as_str()).unwrap_or("unknown");
+    let title = vars.get("title").map(|s| s.as_str()).unwrap_or(date);
+
+    let mut content = format!("---\ntype: daily\ndate: {}\n---\n\n# {}\n", date, title);
+
+    // Add the target section if specified
+    if let Some(section_name) = section {
+        content.push_str(&format!("\n## {}\n", section_name));
+    }
+
+    content
 }
 
 /// Execute capture operations: frontmatter modification and/or content insertion.

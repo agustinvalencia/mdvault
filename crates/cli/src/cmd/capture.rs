@@ -211,12 +211,40 @@ pub fn run(
     let target_file_raw = render_string(&loaded.spec.target.file, &ctx);
     let target_file = resolve_target_path(&cfg.vault_root, &target_file_raw);
 
-    // 6. Read existing file
+    // 6. Read existing file or create if missing
     let existing_content = match fs::read_to_string(&target_file) {
         Ok(content) => content,
+        Err(e)
+            if e.kind() == std::io::ErrorKind::NotFound
+                && loaded.spec.target.create_if_missing =>
+        {
+            // Create the file with minimal structure
+            let content =
+                create_minimal_note(&ctx, loaded.spec.target.section.as_deref());
+
+            // Ensure parent directory exists
+            if let Some(parent) = target_file.parent() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    eprintln!("Failed to create directory {}: {e}", parent.display());
+                    std::process::exit(1);
+                }
+            }
+
+            // Write the new file
+            if let Err(e) = fs::write(&target_file, &content) {
+                eprintln!("Failed to create target file {}: {e}", target_file.display());
+                std::process::exit(1);
+            }
+
+            println!("Created: {}", target_file.display());
+            content
+        }
         Err(e) => {
             eprintln!("Failed to read target file {}: {e}", target_file.display());
             eprintln!("Hint: The target file must exist before capturing to it.");
+            eprintln!(
+                "      Use 'create_if_missing: true' in the capture spec to auto-create."
+            );
             std::process::exit(1);
         }
     };
@@ -460,4 +488,19 @@ fn resolve_target_path(vault_root: &Path, target: &str) -> std::path::PathBuf {
     } else {
         vault_root.join(path)
     }
+}
+
+/// Create a minimal note structure for auto-created files.
+fn create_minimal_note(vars: &HashMap<String, String>, section: Option<&str>) -> String {
+    let date = vars.get("date").map(|s| s.as_str()).unwrap_or("unknown");
+    let title = vars.get("title").map(|s| s.as_str()).unwrap_or(date);
+
+    let mut content = format!("---\ntype: daily\ndate: {}\n---\n\n# {}\n", date, title);
+
+    // Add the target section if specified
+    if let Some(section_name) = section {
+        content.push_str(&format!("\n## {}\n", section_name));
+    }
+
+    content
 }

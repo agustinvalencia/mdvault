@@ -46,6 +46,11 @@ pub struct CaptureTarget {
     /// Where in the section to insert (begin or end)
     #[serde(default)]
     pub position: CapturePosition,
+
+    /// If true, create the target file if it doesn't exist.
+    /// The file will be created with minimal frontmatter (type: daily, date) and the target section.
+    #[serde(default)]
+    pub create_if_missing: bool,
 }
 
 /// Position within a section (maps to InsertPosition)

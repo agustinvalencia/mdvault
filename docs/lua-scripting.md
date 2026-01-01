@@ -640,7 +640,25 @@ All vault operations return two values for graceful error handling:
 
 Hooks should check for errors but failures are non-fatal—the CLI logs a warning but the note creation still succeeds.
 
-### Complete Hook Example
+### Complete Hook Example: Linking to Daily Note
+
+This example shows how to automatically log task creation to the daily note. First, create a capture that targets the daily note:
+
+```yaml
+# ~/.config/mdvault/captures/log-to-daily.yaml
+name: log-to-daily
+description: Log a note link to today's daily note
+
+target:
+  file: "daily/{{date}}.md"
+  section: "Created"
+  position: end
+  create_if_missing: true  # Creates daily note if it doesn't exist
+
+content: "- [[{{note_path}}]] {{note_title}}"
+```
+
+Then create a type definition with an `on_create` hook:
 
 ```lua
 -- ~/.config/mdvault/types/task.lua
@@ -655,25 +673,26 @@ return {
     on_create = function(note)
         -- Log task creation to daily note
         local ok, err = mdv.capture("log-to-daily", {
-            text = string.format("- Created task: [[%s]] (%s)",
-                note.path,
-                note.frontmatter.title or "untitled")
+            note_path = note.path,
+            note_title = note.frontmatter.title or "untitled"
         })
 
         if not ok then
             print("Warning: could not log to daily: " .. err)
         end
 
-        -- Optionally run a macro for additional setup
-        mdv.macro("setup-task-reminders", {
-            task_path = note.path,
-            due = note.frontmatter.due
-        })
-
         return note
     end
 }
 ```
+
+Now when you create a task:
+
+```bash
+mdv new task "Implement search feature" --var project=myproject
+```
+
+The task is created and automatically linked in today's daily note under the "Created" section. If the daily note doesn't exist, it's created automatically with the target section.
 
 ### Inheriting Fields from Parent Notes
 
