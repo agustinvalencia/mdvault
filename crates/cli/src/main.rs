@@ -1,8 +1,12 @@
 mod cmd;
+mod completions;
 mod prompt;
 mod tui;
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::engine::ArgValueCompleter;
+use clap_complete::env::CompleteEnv;
+use clap_complete::Shell;
 use std::path::PathBuf;
 
 /// Output format for query commands.
@@ -101,6 +105,9 @@ enum Commands {
 
     /// Rename a note and update all references to it
     Rename(RenameArgs),
+
+    /// Generate shell completion scripts
+    Completions(CompletionsArgs),
 }
 
 #[derive(Debug, Args)]
@@ -128,7 +135,7 @@ Examples:
 ")]
 pub struct MacroArgs {
     /// Logical macro name (e.g. \"weekly-review\" or \"deploy\")
-    #[arg(required_unless_present = "list")]
+    #[arg(required_unless_present = "list", add = ArgValueCompleter::new(completions::complete_macros))]
     pub name: Option<String>,
 
     /// List available macros
@@ -158,13 +165,14 @@ Examples:
 pub struct NewArgs {
     /// Note type for scaffolding (e.g., \"task\", \"project\", \"zettel\")
     /// Creates a note with frontmatter based on the type's schema
+    #[arg(add = ArgValueCompleter::new(completions::complete_types))]
     pub note_type: Option<String>,
 
     /// Note title (used in frontmatter and as heading)
     pub title: Option<String>,
 
     /// Use a template file instead of type-based scaffolding
-    #[arg(long)]
+    #[arg(long, add = ArgValueCompleter::new(completions::complete_templates))]
     pub template: Option<String>,
 
     /// Output file path (auto-generated from type/title if not provided)
@@ -189,7 +197,7 @@ Examples:
 ")]
 pub struct CaptureArgs {
     /// Logical capture name (e.g. "inbox" or "todo")
-    #[arg(required_unless_present = "list")]
+    #[arg(required_unless_present = "list", add = ArgValueCompleter::new(completions::complete_captures))]
     pub name: Option<String>,
 
     /// List available captures and their expected variables
@@ -255,6 +263,7 @@ Examples:
 ")]
 pub struct LinksArgs {
     /// Path to the note (relative to vault root)
+    #[arg(add = ArgValueCompleter::new(completions::complete_notes))]
     pub note: String,
 
     /// Show only backlinks (notes linking to this note)
@@ -451,6 +460,7 @@ Examples:
 ")]
 pub struct RenameArgs {
     /// Source file path (relative to vault root)
+    #[arg(add = ArgValueCompleter::new(completions::complete_notes))]
     pub source: std::path::PathBuf,
 
     /// Destination file path (relative to vault root)
@@ -465,6 +475,19 @@ pub struct RenameArgs {
     pub yes: bool,
 }
 
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv completions bash > ~/.local/share/bash-completion/completions/mdv
+  mdv completions zsh > ~/.zfunc/_mdv
+  mdv completions fish > ~/.config/fish/completions/mdv.fish
+")]
+pub struct CompletionsArgs {
+    /// Shell to generate completions for
+    #[arg(value_enum)]
+    pub shell: Shell,
+}
+
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
     let pos =
         s.find('=').ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
@@ -472,6 +495,10 @@ fn parse_key_val(s: &str) -> Result<(String, String), String> {
 }
 
 fn main() {
+    // Enable dynamic shell completions
+    // This intercepts completion requests before normal CLI parsing
+    CompleteEnv::with_factory(Cli::command).complete();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -546,6 +573,14 @@ fn main() {
         }
         Some(Commands::Rename(args)) => {
             cmd::rename::run(cli.config.as_deref(), cli.profile.as_deref(), args);
+        }
+        Some(Commands::Completions(args)) => {
+            clap_complete::generate(
+                args.shell,
+                &mut Cli::command(),
+                "mdv",
+                &mut std::io::stdout(),
+            );
         }
     }
 }
