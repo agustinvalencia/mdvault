@@ -1,8 +1,8 @@
+install: 
+    cargo install --path crates/cli
+
 doctor: 
     cargo run --bin markadd -- doctor
-
-golden-update:
-    INSTA_UPDATE=auto cargo test -p markadd
 
 ci: fmt lint test
 
@@ -15,3 +15,5 @@ fmt:
 lint:
     cargo clippy --all-targets --all-features -- -D warnings
 
+golden-update:
+    INSTA_UPDATE=auto cargo test -p markadd

@@ -5,7 +5,9 @@ use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::macros::MacroRepository;
-use mdvault_core::scripting::{run_on_create_hook, NoteContext, VaultContext};
+use mdvault_core::scripting::{
+    run_on_create_hook, HookResult, NoteContext, VaultContext,
+};
 use mdvault_core::templates::discovery::TemplateInfo;
 use mdvault_core::templates::engine::{
     build_minimal_context, render, resolve_template_output_path,
@@ -178,8 +180,21 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
     }
 
     // Execute on_create hook if type definition exists
-    if let Err(e) = run_on_create_hook_if_exists(cfg, &output_path, &rendered) {
-        eprintln!("Warning: on_create hook failed: {e}");
+    match run_on_create_hook_if_exists(cfg, &output_path, &rendered) {
+        Ok(hook_result) => {
+            if hook_result.modified {
+                if let Err(e) =
+                    apply_hook_modifications(&output_path, &rendered, &hook_result)
+                {
+                    eprintln!(
+                        "Warning: failed to apply on_create hook modifications: {e}"
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: on_create hook failed: {e}");
+        }
     }
 
     println!("OK   mdv new");
@@ -332,8 +347,21 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     }
 
     // Execute on_create hook if defined
-    if let Err(e) = run_on_create_hook_if_exists(cfg, &output_path, &content) {
-        eprintln!("Warning: on_create hook failed: {e}");
+    match run_on_create_hook_if_exists(cfg, &output_path, &content) {
+        Ok(hook_result) => {
+            if hook_result.modified {
+                if let Err(e) =
+                    apply_hook_modifications(&output_path, &content, &hook_result)
+                {
+                    eprintln!(
+                        "Warning: failed to apply on_create hook modifications: {e}"
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: on_create hook failed: {e}");
+        }
     }
 
     println!("OK   mdv new");
@@ -353,15 +381,18 @@ fn extract_note_type(content: &str) -> Option<String> {
 }
 
 /// Run on_create hook if the note type has one defined.
+/// Returns the HookResult which may contain modifications to apply.
 fn run_on_create_hook_if_exists(
     cfg: &ResolvedConfig,
     output_path: &Path,
     content: &str,
-) -> Result<(), String> {
+) -> Result<HookResult, String> {
     // Extract note type from frontmatter
     let note_type = match extract_note_type(content) {
         Some(t) => t,
-        None => return Ok(()), // No type specified, nothing to do
+        None => {
+            return Ok(HookResult { modified: false, frontmatter: None, content: None })
+        }
     };
 
     // Load type registry
@@ -373,7 +404,7 @@ fn run_on_create_hook_if_exists(
     // Check if type has on_create hook
     let typedef = match type_registry.get(&note_type) {
         Some(td) if td.has_on_create_hook => td,
-        _ => return Ok(()), // No hook defined
+        _ => return Ok(HookResult { modified: false, frontmatter: None, content: None }),
     };
 
     // Load all repositories for VaultContext
@@ -415,6 +446,56 @@ fn run_on_create_hook_if_exists(
         content.to_string(),
     );
 
-    // Run the hook
+    // Run the hook and return its result
     run_on_create_hook(&typedef, &note_ctx, vault_ctx).map_err(|e| e.to_string())
+}
+
+/// Apply hook modifications to the output file.
+fn apply_hook_modifications(
+    output_path: &Path,
+    original_content: &str,
+    hook_result: &HookResult,
+) -> Result<(), String> {
+    if !hook_result.modified {
+        return Ok(());
+    }
+
+    // Parse original content to get structure
+    let original_parsed =
+        parse_frontmatter(original_content).map_err(|e| e.to_string())?;
+
+    // Determine final frontmatter
+    let final_frontmatter = if let Some(ref new_fm) = hook_result.frontmatter {
+        new_fm.clone()
+    } else if let Some(fm) = original_parsed.frontmatter {
+        let mut mapping = serde_yaml::Mapping::new();
+        for (k, v) in fm.fields {
+            mapping.insert(serde_yaml::Value::String(k), v);
+        }
+        serde_yaml::Value::Mapping(mapping)
+    } else {
+        serde_yaml::Value::Null
+    };
+
+    // Determine final content body
+    // If hook returned content, it might contain frontmatter, so parse it to get just the body
+    let final_body = if let Some(ref new_content) = hook_result.content {
+        // Parse the hook's content to extract just the body (in case it includes frontmatter)
+        let content_parsed = parse_frontmatter(new_content).map_err(|e| e.to_string())?;
+        content_parsed.body
+    } else {
+        original_parsed.body
+    };
+
+    // Rebuild the document
+    let final_content = if final_frontmatter.is_null() {
+        final_body
+    } else {
+        let yaml_str =
+            serde_yaml::to_string(&final_frontmatter).map_err(|e| e.to_string())?;
+        format!("---\n{}---\n{}", yaml_str, final_body)
+    };
+
+    // Write back to file
+    fs::write(output_path, final_content).map_err(|e| e.to_string())
 }

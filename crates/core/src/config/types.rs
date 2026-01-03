@@ -18,6 +18,8 @@ pub struct Profile {
     pub templates_dir: String,
     pub captures_dir: String,
     pub macros_dir: String,
+    /// Optional override for typedefs directory (defaults to global ~/.config/mdvault/types/)
+    pub typedefs_dir: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]

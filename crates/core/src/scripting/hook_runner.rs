@@ -9,9 +9,9 @@ use super::vault_context::VaultContext;
 use crate::types::definition::TypeDefinition;
 use crate::types::validation::yaml_to_lua_table;
 
-/// Result of running an `on_update` hook that may modify the note.
+/// Result of running a hook that may modify the note.
 #[derive(Debug)]
-pub struct UpdateHookResult {
+pub struct HookResult {
     /// Whether the hook made changes to the note.
     pub modified: bool,
     /// The updated frontmatter (if modified).
@@ -20,10 +20,14 @@ pub struct UpdateHookResult {
     pub content: Option<String>,
 }
 
+/// Alias for backwards compatibility.
+pub type UpdateHookResult = HookResult;
+
 /// Run the `on_create` hook for a type definition.
 ///
 /// This function is called after a note is created to allow the type definition
-/// to perform additional operations like logging to daily notes or updating indexes.
+/// to perform additional operations like logging to daily notes, updating indexes,
+/// or modifying the note's frontmatter.
 ///
 /// # Arguments
 ///
@@ -33,7 +37,7 @@ pub struct UpdateHookResult {
 ///
 /// # Returns
 ///
-/// * `Ok(())` if the hook succeeds or doesn't exist
+/// * `Ok(HookResult)` with any modifications from the hook
 /// * `Err(HookError)` on failure
 ///
 /// # Example
@@ -42,16 +46,19 @@ pub struct UpdateHookResult {
 /// use mdvault_core::scripting::{run_on_create_hook, NoteContext, VaultContext};
 ///
 /// let note_ctx = NoteContext::new(path, "task".into(), frontmatter, content);
-/// run_on_create_hook(&typedef, &note_ctx, vault_ctx)?;
+/// let result = run_on_create_hook(&typedef, &note_ctx, vault_ctx)?;
+/// if result.modified {
+///     // Write back the updated content
+/// }
 /// ```
 pub fn run_on_create_hook(
     typedef: &TypeDefinition,
     note_ctx: &NoteContext,
     vault_ctx: VaultContext,
-) -> Result<(), HookError> {
+) -> Result<HookResult, HookError> {
     // Skip if no hook defined
     if !typedef.has_on_create_hook {
-        return Ok(());
+        return Ok(HookResult { modified: false, frontmatter: None, content: None });
     }
 
     // Create engine with vault context
@@ -95,14 +102,36 @@ pub fn run_on_create_hook(
         HookError::LuaError(format!("on_create function not found: {}", e))
     })?;
 
-    // Call the hook
-    // The hook receives the note table and can call mdv.template/capture/macro
-    // We don't currently use the return value, but hooks are expected to return the note
-    on_create_fn
-        .call::<()>(note_table)
+    // Call the hook - it may return a modified note table
+    let result: mlua::Value = on_create_fn
+        .call(note_table)
         .map_err(|e| HookError::Execution(format!("on_create hook failed: {}", e)))?;
 
-    Ok(())
+    // Check if hook returned a modified note
+    match result {
+        mlua::Value::Table(returned_note) => {
+            // Extract frontmatter and content if present
+            let frontmatter: Option<serde_yaml::Value> =
+                if let Ok(fm_table) = returned_note.get::<mlua::Table>("frontmatter") {
+                    Some(lua_table_to_yaml(&fm_table)?)
+                } else {
+                    None
+                };
+
+            let content: Option<String> = returned_note.get("content").ok();
+
+            let modified = frontmatter.is_some() || content.is_some();
+            Ok(HookResult { modified, frontmatter, content })
+        }
+        mlua::Value::Nil => {
+            // Hook returned nil, no modifications
+            Ok(HookResult { modified: false, frontmatter: None, content: None })
+        }
+        _ => {
+            // Unexpected return type
+            Ok(HookResult { modified: false, frontmatter: None, content: None })
+        }
+    }
 }
 
 /// Run the `on_update` hook for a type definition.

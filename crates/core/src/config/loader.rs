@@ -84,6 +84,10 @@ impl ConfigLoader {
         let templates_dir = expand_path(&sub(&prof.templates_dir))?;
         let captures_dir = expand_path(&sub(&prof.captures_dir))?;
         let macros_dir = expand_path(&sub(&prof.macros_dir))?;
+        let typedefs_dir = match &prof.typedefs_dir {
+            Some(dir) => expand_path(&sub(dir))?,
+            None => default_typedefs_dir(),
+        };
 
         Ok(ResolvedConfig {
             active_profile: active.to_string(),
@@ -91,7 +95,7 @@ impl ConfigLoader {
             templates_dir,
             captures_dir,
             macros_dir,
-            typedefs_dir: default_typedefs_dir(),
+            typedefs_dir,
             security: sec.clone(),
         })
     }
