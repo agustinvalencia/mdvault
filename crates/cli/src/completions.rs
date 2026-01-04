@@ -109,6 +109,41 @@ pub fn complete_macros(current: &OsStr) -> Vec<CompletionCandidate> {
     completions
 }
 
+/// Complete project names from the index.
+pub fn complete_projects(current: &OsStr) -> Vec<CompletionCandidate> {
+    use mdvault_core::index::{IndexDb, NoteQuery, NoteType};
+
+    let mut completions = vec![];
+    let current_str = current.to_str().unwrap_or("");
+
+    if let Some(cfg) = load_config() {
+        let index_path = cfg.vault_root.join(".mdvault/index.db");
+        if let Ok(db) = IndexDb::open(&index_path) {
+            let query =
+                NoteQuery { note_type: Some(NoteType::Project), ..Default::default() };
+            if let Ok(projects) = db.query_notes(&query) {
+                for project in projects {
+                    // Use folder name as the project identifier
+                    let name =
+                        project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    if name.starts_with(current_str) {
+                        let title = if project.title.is_empty() {
+                            name.to_string()
+                        } else {
+                            project.title.clone()
+                        };
+                        completions.push(
+                            CompletionCandidate::new(name).help(Some(title.into())),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    completions
+}
+
 /// Complete note paths from the vault.
 /// This walks the vault directory and returns markdown files.
 pub fn complete_notes(current: &OsStr) -> Vec<CompletionCandidate> {

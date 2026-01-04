@@ -133,6 +133,9 @@ enum TaskCommands {
 enum ProjectCommands {
     /// List all projects with task counts
     List(ProjectListArgs),
+
+    /// Show tasks for a project in kanban-style view
+    Tasks(ProjectTasksArgs),
 }
 
 #[derive(Debug, Args)]
@@ -162,6 +165,13 @@ pub struct ProjectListArgs {
     /// Filter by status (active, completed, on-hold, archived)
     #[arg(long, short)]
     pub status: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct ProjectTasksArgs {
+    /// Project name (folder name, e.g., "myproject")
+    #[arg(add = ArgValueCompleter::new(completions::complete_projects))]
+    pub project: String,
 }
 
 #[derive(Debug, Args)]
@@ -660,6 +670,13 @@ fn main() {
                     cli.config.as_deref(),
                     cli.profile.as_deref(),
                     args.status.as_deref(),
+                );
+            }
+            ProjectCommands::Tasks(args) => {
+                cmd::project::tasks(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    &args.project,
                 );
             }
         },

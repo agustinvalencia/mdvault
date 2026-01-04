@@ -90,6 +90,13 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         provided_vars.entry("title".to_string()).or_insert(title.clone());
     }
 
+    // For task templates: show project picker if project not already provided
+    if template_name == "task" && !provided_vars.contains_key("project") && !args.batch {
+        if let Some(project) = prompt_project_selection(cfg) {
+            provided_vars.insert("project".to_string(), project);
+        }
+    }
+
     // Build minimal context for variable resolution
     let minimal_ctx = build_minimal_context(cfg, &info);
 
@@ -197,6 +204,12 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         Err(e) => {
             eprintln!("Warning: on_create hook failed: {e}");
         }
+    }
+
+    // Log to daily note for tasks and projects
+    if template_name == "task" || template_name == "project" {
+        let title = ctx.get("title").cloned().unwrap_or_else(|| "Untitled".to_string());
+        log_to_daily(cfg, template_name, &title, &output_path);
     }
 
     println!("OK   mdv new");
@@ -373,6 +386,11 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         }
     }
 
+    // Log to daily note for tasks and projects
+    if type_name == "task" || type_name == "project" {
+        log_to_daily(cfg, type_name, &title, &output_path);
+    }
+
     println!("OK   mdv new");
     println!("type:   {}", type_name);
     println!("output: {}", output_path.display());
@@ -509,16 +527,86 @@ fn apply_hook_modifications(
     fs::write(output_path, final_content).map_err(|e| e.to_string())
 }
 
+/// Log a creation event to today's daily note.
+/// Creates the daily note if it doesn't exist.
+fn log_to_daily(cfg: &ResolvedConfig, note_type: &str, title: &str, output_path: &Path) {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let time = chrono::Local::now().format("%H:%M").to_string();
+
+    // Build daily note path (default pattern: Journal/Daily/YYYY-MM-DD.md)
+    let daily_path = cfg.vault_root.join(format!("Journal/Daily/{}.md", today));
+
+    // Ensure parent directory exists
+    if let Some(parent) = daily_path.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            eprintln!("Warning: could not create daily directory: {e}");
+            return;
+        }
+    }
+
+    // Read or create daily note
+    let mut content = match fs::read_to_string(&daily_path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Create minimal daily note
+            let content = format!(
+                "---\ntype: daily\ndate: {}\n---\n\n# {}\n\n## Log\n",
+                today, today
+            );
+            if let Err(e) = fs::write(&daily_path, &content) {
+                eprintln!("Warning: could not create daily note: {e}");
+                return;
+            }
+            println!("Created daily note: {}", daily_path.display());
+            content
+        }
+        Err(e) => {
+            eprintln!("Warning: could not read daily note: {e}");
+            return;
+        }
+    };
+
+    // Build the log entry
+    let rel_path = output_path.strip_prefix(&cfg.vault_root).unwrap_or(output_path);
+    let link = rel_path.file_stem().and_then(|s| s.to_str()).unwrap_or("note");
+
+    let log_entry =
+        format!("- **{}** Created {}: [[{}|{}]]\n", time, note_type, link, title);
+
+    // Find the Log section and append, or append at end
+    if let Some(log_pos) = content.find("## Log") {
+        // Find the end of the Log section (next ## or end of file)
+        let after_log = &content[log_pos + 6..]; // Skip "## Log"
+        let insert_pos = if let Some(next_section) = after_log.find("\n## ") {
+            log_pos + 6 + next_section
+        } else {
+            content.len()
+        };
+
+        // Insert the log entry
+        content.insert_str(insert_pos, &format!("\n{}", log_entry));
+    } else {
+        // No Log section, add one
+        content.push_str(&format!("\n## Log\n{}", log_entry));
+    }
+
+    // Write back
+    if let Err(e) = fs::write(&daily_path, &content) {
+        eprintln!("Warning: could not update daily note: {e}");
+    }
+}
+
 /// Query existing projects from the index and prompt user to select one.
-/// Returns None if no projects exist or user cancels.
+/// Returns None if user cancels, Some("inbox") for inbox, or Some(project_name) for a project.
 fn prompt_project_selection(cfg: &ResolvedConfig) -> Option<String> {
     // Open the index database
     let index_path = cfg.vault_root.join(".mdvault/index.db");
     let db = match IndexDb::open(&index_path) {
         Ok(db) => db,
         Err(_) => {
-            // No index yet, skip project selection
-            return None;
+            // No index yet, default to inbox
+            println!("No index found. Task will go to inbox.");
+            return Some("inbox".to_string());
         }
     };
 
@@ -527,23 +615,16 @@ fn prompt_project_selection(cfg: &ResolvedConfig) -> Option<String> {
 
     let projects = match db.query_notes(&query) {
         Ok(p) => p,
-        Err(_) => return None,
+        Err(_) => return Some("inbox".to_string()),
     };
 
-    if projects.is_empty() {
-        println!("No projects found. Create one with: mdv new project \"Project Name\"");
-        return None;
-    }
+    // Build selection items: inbox first, then projects
+    let mut items: Vec<String> = vec!["📥 Inbox (no project - for triage)".to_string()];
 
-    // Build selection items: show title and path
-    let items: Vec<String> = projects
-        .iter()
-        .map(|p| {
-            let title = if p.title.is_empty() { "Untitled" } else { &p.title };
-            let path = p.path.to_string_lossy();
-            format!("{} ({})", title, path)
-        })
-        .collect();
+    for p in &projects {
+        let title = if p.title.is_empty() { "Untitled" } else { &p.title };
+        items.push(format!("📁 {}", title));
+    }
 
     // Show selector
     let selection = Select::with_theme(&ColorfulTheme::default())
@@ -553,10 +634,20 @@ fn prompt_project_selection(cfg: &ResolvedConfig) -> Option<String> {
         .interact_opt()
         .ok()?;
 
-    // User selected a project
+    // Handle selection
     selection.map(|idx| {
-        // Return the project folder name (used by templates to build paths)
-        let project = &projects[idx];
-        project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("project").to_string()
+        if idx == 0 {
+            // Inbox selected
+            "inbox".to_string()
+        } else {
+            // Project selected (idx - 1 because inbox is at 0)
+            let project = &projects[idx - 1];
+            project
+                .path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("project")
+                .to_string()
+        }
     })
 }

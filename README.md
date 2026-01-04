@@ -139,6 +139,7 @@ mdv
 | `mdv task list` | List tasks grouped by project with status |
 | `mdv task done <task>` | Mark a task as done |
 | `mdv project list` | List projects with task counts |
+| `mdv project <name> tasks` | Show project tasks in kanban view |
 
 See `mdv --help` for full options.
 
