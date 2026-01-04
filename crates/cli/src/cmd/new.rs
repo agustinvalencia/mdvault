@@ -1,9 +1,11 @@
 use crate::prompt::{collect_variables, prompt_for_field, PromptOptions};
 use crate::NewArgs;
+use dialoguer::{theme::ColorfulTheme, Select};
 use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::parse as parse_frontmatter;
+use mdvault_core::index::{IndexDb, NoteQuery, NoteType};
 use mdvault_core::macros::MacroRepository;
 use mdvault_core::scripting::{
     run_on_create_hook, HookResult, NoteContext, VaultContext,
@@ -270,6 +272,13 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     // Collect vars from command line
     let mut vars: HashMap<String, String> = args.vars.iter().cloned().collect();
 
+    // For tasks: prompt for project selection if not already provided
+    if type_name == "task" && !vars.contains_key("project") && !args.batch {
+        if let Some(project) = prompt_project_selection(cfg) {
+            vars.insert("project".to_string(), project);
+        }
+    }
+
     // Prompt for missing required fields
     if let Some(ref td) = typedef {
         let missing = get_missing_required_fields(td, &vars);
@@ -498,4 +507,56 @@ fn apply_hook_modifications(
 
     // Write back to file
     fs::write(output_path, final_content).map_err(|e| e.to_string())
+}
+
+/// Query existing projects from the index and prompt user to select one.
+/// Returns None if no projects exist or user cancels.
+fn prompt_project_selection(cfg: &ResolvedConfig) -> Option<String> {
+    // Open the index database
+    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let db = match IndexDb::open(&index_path) {
+        Ok(db) => db,
+        Err(_) => {
+            // No index yet, skip project selection
+            return None;
+        }
+    };
+
+    // Query all projects
+    let query = NoteQuery { note_type: Some(NoteType::Project), ..Default::default() };
+
+    let projects = match db.query_notes(&query) {
+        Ok(p) => p,
+        Err(_) => return None,
+    };
+
+    if projects.is_empty() {
+        println!("No projects found. Create one with: mdv new project \"Project Name\"");
+        return None;
+    }
+
+    // Build selection items: show title and path
+    let items: Vec<String> = projects
+        .iter()
+        .map(|p| {
+            let title = if p.title.is_empty() { "Untitled" } else { &p.title };
+            let path = p.path.to_string_lossy();
+            format!("{} ({})", title, path)
+        })
+        .collect();
+
+    // Show selector
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select project for this task")
+        .items(&items)
+        .default(0)
+        .interact_opt()
+        .ok()?;
+
+    // User selected a project
+    selection.map(|idx| {
+        // Return the project folder name (used by templates to build paths)
+        let project = &projects[idx];
+        project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("project").to_string()
+    })
 }
