@@ -5,7 +5,8 @@ use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::parse as parse_frontmatter;
-use mdvault_core::index::{IndexDb, NoteQuery, NoteType};
+use mdvault_core::ids::{generate_project_id, generate_task_id};
+use mdvault_core::index::{IndexBuilder, IndexDb, NoteQuery, NoteType};
 use mdvault_core::macros::MacroRepository;
 use mdvault_core::scripting::{
     run_on_create_hook, HookResult, NoteContext, VaultContext,
@@ -16,12 +17,11 @@ use mdvault_core::templates::engine::{
 };
 use mdvault_core::templates::repository::{TemplateRepoError, TemplateRepository};
 use mdvault_core::types::{
-    default_output_path, generate_scaffolding, get_missing_required_fields, TypeRegistry,
-    TypedefRepository,
+    generate_scaffolding, get_missing_required_fields, TypeRegistry, TypedefRepository,
 };
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub fn run(config: Option<&Path>, profile: Option<&str>, args: NewArgs) {
     let cfg = match ConfigLoader::load(config, profile) {
@@ -207,9 +207,19 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
     }
 
     // Log to daily note for tasks and projects
+    // Note: In template mode, we don't auto-generate IDs (user should use scaffolding mode for that)
+    // But we still log to daily with whatever ID might be in the context
     if template_name == "task" || template_name == "project" {
         let title = ctx.get("title").cloned().unwrap_or_else(|| "Untitled".to_string());
-        log_to_daily(cfg, template_name, &title, &output_path);
+        let note_id = ctx
+            .get("task-id")
+            .or_else(|| ctx.get("project-id"))
+            .cloned()
+            .unwrap_or_default();
+        log_to_daily(cfg, template_name, &title, &note_id, &output_path);
+
+        // Force reindex so the new note appears in queries
+        reindex_vault(cfg);
     }
 
     println!("OK   mdv new");
@@ -285,12 +295,85 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     // Collect vars from command line
     let mut vars: HashMap<String, String> = args.vars.iter().cloned().collect();
 
-    // For tasks: prompt for project selection if not already provided
-    if type_name == "task" && !vars.contains_key("project") && !args.batch {
-        if let Some(project) = prompt_project_selection(cfg) {
-            vars.insert("project".to_string(), project);
-        }
-    }
+    // Handle project creation with ID generation
+    let (output_path, note_id) = if type_name == "project" {
+        let project_id = generate_project_id(&title);
+        vars.insert("project-id".to_string(), project_id.clone());
+        vars.insert("task_counter".to_string(), "0".to_string());
+
+        let path = if let Some(ref out) = args.output {
+            out.clone()
+        } else {
+            // Projects go to Projects/<project-id>/<project-id>.md
+            cfg.vault_root.join(format!("Projects/{}/{}.md", project_id, project_id))
+        };
+        (path, project_id)
+    } else if type_name == "task" {
+        // For tasks: prompt for project selection if not already provided
+        let project_folder = if let Some(proj) = vars.get("project").cloned() {
+            proj
+        } else if !args.batch {
+            match prompt_project_selection(cfg) {
+                Some(proj) => {
+                    vars.insert("project".to_string(), proj.clone());
+                    proj
+                }
+                None => "inbox".to_string(),
+            }
+        } else {
+            "inbox".to_string()
+        };
+
+        // Get project info and generate task ID
+        let (task_id, output_path) = if project_folder == "inbox" {
+            // Inbox tasks get a simple incremental ID
+            let task_id = generate_inbox_task_id(cfg);
+            vars.insert("task-id".to_string(), task_id.clone());
+            let path = if let Some(ref out) = args.output {
+                out.clone()
+            } else {
+                cfg.vault_root.join(format!("Inbox/{}.md", task_id))
+            };
+            (task_id, path)
+        } else {
+            // Get project's task counter and increment it
+            match get_and_increment_project_counter(cfg, &project_folder) {
+                Ok((project_id, counter)) => {
+                    let task_id = generate_task_id(&project_id, counter);
+                    vars.insert("task-id".to_string(), task_id.clone());
+                    let path = if let Some(ref out) = args.output {
+                        out.clone()
+                    } else {
+                        cfg.vault_root.join(format!(
+                            "Projects/{}/Tasks/{}.md",
+                            project_folder, task_id
+                        ))
+                    };
+                    (task_id, path)
+                }
+                Err(e) => {
+                    eprintln!("Warning: could not get project info: {e}");
+                    // Fall back to inbox-style ID
+                    let task_id = generate_inbox_task_id(cfg);
+                    vars.insert("task-id".to_string(), task_id.clone());
+                    let path = cfg.vault_root.join(format!(
+                        "Projects/{}/Tasks/{}.md",
+                        project_folder, task_id
+                    ));
+                    (task_id, path)
+                }
+            }
+        };
+        (output_path, task_id)
+    } else {
+        // Other types use default output path
+        let path = if let Some(ref out) = args.output {
+            out.clone()
+        } else {
+            cfg.vault_root.join(format!("{}s/{}.md", type_name, slugify(&title)))
+        };
+        (path, String::new())
+    };
 
     // Prompt for missing required fields
     if let Some(ref td) = typedef {
@@ -338,14 +421,6 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         }
     }
 
-    // Generate output path
-    let output_path = if let Some(ref out) = args.output {
-        out.clone()
-    } else {
-        let rel_path = default_output_path(type_name, &title);
-        cfg.vault_root.join(rel_path)
-    };
-
     if output_path.exists() {
         eprintln!("Refusing to overwrite existing file: {}", output_path.display());
         std::process::exit(1);
@@ -388,12 +463,182 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
 
     // Log to daily note for tasks and projects
     if type_name == "task" || type_name == "project" {
-        log_to_daily(cfg, type_name, &title, &output_path);
+        log_to_daily(cfg, type_name, &title, &note_id, &output_path);
     }
+
+    // Force reindex so the new note appears in queries
+    reindex_vault(cfg);
 
     println!("OK   mdv new");
     println!("type:   {}", type_name);
+    if !note_id.is_empty() {
+        println!("id:     {}", note_id);
+    }
     println!("output: {}", output_path.display());
+}
+
+/// Slugify a string for use in paths.
+fn slugify(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for c in s.chars() {
+        if c.is_ascii_alphanumeric() {
+            result.push(c.to_ascii_lowercase());
+        } else if (c == ' ' || c == '_' || c == '-') && !result.ends_with('-') {
+            result.push('-');
+        }
+    }
+    result.trim_matches('-').to_string()
+}
+
+/// Generate a task ID for inbox tasks (no project).
+fn generate_inbox_task_id(cfg: &ResolvedConfig) -> String {
+    let inbox_path = cfg.vault_root.join("Inbox");
+    let mut max_counter = 0u32;
+
+    if inbox_path.exists() {
+        if let Ok(entries) = fs::read_dir(&inbox_path) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                // Parse INB-XXX pattern
+                if name_str.starts_with("INB-") {
+                    if let Some(num_str) =
+                        name_str.strip_prefix("INB-").and_then(|s| s.strip_suffix(".md"))
+                    {
+                        if let Ok(n) = num_str.parse::<u32>() {
+                            max_counter = max_counter.max(n);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    generate_task_id("INB", max_counter + 1)
+}
+
+/// Get project's ID and increment its task counter.
+/// Returns (project_id, new_counter) on success.
+fn get_and_increment_project_counter(
+    cfg: &ResolvedConfig,
+    project_folder: &str,
+) -> Result<(String, u32), String> {
+    // Find the project file - try both <folder>/<folder>.md and <folder>.md patterns
+    let project_path = find_project_file(cfg, project_folder)?;
+
+    // Read and parse the project file
+    let content = fs::read_to_string(&project_path)
+        .map_err(|e| format!("Failed to read project file: {e}"))?;
+
+    let parsed = parse_frontmatter(&content)
+        .map_err(|e| format!("Failed to parse project frontmatter: {e}"))?;
+
+    let fm = parsed.frontmatter.ok_or("Project has no frontmatter")?;
+
+    // Get project-id
+    let project_id = fm
+        .fields
+        .get("project-id")
+        .and_then(|v| match v {
+            serde_yaml::Value::String(s) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| generate_project_id(project_folder));
+
+    // Get current task counter
+    let current_counter = fm
+        .fields
+        .get("task_counter")
+        .and_then(|v| match v {
+            serde_yaml::Value::Number(n) => n.as_u64().map(|n| n as u32),
+            serde_yaml::Value::String(s) => s.parse::<u32>().ok(),
+            _ => None,
+        })
+        .unwrap_or(0);
+
+    let new_counter = current_counter + 1;
+
+    // Update the project file with new counter
+    let mut new_fm = fm.fields.clone();
+    new_fm.insert(
+        "task_counter".to_string(),
+        serde_yaml::Value::Number(serde_yaml::Number::from(new_counter)),
+    );
+
+    // Rebuild the document
+    let mut mapping = serde_yaml::Mapping::new();
+    for (k, v) in new_fm {
+        mapping.insert(serde_yaml::Value::String(k), v);
+    }
+    let yaml_str = serde_yaml::to_string(&serde_yaml::Value::Mapping(mapping))
+        .map_err(|e| format!("Failed to serialize frontmatter: {e}"))?;
+
+    let new_content = format!("---\n{}---\n{}", yaml_str, parsed.body);
+
+    fs::write(&project_path, new_content)
+        .map_err(|e| format!("Failed to update project file: {e}"))?;
+
+    Ok((project_id, new_counter))
+}
+
+/// Find the project file for a given project folder name.
+fn find_project_file(
+    cfg: &ResolvedConfig,
+    project_folder: &str,
+) -> Result<PathBuf, String> {
+    // Try Projects/<folder>/<folder>.md
+    let path1 =
+        cfg.vault_root.join(format!("Projects/{}/{}.md", project_folder, project_folder));
+    if path1.exists() {
+        return Ok(path1);
+    }
+
+    // Try Projects/<folder>.md
+    let path2 = cfg.vault_root.join(format!("Projects/{}.md", project_folder));
+    if path2.exists() {
+        return Ok(path2);
+    }
+
+    // Try scanning the Projects/<folder>/ directory for any .md file
+    let folder_path = cfg.vault_root.join(format!("Projects/{}", project_folder));
+    if folder_path.is_dir() {
+        if let Ok(entries) = fs::read_dir(&folder_path) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if path.extension().map(|e| e == "md").unwrap_or(false) {
+                    // Check if it's a project file (not in Tasks subdirectory)
+                    if !path.to_string_lossy().contains("/Tasks/") {
+                        return Ok(path);
+                    }
+                }
+            }
+        }
+    }
+
+    Err(format!("Project file not found for: {}", project_folder))
+}
+
+/// Force a vault reindex to include newly created notes.
+fn reindex_vault(cfg: &ResolvedConfig) {
+    let index_path = cfg.vault_root.join(".mdvault/index.db");
+
+    // Ensure index directory exists
+    if let Some(parent) = index_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    // Open the database and run incremental reindex
+    match IndexDb::open(&index_path) {
+        Ok(db) => {
+            let builder = IndexBuilder::new(&db, &cfg.vault_root);
+            if let Err(e) = builder.incremental_reindex(None) {
+                eprintln!("Warning: reindex failed: {e}");
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: could not open index for reindex: {e}");
+        }
+    }
 }
 
 /// Extract note type from rendered content's frontmatter.
@@ -529,7 +774,13 @@ fn apply_hook_modifications(
 
 /// Log a creation event to today's daily note.
 /// Creates the daily note if it doesn't exist.
-fn log_to_daily(cfg: &ResolvedConfig, note_type: &str, title: &str, output_path: &Path) {
+fn log_to_daily(
+    cfg: &ResolvedConfig,
+    note_type: &str,
+    title: &str,
+    note_id: &str,
+    output_path: &Path,
+) {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let time = chrono::Local::now().format("%H:%M").to_string();
 
@@ -566,12 +817,18 @@ fn log_to_daily(cfg: &ResolvedConfig, note_type: &str, title: &str, output_path:
         }
     };
 
-    // Build the log entry
+    // Build the log entry with link to the note
     let rel_path = output_path.strip_prefix(&cfg.vault_root).unwrap_or(output_path);
     let link = rel_path.file_stem().and_then(|s| s.to_str()).unwrap_or("note");
 
-    let log_entry =
-        format!("- **{}** Created {}: [[{}|{}]]\n", time, note_type, link, title);
+    // Format: "- **HH:MM** Created task [MCP-001]: [[MCP-001|Title]]"
+    let id_display =
+        if note_id.is_empty() { String::new() } else { format!(" [{}]", note_id) };
+
+    let log_entry = format!(
+        "- **{}** Created {}{}: [[{}|{}]]\n",
+        time, note_type, id_display, link, title
+    );
 
     // Find the Log section and append, or append at end
     if let Some(log_pos) = content.find("## Log") {
@@ -619,11 +876,11 @@ fn prompt_project_selection(cfg: &ResolvedConfig) -> Option<String> {
     };
 
     // Build selection items: inbox first, then projects
-    let mut items: Vec<String> = vec!["📥 Inbox (no project - for triage)".to_string()];
+    let mut items: Vec<String> = vec!["Inbox (no project - for triage)".to_string()];
 
     for p in &projects {
         let title = if p.title.is_empty() { "Untitled" } else { &p.title };
-        items.push(format!("📁 {}", title));
+        items.push(title.to_string());
     }
 
     // Show selector

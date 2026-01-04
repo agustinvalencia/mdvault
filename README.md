@@ -136,10 +136,11 @@ mdv
 | `mdv rename <old> <new>` | Rename note and update all references |
 | `mdv search <query>` | Search notes with contextual matching |
 | `mdv stale` | Find neglected notes |
-| `mdv task list` | List tasks grouped by project with status |
+| `mdv task list` | List tasks with status and project |
+| `mdv task status <id>` | Show detailed task status |
 | `mdv task done <task>` | Mark a task as done |
 | `mdv project list` | List projects with task counts |
-| `mdv project <name> tasks` | Show project tasks in kanban view |
+| `mdv project status <id>` | Show project status with tasks |
 
 See `mdv --help` for full options.
 

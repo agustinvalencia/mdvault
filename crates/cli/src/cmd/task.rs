@@ -1,8 +1,22 @@
 //! Task management commands.
 
 use mdvault_core::config::loader::ConfigLoader;
-use mdvault_core::index::{IndexDb, NoteQuery, NoteType};
+use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery, NoteType};
 use std::path::Path;
+use tabled::{settings::Style, Table, Tabled};
+
+/// Row for task list table.
+#[derive(Tabled)]
+struct TaskListRow {
+    #[tabled(rename = "ID")]
+    id: String,
+    #[tabled(rename = "Title")]
+    title: String,
+    #[tabled(rename = "Status")]
+    status: String,
+    #[tabled(rename = "Project")]
+    project: String,
+}
 
 /// List tasks with optional filters.
 pub fn list(
@@ -45,95 +59,138 @@ pub fn list(
         return;
     }
 
-    // Filter and group tasks
-    let mut filtered_tasks: Vec<_> = tasks
-        .into_iter()
-        .filter(|task| {
-            // Filter by project if specified
-            if let Some(proj) = project_filter {
-                let path_str = task.path.to_string_lossy();
-                if !path_str.contains(proj) {
-                    return false;
-                }
-            }
+    // Build table rows
+    let mut rows: Vec<TaskListRow> = Vec::new();
 
-            // Filter by status if specified
-            if let Some(status) = status_filter {
-                if let Some(ref fm_json) = task.frontmatter_json {
-                    if let Ok(fm) = serde_json::from_str::<serde_json::Value>(fm_json) {
-                        if let Some(task_status) =
-                            fm.get("status").and_then(|s| s.as_str())
-                        {
-                            if task_status != status {
-                                return false;
-                            }
-                        }
-                    }
-                }
-            }
-
-            true
-        })
-        .collect();
-
-    // Sort by project path
-    filtered_tasks.sort_by(|a, b| a.path.cmp(&b.path));
-
-    // Group by project
-    let mut current_project = String::new();
-    let mut task_count = 0;
-
-    for task in &filtered_tasks {
-        // Extract project from path (e.g., Projects/foo/Tasks/bar.md -> foo)
+    for task in &tasks {
         let path_str = task.path.to_string_lossy();
-        let project = extract_project_from_path(&path_str);
 
-        if project != current_project {
-            if !current_project.is_empty() {
-                println!();
+        // Filter by project if specified
+        if let Some(proj) = project_filter {
+            if !path_str.contains(proj) {
+                continue;
             }
-            println!("## {}", if project.is_empty() { "No Project" } else { &project });
-            current_project = project;
         }
 
-        // Get status from frontmatter
-        let status = task
-            .frontmatter_json
-            .as_ref()
-            .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok())
-            .and_then(|fm| fm.get("status").and_then(|s| s.as_str()).map(String::from))
-            .unwrap_or_else(|| "unknown".to_string());
+        // Get task info from frontmatter
+        let (task_id, task_status, project) = extract_task_info(task);
 
-        let status_icon = match status.as_str() {
-            "todo" => "[ ]",
-            "in-progress" | "in_progress" | "doing" => "[~]",
-            "done" | "completed" => "[x]",
-            "blocked" | "waiting" => "[!]",
-            _ => "[ ]",
-        };
+        // Filter by status if specified
+        if let Some(status) = status_filter {
+            if task_status != status {
+                continue;
+            }
+        }
 
         let title = if task.title.is_empty() {
-            task.path.file_stem().and_then(|s| s.to_str()).unwrap_or("Untitled")
+            task.path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Untitled")
+                .to_string()
         } else {
-            &task.title
+            task.title.clone()
         };
 
-        println!("  {} {} ({})", status_icon, title, task.path.display());
-        task_count += 1;
+        rows.push(TaskListRow { id: task_id, title, status: task_status, project });
     }
 
-    println!();
-    println!("Total: {} tasks", task_count);
+    if rows.is_empty() {
+        println!("No tasks match the filter.");
+        return;
+    }
+
+    // Sort by project then ID
+    rows.sort_by(|a, b| a.project.cmp(&b.project).then_with(|| a.id.cmp(&b.id)));
+
+    let table = Table::new(&rows).with(Style::rounded()).to_string();
+
+    println!("{}", table);
+    println!("\nTotal: {} tasks", rows.len());
 }
 
-/// Extract project name from a task path.
-fn extract_project_from_path(path: &str) -> String {
-    // Expected format: Projects/<project>/Tasks/<task>.md
-    let parts: Vec<&str> = path.split('/').collect();
-    if parts.len() >= 3 && parts[0] == "Projects" {
-        return parts[1].to_string();
+/// Show detailed status for a specific task.
+pub fn status(config: Option<&Path>, profile: Option<&str>, task_id: &str) {
+    let cfg = match ConfigLoader::load(config, profile) {
+        Ok(rc) => rc,
+        Err(e) => {
+            eprintln!("Failed to load config: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let db = match IndexDb::open(&index_path) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("Failed to open index: {e}");
+            eprintln!("Run 'mdv reindex' first.");
+            std::process::exit(1);
+        }
+    };
+
+    // Query all tasks and find the one with matching ID
+    let query = NoteQuery { note_type: Some(NoteType::Task), ..Default::default() };
+    let tasks = db.query_notes(&query).unwrap_or_default();
+
+    let task = tasks.iter().find(|t| {
+        let (id, _, _) = extract_task_info(t);
+        id.eq_ignore_ascii_case(task_id)
+    });
+
+    let task = match task {
+        Some(t) => t,
+        None => {
+            // Also try matching by filename
+            let task_by_path = tasks.iter().find(|t| {
+                let stem = t.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                stem.eq_ignore_ascii_case(task_id)
+            });
+            match task_by_path {
+                Some(t) => t,
+                None => {
+                    eprintln!("Task not found: {}", task_id);
+                    eprintln!("Run 'mdv task list' to see available tasks.");
+                    std::process::exit(1);
+                }
+            }
+        }
+    };
+
+    // Extract all task info
+    let (id, status, project) = extract_task_info(task);
+    let title = if task.title.is_empty() {
+        task.path.file_stem().and_then(|s| s.to_str()).unwrap_or("Untitled").to_string()
+    } else {
+        task.title.clone()
+    };
+
+    // Get additional info from frontmatter
+    let fm = task
+        .frontmatter_json
+        .as_ref()
+        .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok());
+
+    let created = fm
+        .as_ref()
+        .and_then(|fm| fm.get("created").and_then(|v| v.as_str()))
+        .unwrap_or("-");
+
+    let completed_at = fm
+        .as_ref()
+        .and_then(|fm| fm.get("completed_at").and_then(|v| v.as_str()))
+        .unwrap_or("-");
+
+    // Print task details
+    println!("Task: {} [{}]", title, id);
+    println!();
+    println!("  Status:       {}", status);
+    println!("  Project:      {}", project);
+    println!("  Created:      {}", created);
+    if status == "done" || status == "completed" {
+        println!("  Completed:    {}", completed_at);
     }
-    String::new()
+    println!("  Path:         {}", task.path.display());
 }
 
 /// Mark a task as done.
@@ -196,6 +253,18 @@ pub fn done(
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     fm.fields.insert("completed_at".to_string(), serde_yaml::Value::String(now.clone()));
 
+    // Get task ID for output
+    let task_id = fm
+        .fields
+        .get("task-id")
+        .and_then(|v| match v {
+            serde_yaml::Value::String(s) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            full_path.file_stem().and_then(|s| s.to_str()).unwrap_or("task").to_string()
+        });
+
     // Rebuild the document
     let mut mapping = serde_yaml::Mapping::new();
     for (k, v) in fm.fields {
@@ -232,12 +301,51 @@ pub fn done(
         std::process::exit(1);
     }
 
-    let task_name = full_path.file_stem().and_then(|s| s.to_str()).unwrap_or("task");
-
     println!("OK   mdv task done");
-    println!("task: {}", task_name);
+    println!("task:   {}", task_id);
     println!("status: done");
     if summary.is_some() {
         println!("summary: logged to task");
     }
+}
+
+/// Extract task ID, status, and project from frontmatter.
+fn extract_task_info(task: &IndexedNote) -> (String, String, String) {
+    let fm = task
+        .frontmatter_json
+        .as_ref()
+        .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok());
+
+    let id = fm
+        .as_ref()
+        .and_then(|fm| fm.get("task-id").and_then(|v| v.as_str()))
+        .map(String::from)
+        .unwrap_or_else(|| "-".to_string());
+
+    let status = fm
+        .as_ref()
+        .and_then(|fm| fm.get("status").and_then(|v| v.as_str()))
+        .map(String::from)
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let project = fm
+        .as_ref()
+        .and_then(|fm| fm.get("project").and_then(|v| v.as_str()))
+        .map(String::from)
+        .unwrap_or_else(|| {
+            // Try to extract from path
+            extract_project_from_path(&task.path.to_string_lossy())
+        });
+
+    (id, status, project)
+}
+
+/// Extract project name from a task path.
+fn extract_project_from_path(path: &str) -> String {
+    // Expected format: Projects/<project>/Tasks/<task>.md
+    let parts: Vec<&str> = path.split('/').collect();
+    if parts.len() >= 3 && parts[0] == "Projects" {
+        return parts[1].to_string();
+    }
+    "inbox".to_string()
 }

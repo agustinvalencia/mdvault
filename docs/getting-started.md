@@ -146,8 +146,11 @@ mdv project list
 # Filter projects by status
 mdv project list --status active
 
-# Show tasks for a project in kanban-style view
-mdv project myproject tasks
+# Show project status with task breakdown
+mdv project status MCP
+
+# Show detailed task status
+mdv task status MCP-001
 ```
 
 ### Querying Notes

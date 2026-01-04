@@ -6,13 +6,13 @@ mdvault is a complete terminal interface for markdown-based knowledge vaults. It
 
 ## What mdvault does
 
-- 📝 Create notes from templates with variables and date math
-- 📥 Quick capture to daily notes and projects
-- 🔁 Multi-step workflow automation (macros)
-- 🔍 Full-text search across your vault (planned)
-- 📊 Query notes by frontmatter metadata (planned)
-- 🔗 Analyse backlinks, orphans, and connections (planned)
-- 📚 Browse and read vault contents (planned)
+- Create notes from templates with variables and date math
+- Quick capture to daily notes and projects
+- Multi-step workflow automation (macros)
+- Full-text search across your vault (planned)
+- Query notes by frontmatter metadata (planned)
+- Analyse backlinks, orphans, and connections (planned)
+- Browse and read vault contents (planned)
 
 ## Getting Started
 

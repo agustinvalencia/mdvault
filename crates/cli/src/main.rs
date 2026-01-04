@@ -126,6 +126,9 @@ enum TaskCommands {
 
     /// Mark a task as done
     Done(TaskDoneArgs),
+
+    /// Show detailed status for a task
+    Status(TaskStatusArgs),
 }
 
 /// Project management subcommands.
@@ -134,8 +137,8 @@ enum ProjectCommands {
     /// List all projects with task counts
     List(ProjectListArgs),
 
-    /// Show tasks for a project in kanban-style view
-    Tasks(ProjectTasksArgs),
+    /// Show project status with tasks in kanban-style view
+    Status(ProjectStatusArgs),
 }
 
 #[derive(Debug, Args)]
@@ -168,10 +171,17 @@ pub struct ProjectListArgs {
 }
 
 #[derive(Debug, Args)]
-pub struct ProjectTasksArgs {
-    /// Project name (folder name, e.g., "myproject")
+pub struct ProjectStatusArgs {
+    /// Project ID or folder name (e.g., "MCP" or "my-cool-project")
     #[arg(add = ArgValueCompleter::new(completions::complete_projects))]
     pub project: String,
+}
+
+#[derive(Debug, Args)]
+pub struct TaskStatusArgs {
+    /// Task ID (e.g., "MCP-001")
+    #[arg(add = ArgValueCompleter::new(completions::complete_notes))]
+    pub task_id: String,
 }
 
 #[derive(Debug, Args)]
@@ -663,6 +673,13 @@ fn main() {
                     args.summary.as_deref(),
                 );
             }
+            TaskCommands::Status(args) => {
+                cmd::task::status(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    &args.task_id,
+                );
+            }
         },
         Some(Commands::Project(subcmd)) => match subcmd {
             ProjectCommands::List(args) => {
@@ -672,8 +689,8 @@ fn main() {
                     args.status.as_deref(),
                 );
             }
-            ProjectCommands::Tasks(args) => {
-                cmd::project::tasks(
+            ProjectCommands::Status(args) => {
+                cmd::project::status(
                     cli.config.as_deref(),
                     cli.profile.as_deref(),
                     &args.project,

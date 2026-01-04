@@ -3,6 +3,35 @@
 use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery, NoteType};
 use std::path::Path;
+use tabled::{settings::Style, Table, Tabled};
+
+/// Row for project list table.
+#[derive(Tabled)]
+struct ProjectRow {
+    #[tabled(rename = "ID")]
+    id: String,
+    #[tabled(rename = "Title")]
+    title: String,
+    #[tabled(rename = "Status")]
+    status: String,
+    #[tabled(rename = "Open")]
+    open: usize,
+    #[tabled(rename = "Done")]
+    done: usize,
+    #[tabled(rename = "Total")]
+    total: usize,
+}
+
+/// Row for task list in status view.
+#[derive(Tabled)]
+struct TaskRow {
+    #[tabled(rename = "ID")]
+    id: String,
+    #[tabled(rename = "Title")]
+    title: String,
+    #[tabled(rename = "Status")]
+    status: String,
+}
 
 /// List all projects with task counts.
 pub fn list(config: Option<&Path>, profile: Option<&str>, status_filter: Option<&str>) {
@@ -44,95 +73,79 @@ pub fn list(config: Option<&Path>, profile: Option<&str>, status_filter: Option<
 
     // Query all tasks to count per project
     let task_query = NoteQuery { note_type: Some(NoteType::Task), ..Default::default() };
-
     let tasks = db.query_notes(&task_query).unwrap_or_default();
 
-    // Filter projects by status if specified
-    let filtered_projects: Vec<_> = projects
-        .into_iter()
-        .filter(|project| {
-            if let Some(status) = status_filter {
-                if let Some(ref fm_json) = project.frontmatter_json {
-                    if let Ok(fm) = serde_json::from_str::<serde_json::Value>(fm_json) {
-                        if let Some(proj_status) =
-                            fm.get("status").and_then(|s| s.as_str())
-                        {
-                            return proj_status == status;
-                        }
-                    }
-                }
-                return false;
+    // Build table rows
+    let mut rows: Vec<ProjectRow> = Vec::new();
+
+    for project in &projects {
+        // Get project ID and status from frontmatter
+        let (project_id, project_status) = extract_project_info(project);
+
+        // Filter by status if specified
+        if let Some(filter) = status_filter {
+            if project_status != filter {
+                continue;
             }
-            true
-        })
-        .collect();
+        }
 
-    println!("## Projects\n");
-
-    for project in &filtered_projects {
         let title = if project.title.is_empty() {
-            project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("Untitled")
+            project
+                .path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Untitled")
+                .to_string()
         } else {
-            &project.title
+            project.title.clone()
         };
 
-        // Get project status
-        let status = project
-            .frontmatter_json
-            .as_ref()
-            .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok())
-            .and_then(|fm| fm.get("status").and_then(|s| s.as_str()).map(String::from))
-            .unwrap_or_else(|| "unknown".to_string());
-
         // Count tasks for this project
-        let project_name =
+        let project_folder =
             project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
         let project_tasks: Vec<_> = tasks
             .iter()
             .filter(|t| {
                 let path_str = t.path.to_string_lossy();
-                path_str.contains(&format!("Projects/{}/", project_name))
+                path_str.contains(&format!("Projects/{}/", project_folder))
             })
             .collect();
 
-        let total_tasks = project_tasks.len();
-        let done_tasks = project_tasks
+        let total = project_tasks.len();
+        let done = project_tasks
             .iter()
             .filter(|t| {
-                t.frontmatter_json
-                    .as_ref()
-                    .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok())
-                    .and_then(|fm| {
-                        fm.get("status").and_then(|s| s.as_str()).map(String::from)
-                    })
+                get_task_status(t)
                     .map(|s| s == "done" || s == "completed")
                     .unwrap_or(false)
             })
             .count();
+        let open = total - done;
 
-        let open_tasks = total_tasks - done_tasks;
-
-        let status_icon = match status.as_str() {
-            "active" => "[*]",
-            "completed" | "done" => "[x]",
-            "on-hold" | "paused" => "[~]",
-            "archived" => "[-]",
-            _ => "[ ]",
-        };
-
-        println!(
-            "{} {} ({}) - {} open, {} done",
-            status_icon, title, status, open_tasks, done_tasks
-        );
+        rows.push(ProjectRow {
+            id: project_id,
+            title,
+            status: project_status,
+            open,
+            done,
+            total,
+        });
     }
 
-    println!();
-    println!("Total: {} projects", filtered_projects.len());
+    if rows.is_empty() {
+        println!("No projects match the filter.");
+        return;
+    }
+
+    let table = Table::new(&rows).with(Style::rounded()).to_string();
+
+    println!("{}", table);
+    println!("\nTotal: {} projects", rows.len());
 }
 
-/// Show tasks for a specific project in kanban-style columns.
-pub fn tasks(config: Option<&Path>, profile: Option<&str>, project_name: &str) {
+/// Show project status with tasks in kanban-style columns.
+pub fn status(config: Option<&Path>, profile: Option<&str>, project_name: &str) {
     let cfg = match ConfigLoader::load(config, profile) {
         Ok(rc) => rc,
         Err(e) => {
@@ -151,29 +164,56 @@ pub fn tasks(config: Option<&Path>, profile: Option<&str>, project_name: &str) {
         }
     };
 
-    // Query all tasks
-    let task_query = NoteQuery { note_type: Some(NoteType::Task), ..Default::default() };
+    // Find the project
+    let project_query =
+        NoteQuery { note_type: Some(NoteType::Project), ..Default::default() };
+    let projects = db.query_notes(&project_query).unwrap_or_default();
 
-    let all_tasks = match db.query_notes(&task_query) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Failed to query tasks: {e}");
+    let project = projects.iter().find(|p| {
+        let folder = p.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let (id, _) = extract_project_info(p);
+        folder.eq_ignore_ascii_case(project_name) || id.eq_ignore_ascii_case(project_name)
+    });
+
+    let project = match project {
+        Some(p) => p,
+        None => {
+            eprintln!("Project not found: {}", project_name);
+            eprintln!("Run 'mdv project list' to see available projects.");
             std::process::exit(1);
         }
     };
+
+    let project_folder = project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let (project_id, project_status) = extract_project_info(project);
+    let project_title = if project.title.is_empty() {
+        project_folder.to_string()
+    } else {
+        project.title.clone()
+    };
+
+    // Print project header
+    println!("Project: {} [{}]", project_title, project_id);
+    println!("Status:  {}", project_status);
+    println!();
+
+    // Query all tasks
+    let task_query = NoteQuery { note_type: Some(NoteType::Task), ..Default::default() };
+    let all_tasks = db.query_notes(&task_query).unwrap_or_default();
 
     // Filter tasks for this project
     let project_tasks: Vec<_> = all_tasks
         .into_iter()
         .filter(|t| {
             let path_str = t.path.to_string_lossy();
-            path_str.contains(&format!("Projects/{}/", project_name))
-                || path_str.contains(&format!("projects/{}/", project_name))
+            path_str.contains(&format!("Projects/{}/", project_folder))
+                || path_str.contains(&format!("projects/{}/", project_folder))
         })
         .collect();
 
     if project_tasks.is_empty() {
-        println!("No tasks found for project: {}", project_name);
+        println!("No tasks found for this project.");
+        println!("Create one with: mdv new task");
         return;
     }
 
@@ -184,12 +224,7 @@ pub fn tasks(config: Option<&Path>, profile: Option<&str>, project_name: &str) {
     let mut done: Vec<&IndexedNote> = vec![];
 
     for task in &project_tasks {
-        let status = task
-            .frontmatter_json
-            .as_ref()
-            .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok())
-            .and_then(|fm| fm.get("status").and_then(|s| s.as_str()).map(String::from))
-            .unwrap_or_else(|| "todo".to_string());
+        let status = get_task_status(task).unwrap_or_else(|| "todo".to_string());
 
         match status.as_str() {
             "todo" | "open" => todo.push(task),
@@ -200,65 +235,103 @@ pub fn tasks(config: Option<&Path>, profile: Option<&str>, project_name: &str) {
         }
     }
 
-    // Print kanban-style columns
-    println!("# {} Tasks\n", project_name);
+    // Print summary
+    println!("Task Summary:");
+    println!("  TODO:        {}", todo.len());
+    println!("  In Progress: {}", in_progress.len());
+    println!("  Blocked:     {}", blocked.len());
+    println!("  Done:        {}", done.len());
+    println!("  Total:       {}", project_tasks.len());
+    println!();
 
-    // Calculate column widths
-    let col_width = 30;
-    let separator = "─".repeat(col_width);
-
-    // Print headers
-    println!("┌{}┬{}┬{}┬{}┐", separator, separator, separator, separator);
-    println!(
-        "│{:^width$}│{:^width$}│{:^width$}│{:^width$}│",
-        format!("📋 TODO ({})", todo.len()),
-        format!("🔄 IN PROGRESS ({})", in_progress.len()),
-        format!("⏸️  BLOCKED ({})", blocked.len()),
-        format!("✅ DONE ({})", done.len()),
-        width = col_width
-    );
-    println!("├{}┼{}┼{}┼{}┤", separator, separator, separator, separator);
-
-    // Get max rows needed
-    let max_rows = *[todo.len(), in_progress.len(), blocked.len(), done.len()]
-        .iter()
-        .max()
-        .unwrap_or(&0);
-
-    // Print task rows
-    for i in 0..max_rows {
-        let todo_task = todo.get(i).map(|t| truncate_title(t, col_width - 2));
-        let prog_task = in_progress.get(i).map(|t| truncate_title(t, col_width - 2));
-        let block_task = blocked.get(i).map(|t| truncate_title(t, col_width - 2));
-        let done_task = done.get(i).map(|t| truncate_title(t, col_width - 2));
-
-        println!(
-            "│ {:<width$}│ {:<width$}│ {:<width$}│ {:<width$}│",
-            todo_task.unwrap_or_default(),
-            prog_task.unwrap_or_default(),
-            block_task.unwrap_or_default(),
-            done_task.unwrap_or_default(),
-            width = col_width - 1
-        );
+    // Print task tables by status
+    if !todo.is_empty() {
+        println!("TODO:");
+        print_task_table(&todo);
+        println!();
     }
 
-    println!("└{}┴{}┴{}┴{}┘", separator, separator, separator, separator);
+    if !in_progress.is_empty() {
+        println!("IN PROGRESS:");
+        print_task_table(&in_progress);
+        println!();
+    }
 
-    println!();
-    println!("Total: {} tasks", project_tasks.len());
+    if !blocked.is_empty() {
+        println!("BLOCKED:");
+        print_task_table(&blocked);
+        println!();
+    }
+
+    if !done.is_empty() {
+        println!("DONE:");
+        print_task_table(&done);
+        println!();
+    }
 }
 
-/// Truncate a task title to fit in a column.
-fn truncate_title(task: &IndexedNote, max_len: usize) -> String {
-    let title = if task.title.is_empty() {
-        task.path.file_stem().and_then(|s| s.to_str()).unwrap_or("Untitled").to_string()
-    } else {
-        task.title.clone()
-    };
+/// Print a table of tasks.
+fn print_task_table(tasks: &[&IndexedNote]) {
+    let rows: Vec<TaskRow> = tasks
+        .iter()
+        .map(|task| {
+            let task_id = get_task_id(task).unwrap_or_else(|| "-".to_string());
+            let title = if task.title.is_empty() {
+                task.path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled")
+                    .to_string()
+            } else {
+                task.title.clone()
+            };
+            let status = get_task_status(task).unwrap_or_else(|| "unknown".to_string());
 
-    if title.len() <= max_len {
-        title
-    } else {
-        format!("{}…", &title[..max_len - 1])
-    }
+            TaskRow { id: task_id, title, status }
+        })
+        .collect();
+
+    let table = Table::new(&rows).with(Style::rounded()).to_string();
+
+    println!("{}", table);
+}
+
+/// Extract project ID and status from frontmatter.
+fn extract_project_info(project: &IndexedNote) -> (String, String) {
+    let fm = project
+        .frontmatter_json
+        .as_ref()
+        .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok());
+
+    let id = fm
+        .as_ref()
+        .and_then(|fm| fm.get("project-id").and_then(|v| v.as_str()))
+        .map(String::from)
+        .unwrap_or_else(|| {
+            project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("???").to_string()
+        });
+
+    let status = fm
+        .as_ref()
+        .and_then(|fm| fm.get("status").and_then(|v| v.as_str()))
+        .map(String::from)
+        .unwrap_or_else(|| "unknown".to_string());
+
+    (id, status)
+}
+
+/// Get task status from frontmatter.
+fn get_task_status(task: &IndexedNote) -> Option<String> {
+    task.frontmatter_json
+        .as_ref()
+        .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok())
+        .and_then(|fm| fm.get("status").and_then(|v| v.as_str()).map(String::from))
+}
+
+/// Get task ID from frontmatter.
+fn get_task_id(task: &IndexedNote) -> Option<String> {
+    task.frontmatter_json
+        .as_ref()
+        .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok())
+        .and_then(|fm| fm.get("task-id").and_then(|v| v.as_str()).map(String::from))
 }
