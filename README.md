@@ -27,6 +27,9 @@ mdvault is undergoing a significant expansion. The core templating and capture s
 
 - **Templates**: Create notes from templates with variable substitution
 - **Type-Aware Scaffolding**: `mdv new task "My Task"` creates notes with schema-based frontmatter
+- **Interactive Task Creation**: `mdv new task` prompts to select a project from existing ones
+- **Task Management**: `mdv task list` shows tasks by project, `mdv task done` marks complete
+- **Project Overview**: `mdv project list` shows projects with open/done task counts
 - **Captures**: Quick append to existing notes (daily logs, project notes)
 - **Macros**: Multi-step workflow automation
 - **Date Math**: Expressions like `{{today + 1d}}` or `{{today + monday}}`
@@ -41,7 +44,7 @@ mdvault is undergoing a significant expansion. The core templating and capture s
 
 ### In Development
 - Contextual search (graph neighbourhood + temporal signals)
-- MCP tools for task and project management
+- Daily logging integration for task completion
 
 ## Installation
 
@@ -133,6 +136,11 @@ mdv
 | `mdv rename <old> <new>` | Rename note and update all references |
 | `mdv search <query>` | Search notes with contextual matching |
 | `mdv stale` | Find neglected notes |
+| `mdv task list` | List tasks with status and project |
+| `mdv task status <id>` | Show detailed task status |
+| `mdv task done <task>` | Mark a task as done |
+| `mdv project list` | List projects with task counts |
+| `mdv project status <id>` | Show project status with tasks |
 
 See `mdv --help` for full options.
 

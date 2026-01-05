@@ -108,6 +108,80 @@ enum Commands {
 
     /// Generate shell completion scripts
     Completions(CompletionsArgs),
+
+    /// Task management commands
+    #[command(subcommand)]
+    Task(TaskCommands),
+
+    /// Project management commands
+    #[command(subcommand)]
+    Project(ProjectCommands),
+}
+
+/// Task management subcommands.
+#[derive(Debug, Subcommand)]
+enum TaskCommands {
+    /// List tasks with optional filters
+    List(TaskListArgs),
+
+    /// Mark a task as done
+    Done(TaskDoneArgs),
+
+    /// Show detailed status for a task
+    Status(TaskStatusArgs),
+}
+
+/// Project management subcommands.
+#[derive(Debug, Subcommand)]
+enum ProjectCommands {
+    /// List all projects with task counts
+    List(ProjectListArgs),
+
+    /// Show project status with tasks in kanban-style view
+    Status(ProjectStatusArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct TaskListArgs {
+    /// Filter by project name
+    #[arg(long, short)]
+    pub project: Option<String>,
+
+    /// Filter by status (todo, in-progress, done, blocked)
+    #[arg(long, short)]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct TaskDoneArgs {
+    /// Path to the task note (relative to vault root)
+    #[arg(add = ArgValueCompleter::new(completions::complete_notes))]
+    pub task: PathBuf,
+
+    /// Summary of what was done (logged to task)
+    #[arg(long, short)]
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct ProjectListArgs {
+    /// Filter by status (active, completed, on-hold, archived)
+    #[arg(long, short)]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct ProjectStatusArgs {
+    /// Project ID or folder name (e.g., "MCP" or "my-cool-project")
+    #[arg(add = ArgValueCompleter::new(completions::complete_projects))]
+    pub project: String,
+}
+
+#[derive(Debug, Args)]
+pub struct TaskStatusArgs {
+    /// Task ID (e.g., "MCP-001")
+    #[arg(add = ArgValueCompleter::new(completions::complete_notes))]
+    pub task_id: String,
 }
 
 #[derive(Debug, Args)]
@@ -582,5 +656,46 @@ fn main() {
                 &mut std::io::stdout(),
             );
         }
+        Some(Commands::Task(subcmd)) => match subcmd {
+            TaskCommands::List(args) => {
+                cmd::task::list(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    args.project.as_deref(),
+                    args.status.as_deref(),
+                );
+            }
+            TaskCommands::Done(args) => {
+                cmd::task::done(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    &args.task,
+                    args.summary.as_deref(),
+                );
+            }
+            TaskCommands::Status(args) => {
+                cmd::task::status(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    &args.task_id,
+                );
+            }
+        },
+        Some(Commands::Project(subcmd)) => match subcmd {
+            ProjectCommands::List(args) => {
+                cmd::project::list(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    args.status.as_deref(),
+                );
+            }
+            ProjectCommands::Status(args) => {
+                cmd::project::status(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    &args.project,
+                );
+            }
+        },
     }
 }

@@ -108,7 +108,10 @@ Use `create_if_missing: true` in the target to auto-create the file if it doesn'
 ### Creating Notes
 
 ```bash
-# Create a task with type-based scaffolding
+# Create a task (interactive - prompts to select project)
+mdv new task "Implement search feature"
+
+# Create a task with explicit project
 mdv new task "Implement search feature" --var project=myproject
 
 # Create from a template
@@ -116,6 +119,38 @@ mdv new --template daily
 
 # Create a project
 mdv new project "New Project" --var status=active
+```
+
+### Task and Project Management
+
+```bash
+# List all tasks grouped by project
+mdv task list
+
+# Filter tasks by project
+mdv task list --project myproject
+
+# Filter tasks by status
+mdv task list --status todo
+mdv task list --status in-progress
+
+# Mark a task as done
+mdv task done Projects/myproject/Tasks/my-task.md
+
+# Mark done with a summary (logged to the task)
+mdv task done Projects/myproject/Tasks/my-task.md --summary "Completed implementation"
+
+# List all projects with task counts
+mdv project list
+
+# Filter projects by status
+mdv project list --status active
+
+# Show project status with task breakdown
+mdv project status MCP
+
+# Show detailed task status
+mdv task status MCP-001
 ```
 
 ### Querying Notes
