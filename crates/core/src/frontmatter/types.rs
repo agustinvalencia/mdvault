@@ -26,10 +26,16 @@ pub struct ParsedDocument {
 /// Template-specific frontmatter fields.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct TemplateFrontmatter {
+    /// Path to Lua script that defines this template's behavior.
+    /// When present, schema, prompts, output path, and hooks come from Lua.
+    pub lua: Option<String>,
+
     /// Output path template (supports {{var}} placeholders).
+    /// DEPRECATED: Use Lua script's `output` field instead.
     pub output: Option<String>,
 
     /// Variable specifications with prompts and defaults.
+    /// DEPRECATED: Use Lua script's schema with `prompt` fields instead.
     #[serde(default)]
     pub vars: Option<VarsMap>,
 

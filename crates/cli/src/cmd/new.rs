@@ -1,4 +1,4 @@
-use crate::prompt::{collect_variables, prompt_for_field, PromptOptions};
+use crate::prompt::{prompt_for_field, CollectedVars, PromptOptions};
 use crate::NewArgs;
 use dialoguer::{theme::ColorfulTheme, Select};
 use mdvault_core::captures::CaptureRepository;
@@ -17,7 +17,8 @@ use mdvault_core::templates::engine::{
 };
 use mdvault_core::templates::repository::{TemplateRepoError, TemplateRepository};
 use mdvault_core::types::{
-    generate_scaffolding, get_missing_required_fields, TypeRegistry, TypedefRepository,
+    discovery::load_typedef_from_file, generate_scaffolding, get_missing_required_fields,
+    TypeDefinition, TypeRegistry, TypedefRepository,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -100,6 +101,20 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         path: loaded.path.clone(),
     };
 
+    // Check if template links to a Lua script
+    let lua_typedef: Option<TypeDefinition> =
+        loaded.frontmatter.as_ref().and_then(|fm| fm.lua.as_ref()).and_then(|lua_path| {
+            // Resolve lua path relative to typedefs directory
+            let lua_file = cfg.typedefs_dir.join(lua_path);
+            match load_typedef_from_file(&lua_file) {
+                Ok(td) => Some(td),
+                Err(e) => {
+                    eprintln!("Warning: failed to load Lua script '{}': {}", lua_path, e);
+                    None
+                }
+            }
+        });
+
     // Convert provided vars to HashMap
     let mut provided_vars: HashMap<String, String> = args.vars.iter().cloned().collect();
 
@@ -118,21 +133,24 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
     // Build minimal context for variable resolution
     let minimal_ctx = build_minimal_context(cfg, &info);
 
-    // Collect variables (prompt for missing ones if interactive)
-    let vars_map = loaded.frontmatter.as_ref().and_then(|fm| fm.vars.as_ref());
+    // Collect variables using Lua schema prompts
     let prompt_options = PromptOptions { batch_mode: args.batch };
 
-    let collected = match collect_variables(
-        vars_map,
-        &loaded.body,
-        &provided_vars,
-        &minimal_ctx,
-        &prompt_options,
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Error: {e}");
-            std::process::exit(1);
+    let collected = if let Some(ref typedef) = lua_typedef {
+        // Use Lua schema for prompting - fields with `prompt` set will be prompted
+        match collect_schema_variables(typedef, &provided_vars, &prompt_options) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        // No Lua script - just use provided vars directly
+        CollectedVars {
+            values: provided_vars.clone(),
+            prompted: Vec::new(),
+            defaulted: Vec::new(),
         }
     };
 
@@ -142,18 +160,37 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         ctx.insert(k, v);
     }
 
-    // Resolve output path: CLI arg takes precedence, then frontmatter
+    // Resolve output path: CLI arg > template frontmatter > Lua typedef output
     let output_path = if let Some(ref out) = args.output {
         out.clone()
     } else {
-        // Try to get from template frontmatter
+        // Try to get from template frontmatter first
         match resolve_template_output_path(&loaded, cfg, &ctx) {
             Ok(Some(path)) => path,
             Ok(None) => {
-                eprintln!(
-                    "Error: --output is required (template has no output in frontmatter)"
-                );
-                std::process::exit(1);
+                // Fall back to Lua typedef output if available
+                if let Some(ref typedef) = lua_typedef {
+                    if let Some(ref output_template) = typedef.output {
+                        // Render the output template with current context
+                        match render_output_path(output_template, cfg, &ctx) {
+                            Ok(path) => path,
+                            Err(e) => {
+                                eprintln!("Failed to resolve Lua output path: {e}");
+                                std::process::exit(1);
+                            }
+                        }
+                    } else {
+                        eprintln!(
+                            "Error: --output is required (neither template nor Lua script has output)"
+                        );
+                        std::process::exit(1);
+                    }
+                } else {
+                    eprintln!(
+                        "Error: --output is required (template has no output in frontmatter)"
+                    );
+                    std::process::exit(1);
+                }
             }
             Err(e) => {
                 eprintln!("Failed to resolve output path: {e}");
@@ -1066,4 +1103,165 @@ fn prompt_project_selection(cfg: &ResolvedConfig) -> Option<String> {
                 .to_string()
         }
     })
+}
+
+/// Collect variables from Lua schema fields that have `prompt` set.
+/// Prompts for fields that:
+/// - Have `prompt` defined (the prompt text to show)
+/// - Are not already provided in `provided_vars`
+/// - Are not marked as `core` (managed by Rust)
+fn collect_schema_variables(
+    typedef: &TypeDefinition,
+    provided_vars: &HashMap<String, String>,
+    options: &PromptOptions,
+) -> Result<CollectedVars, String> {
+    let mut result = CollectedVars {
+        values: HashMap::new(),
+        prompted: Vec::new(),
+        defaulted: Vec::new(),
+    };
+
+    // Start with provided vars
+    for (k, v) in provided_vars {
+        result.values.insert(k.clone(), v.clone());
+    }
+
+    // Process schema fields in alphabetical order for consistency
+    let mut fields: Vec<_> = typedef.schema.iter().collect();
+    fields.sort_by(|a, b| a.0.cmp(b.0));
+
+    for (field_name, schema) in fields {
+        // Skip if already provided
+        if result.values.contains_key(field_name) {
+            continue;
+        }
+
+        // Skip core fields (managed by Rust)
+        if schema.core {
+            continue;
+        }
+
+        // If field has a prompt, ask the user
+        if let Some(ref prompt_text) = schema.prompt {
+            if options.batch_mode {
+                // In batch mode, use default or fail if required
+                if let Some(ref default) = schema.default {
+                    let value = yaml_value_to_string(default);
+                    result.values.insert(field_name.clone(), value);
+                    result.defaulted.push(field_name.clone());
+                } else if schema.required {
+                    return Err(format!(
+                        "Missing required field '{}' in batch mode",
+                        field_name
+                    ));
+                }
+            } else {
+                // Interactive: prompt for field
+                let enum_hint = schema.enum_values.as_ref().map(|v| v.join("/"));
+                let default_str = schema.default.as_ref().map(yaml_value_to_string);
+
+                match prompt_for_schema_field(
+                    field_name,
+                    prompt_text,
+                    enum_hint.as_deref(),
+                    default_str.as_deref(),
+                    schema.required,
+                    schema.multiline,
+                ) {
+                    Ok(value) if !value.is_empty() => {
+                        result.values.insert(field_name.clone(), value);
+                        result.prompted.push(field_name.clone());
+                    }
+                    Ok(_) => {
+                        // Empty value - use default if available
+                        if let Some(ref default) = schema.default {
+                            result.values.insert(
+                                field_name.clone(),
+                                yaml_value_to_string(default),
+                            );
+                            result.defaulted.push(field_name.clone());
+                        }
+                        result.prompted.push(field_name.clone());
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        } else if let Some(ref default) = schema.default {
+            // No prompt but has default - use it
+            result.values.insert(field_name.clone(), yaml_value_to_string(default));
+            result.defaulted.push(field_name.clone());
+        }
+    }
+
+    Ok(result)
+}
+
+/// Prompt for a single schema field value.
+fn prompt_for_schema_field(
+    field_name: &str,
+    prompt_text: &str,
+    enum_hint: Option<&str>,
+    default: Option<&str>,
+    required: bool,
+    _multiline: bool,
+) -> Result<String, String> {
+    use dialoguer::Input;
+
+    let prompt = if let Some(hint) = enum_hint {
+        format!("{} [{}]", prompt_text, hint)
+    } else {
+        prompt_text.to_string()
+    };
+
+    let theme = ColorfulTheme::default();
+    let mut builder = Input::<String>::with_theme(&theme).with_prompt(&prompt);
+
+    if let Some(def) = default {
+        builder = builder.default(def.to_string());
+    }
+
+    builder = builder.allow_empty(!required);
+
+    builder
+        .interact_text()
+        .map_err(|e| format!("Failed to read input for '{}': {}", field_name, e))
+}
+
+/// Convert a serde_yaml::Value to a string for template context.
+fn yaml_value_to_string(value: &serde_yaml::Value) -> String {
+    match value {
+        serde_yaml::Value::String(s) => s.clone(),
+        serde_yaml::Value::Number(n) => n.to_string(),
+        serde_yaml::Value::Bool(b) => b.to_string(),
+        serde_yaml::Value::Null => String::new(),
+        other => serde_yaml::to_string(other).unwrap_or_default().trim().to_string(),
+    }
+}
+
+/// Render an output path template with variable substitution.
+fn render_output_path(
+    template: &str,
+    cfg: &ResolvedConfig,
+    ctx: &HashMap<String, String>,
+) -> Result<PathBuf, String> {
+    // Simple {{var}} substitution
+    let mut result = template.to_string();
+
+    for (key, value) in ctx {
+        let pattern = format!("{{{{{}}}}}", key);
+        result = result.replace(&pattern, value);
+    }
+
+    // Check for unresolved variables
+    if result.contains("{{") && result.contains("}}") {
+        return Err(format!("Unresolved variables in output path: {}", result));
+    }
+
+    // Make path absolute relative to vault root
+    let path = PathBuf::from(&result);
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Ok(cfg.vault_root.join(path))
+    }
 }

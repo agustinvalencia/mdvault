@@ -333,6 +333,7 @@ mod tests {
             description: None,
             source_path: PathBuf::new(),
             schema: HashMap::new(),
+            output: None,
             has_validate_fn: false,
             has_on_create_hook: true,
             has_on_update_hook: false,
@@ -357,6 +358,7 @@ mod tests {
             description: None,
             source_path: PathBuf::new(),
             schema: HashMap::new(),
+            output: None,
             has_validate_fn: false,
             has_on_create_hook: false, // No hook
             has_on_update_hook: false,

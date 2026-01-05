@@ -147,6 +147,9 @@ fn parse_typedef(
     // Extract optional description
     let description: Option<String> = table.get("description").ok();
 
+    // Extract output path template
+    let output: Option<String> = table.get("output").ok();
+
     // Extract schema
     let schema = extract_schema(&table, path)?;
 
@@ -163,6 +166,7 @@ fn parse_typedef(
         description,
         source_path: path.to_path_buf(),
         schema,
+        output,
         has_validate_fn,
         has_on_create_hook,
         has_on_update_hook,
@@ -249,6 +253,15 @@ fn parse_field_schema(
     // Get reference constraint
     let note_type: Option<String> = table.get("note_type").ok();
 
+    // Get prompt text for interactive input
+    let prompt: Option<String> = table.get("prompt").ok();
+
+    // Get core flag (whether this is a Rust-managed field)
+    let core: bool = table.get("core").unwrap_or(false);
+
+    // Get multiline flag for string fields
+    let multiline: bool = table.get("multiline").unwrap_or(false);
+
     Ok(FieldSchema {
         field_type,
         required,
@@ -265,6 +278,9 @@ fn parse_field_schema(
         min_items,
         max_items,
         note_type,
+        prompt,
+        core,
+        multiline,
     })
 }
 
