@@ -23,6 +23,24 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Core metadata that must be preserved in notes regardless of template/hook modifications.
+/// These fields are managed by mdvault and should not be removed or overwritten by user code.
+#[derive(Debug, Clone, Default)]
+struct CoreMetadata {
+    /// Note type (project, task, etc.)
+    note_type: Option<String>,
+    /// Title of the note
+    title: Option<String>,
+    /// Project ID (for projects)
+    project_id: Option<String>,
+    /// Task ID (for tasks)
+    task_id: Option<String>,
+    /// Task counter (for projects)
+    task_counter: Option<u32>,
+    /// Parent project (for tasks)
+    project: Option<String>,
+}
+
 pub fn run(config: Option<&Path>, profile: Option<&str>, args: NewArgs) {
     let cfg = match ConfigLoader::load(config, profile) {
         Ok(rc) => rc,
@@ -261,13 +279,12 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
 
     // Check if there's a matching template
     let template_repo = TemplateRepository::new(&cfg.templates_dir).ok();
-    let has_template = template_repo
-        .as_ref()
-        .and_then(|repo| repo.get_by_name(type_name).ok())
-        .is_some();
+    let loaded_template =
+        template_repo.as_ref().and_then(|repo| repo.get_by_name(type_name).ok());
 
-    // If there's a matching template, use template mode instead
-    if has_template {
+    // For non-project/task types with templates, delegate to template mode
+    // For projects and tasks, we ALWAYS use scaffolding mode to ensure proper ID generation
+    if loaded_template.is_some() && type_name != "project" && type_name != "task" {
         run_template_mode(cfg, type_name, args);
         return;
     }
@@ -375,6 +392,28 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         (path, String::new())
     };
 
+    // Build core metadata for projects and tasks
+    // This will be used to ensure these fields survive template/hook modifications
+    let core_metadata = if type_name == "project" {
+        CoreMetadata {
+            note_type: Some("project".to_string()),
+            title: Some(title.clone()),
+            project_id: vars.get("project-id").cloned(),
+            task_counter: Some(0),
+            ..Default::default()
+        }
+    } else if type_name == "task" {
+        CoreMetadata {
+            note_type: Some("task".to_string()),
+            title: Some(title.clone()),
+            task_id: vars.get("task-id").cloned(),
+            project: vars.get("project").cloned(),
+            ..Default::default()
+        }
+    } else {
+        CoreMetadata::default()
+    };
+
     // Prompt for missing required fields
     if let Some(ref td) = typedef {
         let missing = get_missing_required_fields(td, &vars);
@@ -426,8 +465,54 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         std::process::exit(1);
     }
 
-    // Generate scaffolding content
-    let content = generate_scaffolding(type_name, typedef.as_deref(), &title, &vars);
+    // Generate content - use template if available, otherwise scaffolding
+    // For projects/tasks, we'll ensure core metadata is preserved either way
+    let content = if let Some(ref loaded) = loaded_template {
+        // Build context for template rendering
+        let info = TemplateInfo {
+            logical_name: loaded.logical_name.clone(),
+            path: loaded.path.clone(),
+        };
+        let mut ctx = build_minimal_context(cfg, &info);
+
+        // Add all vars to context
+        ctx.insert("title".to_string(), title.clone());
+        for (k, v) in &vars {
+            ctx.insert(k.clone(), v.clone());
+        }
+
+        // Update context with output info
+        ctx.insert("output_path".to_string(), output_path.to_string_lossy().to_string());
+        if let Some(name) = output_path.file_name().and_then(|s| s.to_str()) {
+            ctx.insert("output_filename".to_string(), name.to_string());
+        }
+
+        // Render template
+        match render(loaded, &ctx) {
+            Ok(rendered) => rendered,
+            Err(e) => {
+                eprintln!("Failed to render template: {e}");
+                eprintln!("Falling back to scaffolding...");
+                generate_scaffolding(type_name, typedef.as_deref(), &title, &vars)
+            }
+        }
+    } else {
+        generate_scaffolding(type_name, typedef.as_deref(), &title, &vars)
+    };
+
+    // Apply core metadata immediately after content generation (before writing)
+    // This ensures template output has the required fields
+    let content = if type_name == "project" || type_name == "task" {
+        match ensure_core_metadata(&content, &core_metadata) {
+            Ok(fixed) => fixed,
+            Err(e) => {
+                eprintln!("Warning: failed to apply core metadata: {e}");
+                content
+            }
+        }
+    } else {
+        content
+    };
 
     // Create parent directories
     if let Some(parent) = output_path.parent() {
@@ -461,6 +546,28 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         }
     }
 
+    // Ensure core metadata is preserved after template/hook modifications
+    // This guarantees that projects have project-id and tasks have task-id
+    if type_name == "project" || type_name == "task" {
+        match fs::read_to_string(&output_path) {
+            Ok(current_content) => {
+                match ensure_core_metadata(&current_content, &core_metadata) {
+                    Ok(fixed_content) => {
+                        if let Err(e) = fs::write(&output_path, fixed_content) {
+                            eprintln!("Warning: failed to write core metadata: {e}");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: failed to ensure core metadata: {e}");
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to read file for metadata check: {e}");
+            }
+        }
+    }
+
     // Log to daily note for tasks and projects
     if type_name == "task" || type_name == "project" {
         log_to_daily(cfg, type_name, &title, &note_id, &output_path);
@@ -488,6 +595,58 @@ fn slugify(s: &str) -> String {
         }
     }
     result.trim_matches('-').to_string()
+}
+
+/// Ensure core metadata fields are present in the note content.
+///
+/// This function is called after template rendering and hook execution to guarantee
+/// that required fields managed by mdvault are not removed or corrupted by user code.
+/// Templates and hooks can ADD fields but cannot REMOVE core fields.
+fn ensure_core_metadata(content: &str, core: &CoreMetadata) -> Result<String, String> {
+    let parsed = parse_frontmatter(content).map_err(|e| e.to_string())?;
+
+    // Start with existing frontmatter or create new
+    let mut fields: HashMap<String, serde_yaml::Value> =
+        if let Some(fm) = parsed.frontmatter { fm.fields } else { HashMap::new() };
+
+    // Inject/overwrite core fields - these are authoritative from Rust
+    if let Some(ref t) = core.note_type {
+        fields.insert("type".to_string(), serde_yaml::Value::String(t.clone()));
+    }
+
+    if let Some(ref t) = core.title {
+        fields.insert("title".to_string(), serde_yaml::Value::String(t.clone()));
+    }
+
+    if let Some(ref id) = core.project_id {
+        fields.insert("project-id".to_string(), serde_yaml::Value::String(id.clone()));
+    }
+
+    if let Some(ref id) = core.task_id {
+        fields.insert("task-id".to_string(), serde_yaml::Value::String(id.clone()));
+    }
+
+    if let Some(counter) = core.task_counter {
+        fields.insert(
+            "task_counter".to_string(),
+            serde_yaml::Value::Number(serde_yaml::Number::from(counter)),
+        );
+    }
+
+    if let Some(ref proj) = core.project {
+        fields.insert("project".to_string(), serde_yaml::Value::String(proj.clone()));
+    }
+
+    // Rebuild the document
+    let mut mapping = serde_yaml::Mapping::new();
+    for (k, v) in fields {
+        mapping.insert(serde_yaml::Value::String(k), v);
+    }
+
+    let yaml_str = serde_yaml::to_string(&serde_yaml::Value::Mapping(mapping))
+        .map_err(|e| e.to_string())?;
+
+    Ok(format!("---\n{}---\n{}", yaml_str, parsed.body))
 }
 
 /// Generate a task ID for inbox tasks (no project).
