@@ -285,9 +285,10 @@ fn parse_field_schema(
 }
 
 /// Convert a Lua value to a serde_yaml::Value.
+/// Returns None for Nil (missing values in Lua).
 fn lua_to_yaml_value(value: &mlua::Value) -> Option<serde_yaml::Value> {
     match value {
-        mlua::Value::Nil => Some(serde_yaml::Value::Null),
+        mlua::Value::Nil => None, // Nil means "no value" in Lua
         mlua::Value::Boolean(b) => Some(serde_yaml::Value::Bool(*b)),
         mlua::Value::Integer(i) => Some(serde_yaml::Value::Number((*i).into())),
         mlua::Value::Number(n) => {

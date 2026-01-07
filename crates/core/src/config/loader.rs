@@ -123,3 +123,105 @@ fn expand_path(input: &str) -> Result<PathBuf, ConfigError> {
     let expanded = full(input).map_err(|_| ConfigError::NoHome)?;
     Ok(PathBuf::from(expanded.to_string()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_load_valid_config() {
+        let mut file = NamedTempFile::new().unwrap();
+        let config_content = r#"
+version = 1
+profile = "default"
+
+[profiles.default]
+vault_root = "/tmp/notes"
+templates_dir = "{{vault_root}}/templates"
+captures_dir = "{{vault_root}}/captures"
+macros_dir = "{{vault_root}}/macros"
+
+[security]
+allow_shell = false
+allow_http = false
+"#;
+        write!(file, "{}", config_content).unwrap();
+
+        let loaded = ConfigLoader::load(Some(file.path()), None).unwrap();
+
+        assert_eq!(loaded.active_profile, "default");
+        assert_eq!(loaded.vault_root.to_str().unwrap(), "/tmp/notes");
+        assert_eq!(loaded.templates_dir.to_str().unwrap(), "/tmp/notes/templates");
+    }
+
+    #[test]
+    fn test_load_missing_file() {
+        let path = Path::new("/non/existent/config.toml");
+        let result = ConfigLoader::load(Some(path), None);
+        assert!(matches!(result, Err(ConfigError::NotFound(_))));
+    }
+
+    #[test]
+    fn test_load_invalid_toml() {
+        let mut file = NamedTempFile::new().unwrap();
+        write!(file, "invalid toml content").unwrap();
+
+        let result = ConfigLoader::load(Some(file.path()), None);
+        assert!(matches!(result, Err(ConfigError::ParseError(_, _))));
+    }
+
+    #[test]
+    fn test_profile_override() {
+        let mut file = NamedTempFile::new().unwrap();
+        let config_content = r#"
+version = 1
+profile = "default"
+
+[profiles.default]
+vault_root = "/tmp/default"
+templates_dir = "/tmp/default/t"
+captures_dir = "/tmp/default/c"
+macros_dir = "/tmp/default/m"
+
+[profiles.work]
+vault_root = "/tmp/work"
+templates_dir = "/tmp/work/t"
+captures_dir = "/tmp/work/c"
+macros_dir = "/tmp/work/m"
+
+[security]
+allow_shell = false
+allow_http = false
+"#;
+        write!(file, "{}", config_content).unwrap();
+
+        let loaded = ConfigLoader::load(Some(file.path()), Some("work")).unwrap();
+        assert_eq!(loaded.active_profile, "work");
+        assert_eq!(loaded.vault_root.to_str().unwrap(), "/tmp/work");
+    }
+
+    #[test]
+    fn test_missing_profile() {
+        let mut file = NamedTempFile::new().unwrap();
+        let config_content = r#"
+version = 1
+profile = "default"
+
+[profiles.default]
+vault_root = "/tmp/default"
+templates_dir = "/tmp/default/t"
+captures_dir = "/tmp/default/c"
+macros_dir = "/tmp/default/m"
+
+[security]
+allow_shell = false
+allow_http = false
+"#;
+        write!(file, "{}", config_content).unwrap();
+
+        let result = ConfigLoader::load(Some(file.path()), Some("missing"));
+        assert!(matches!(result, Err(ConfigError::ProfileNotFound(_))));
+    }
+}

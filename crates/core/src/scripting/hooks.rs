@@ -20,6 +20,8 @@ pub struct NoteContext {
     pub frontmatter: serde_yaml::Value,
     /// Full content of the note (including frontmatter).
     pub content: String,
+    /// Template variables used to render the note (as a map).
+    pub variables: serde_yaml::Value,
 }
 
 impl NoteContext {
@@ -29,8 +31,9 @@ impl NoteContext {
         note_type: String,
         frontmatter: serde_yaml::Value,
         content: String,
+        variables: serde_yaml::Value,
     ) -> Self {
-        Self { path, note_type, frontmatter, content }
+        Self { path, note_type, frontmatter, content, variables }
     }
 }
 

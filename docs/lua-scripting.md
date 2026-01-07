@@ -251,7 +251,29 @@ match engine.eval_string(r#"mdv.date("invalid_expr")"#) {
 
 ## Type Definitions
 
-Type definitions allow you to define custom note types with schema validation and lifecycle hooks. Type definitions are Lua files stored in `~/.config/mdvault/types/`.
+Type definitions allow you to define custom note types with schema validation, interactive prompts, and lifecycle hooks. Type definitions are Lua files stored in `~/.config/mdvault/types/`.
+
+### Lua-Template Integration
+
+Templates can link to Lua type definitions using the `lua:` frontmatter field:
+
+```markdown
+---
+lua: meeting.lua
+---
+
+# {{title}}
+
+**Attendees**: {{attendees}}
+**Priority**: {{priority}}
+```
+
+The `lua:` path is resolved relative to your `types_dir` (e.g., `~/.config/mdvault/types/`). This enables:
+
+1. **Schema-driven prompts**: Fields with `prompt` attribute are asked interactively
+2. **Default values**: Fields with `default` use that value when not provided
+3. **Output paths**: Lua's `output` field is used when template doesn't specify one
+4. **Validation**: Schema and `validate()` function are applied before writing
 
 ### Creating a Type Definition
 
@@ -260,33 +282,39 @@ Create a `.lua` file in `~/.config/mdvault/types/`. The filename becomes the typ
 ```lua
 -- ~/.config/mdvault/types/meeting.lua
 return {
-    name = "meeting",
     description = "Meeting notes with attendees and action items",
+
+    -- Output path template (used when template doesn't specify one)
+    -- Supports filters like {{title | slugify}}
+    output = "Meetings/{{title | slugify}}.md",
 
     -- Schema defines the expected frontmatter fields
     schema = {
         title = {
             type = "string",
-            required = true
+            required = true,
+            core = true  -- Managed by Rust, passed from CLI
         },
         date = {
             type = "date",
-            required = true
+            default = "today"  -- Uses date math expressions
         },
         attendees = {
-            type = "list",
+            type = "string",
             required = true,
-            min_items = 1
+            prompt = "Who's attending?"  -- Prompts user interactively
         },
         status = {
             type = "string",
             enum = { "scheduled", "in-progress", "completed", "cancelled" },
-            default = "scheduled"
+            default = "scheduled",
+            prompt = "Meeting status?"  -- Shows as selector
         },
         duration_minutes = {
             type = "number",
             min = 1,
-            max = 480
+            max = 480,
+            prompt = "Duration in minutes?"
         }
     },
 
@@ -330,10 +358,15 @@ field_name = {
     type = "string",           -- Field type (required)
     required = true,           -- Is the field mandatory?
     description = "...",       -- Human-readable description
-    default = "value",         -- Default value
+    default = "value",         -- Default value when not provided
+
+    -- Interactive prompting (for Lua-template integration)
+    prompt = "Enter value?",   -- If set, prompts user interactively
+    multiline = false,         -- Allow multiline input (for strings)
+    core = false,              -- If true, managed by Rust (not user-editable)
 
     -- String constraints
-    enum = { "a", "b", "c" },  -- Allowed values
+    enum = { "a", "b", "c" },  -- Allowed values (shown as selector)
     pattern = "^[A-Z]+$",      -- Regex pattern
     min_length = 1,            -- Minimum length
     max_length = 100,          -- Maximum length
@@ -352,6 +385,17 @@ field_name = {
     note_type = "project"      -- Restrict to specific type
 }
 ```
+
+#### Interactive Prompt Behavior
+
+When a template with `lua:` is used:
+
+| Field Config | Interactive Mode | Batch Mode (`--batch`) |
+|-------------|------------------|------------------------|
+| `prompt` set, no `--var` | Prompts user | Uses `default` or fails if `required` |
+| `prompt` set, `--var` provided | Uses `--var` value | Uses `--var` value |
+| No `prompt`, has `default` | Uses default silently | Uses default |
+| No `prompt`, no `default`, `required` | Error | Error |
 
 ### Custom Validation Function
 
@@ -733,6 +777,41 @@ mdv new task "Implement feature" --var project=projects/api-redesign
 ```
 
 The task will automatically inherit the `context` field from `projects/api-redesign.md` if that project has one defined.
+
+### Dynamic Variables in Hooks
+
+The `on_create` hook can access and modify template variables via `note.variables`. This allows you to compute variables dynamically in Lua and have them injected into the template rendering context.
+
+**Template (`templates/report.md`):**
+```markdown
+---
+type: report
+lua: report.lua
+---
+# Weekly Report
+
+**Week**: {{week_number}}
+**Generated**: {{generated_at}}
+
+{{content}}
+```
+
+**Type Definition (`types/report.lua`):**
+```lua
+return {
+    on_create = function(note)
+        note.variables = note.variables or {}
+        
+        -- Compute dynamic variables
+        note.variables.week_number = mdv.date("week", "%Y-W%V")
+        note.variables.generated_at = mdv.date("now", "%Y-%m-%d %H:%M")
+        
+        return note
+    end
+}
+```
+
+When you create a note with `mdv new --template report`, the hook calculates `week_number` and `generated_at`, and the template is rendered with these values.
 
 ## Index Query Functions
 

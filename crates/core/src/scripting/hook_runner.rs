@@ -18,6 +18,8 @@ pub struct HookResult {
     pub frontmatter: Option<serde_yaml::Value>,
     /// The updated content (if modified).
     pub content: Option<String>,
+    /// The updated template variables (if modified).
+    pub variables: Option<serde_yaml::Value>,
 }
 
 /// Alias for backwards compatibility.
@@ -45,7 +47,7 @@ pub type UpdateHookResult = HookResult;
 /// ```ignore
 /// use mdvault_core::scripting::{run_on_create_hook, NoteContext, VaultContext};
 ///
-/// let note_ctx = NoteContext::new(path, "task".into(), frontmatter, content);
+/// let note_ctx = NoteContext::new(path, "task".into(), frontmatter, content, variables);
 /// let result = run_on_create_hook(&typedef, &note_ctx, vault_ctx)?;
 /// if result.modified {
 ///     // Write back the updated content
@@ -58,7 +60,12 @@ pub fn run_on_create_hook(
 ) -> Result<HookResult, HookError> {
     // Skip if no hook defined
     if !typedef.has_on_create_hook {
-        return Ok(HookResult { modified: false, frontmatter: None, content: None });
+        return Ok(HookResult {
+            modified: false,
+            frontmatter: None,
+            content: None,
+            variables: None,
+        });
     }
 
     // Create engine with vault context
@@ -97,6 +104,14 @@ pub fn run_on_create_hook(
         .set("frontmatter", fm_table)
         .map_err(|e| HookError::LuaError(e.to_string()))?;
 
+    // Convert variables to Lua table
+    let vars_table = yaml_to_lua_table(lua, &note_ctx.variables)
+        .map_err(|e| HookError::LuaError(e.to_string()))?;
+
+    note_table
+        .set("variables", vars_table)
+        .map_err(|e| HookError::LuaError(e.to_string()))?;
+
     // Get on_create function
     let on_create_fn: mlua::Function = typedef_table.get("on_create").map_err(|e| {
         HookError::LuaError(format!("on_create function not found: {}", e))
@@ -110,7 +125,7 @@ pub fn run_on_create_hook(
     // Check if hook returned a modified note
     match result {
         mlua::Value::Table(returned_note) => {
-            // Extract frontmatter and content if present
+            // Extract frontmatter, content, and variables if present
             let frontmatter: Option<serde_yaml::Value> =
                 if let Ok(fm_table) = returned_note.get::<mlua::Table>("frontmatter") {
                     Some(lua_table_to_yaml(&fm_table)?)
@@ -119,17 +134,39 @@ pub fn run_on_create_hook(
                 };
 
             let content: Option<String> = returned_note.get("content").ok();
+            let content = match content {
+                Some(ref c) if c != &note_ctx.content => content,
+                _ => None,
+            };
 
-            let modified = frontmatter.is_some() || content.is_some();
-            Ok(HookResult { modified, frontmatter, content })
+            let variables: Option<serde_yaml::Value> =
+                if let Ok(vars_table) = returned_note.get::<mlua::Table>("variables") {
+                    Some(lua_table_to_yaml(&vars_table)?)
+                } else {
+                    None
+                };
+
+            let modified =
+                frontmatter.is_some() || content.is_some() || variables.is_some();
+            Ok(HookResult { modified, frontmatter, content, variables })
         }
         mlua::Value::Nil => {
             // Hook returned nil, no modifications
-            Ok(HookResult { modified: false, frontmatter: None, content: None })
+            Ok(HookResult {
+                modified: false,
+                frontmatter: None,
+                content: None,
+                variables: None,
+            })
         }
         _ => {
             // Unexpected return type
-            Ok(HookResult { modified: false, frontmatter: None, content: None })
+            Ok(HookResult {
+                modified: false,
+                frontmatter: None,
+                content: None,
+                variables: None,
+            })
         }
     }
 }
@@ -174,6 +211,7 @@ pub fn run_on_update_hook(
             modified: false,
             frontmatter: None,
             content: None,
+            variables: None,
         });
     }
 
@@ -237,15 +275,25 @@ pub fn run_on_update_hook(
             let content: Option<String> = returned_note.get("content").ok();
 
             let modified = frontmatter.is_some() || content.is_some();
-            Ok(UpdateHookResult { modified, frontmatter, content })
+            Ok(UpdateHookResult { modified, frontmatter, content, variables: None })
         }
         mlua::Value::Nil => {
             // Hook returned nil, no modifications
-            Ok(UpdateHookResult { modified: false, frontmatter: None, content: None })
+            Ok(UpdateHookResult {
+                modified: false,
+                frontmatter: None,
+                content: None,
+                variables: None,
+            })
         }
         _ => {
             // Unexpected return type
-            Ok(UpdateHookResult { modified: false, frontmatter: None, content: None })
+            Ok(UpdateHookResult {
+                modified: false,
+                frontmatter: None,
+                content: None,
+                variables: None,
+            })
         }
     }
 }
@@ -348,6 +396,7 @@ mod tests {
             note_type: "test".to_string(),
             frontmatter: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
             content: "# Test".to_string(),
+            variables: serde_yaml::Value::Null,
         }
     }
 

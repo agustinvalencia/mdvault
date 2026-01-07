@@ -191,29 +191,32 @@ output: Projects/MCP/Tasks/MCP-042.md
 
 ### 7. Migration Path
 
-#### Phase 1: Add Lua-template linking ✅ (Completed)
+#### Phase 1: Lua-template linking ✅ (Completed)
 - [x] Support `lua:` frontmatter field in templates
 - [x] Load Lua script when processing template
 - [x] Use Lua schema for prompting (fields with `prompt` attribute)
 - [x] Use Lua script's `output` path when template doesn't specify one
+- [x] Support filters in output paths (e.g., `{{title | slugify}}`)
 - [x] Remove deprecated `vars:` DSL (breaking change for v0.2.0)
+- [x] Fix title handling in template mode (first positional arg)
+- [x] Fix Lua Nil → None conversion for required field validation
 
-#### Phase 2: Schema-driven prompts
-- [ ] Replace template `vars:` with Lua schema prompts
-- [ ] Add prompt UI based on schema field types
-- [ ] Support enum selectors, multiline input, date pickers
+#### Phase 2: Enhanced prompts ✅ (Completed)
+- [x] Add enum selectors (Select widget for enum fields)
+- [x] Support multiline input (Editor widget for multiline fields)
+- [x] Make project-id promptable with computed default
+- [ ] Add date picker UI (deferred - text input with validation works for now)
 
-#### Phase 3: Validation integration
+#### Phase 3: Validation integration (Planned)
 - [ ] Validate frontmatter against Lua schema before writing
-- [ ] Run Lua `validate()` function
+- [ ] Run Lua `validate()` function during creation
 - [ ] Show clear error messages for validation failures
 
-#### Phase 4: Deprecate old DSL
-- [ ] Warn when using template frontmatter DSL (output, vars)
-- [ ] Migrate built-in templates to Lua-first
-- [ ] Update documentation
+#### Phase 4: Built-in templates (Planned)
+- [ ] Migrate built-in task/project templates to Lua-first
+- [ ] Add example templates in documentation
 
-#### Phase 5: Captures and Macros
+#### Phase 5: Captures and Macros (Future)
 - [ ] Consider if captures should also be Lua-based
 - [ ] Evaluate macro system overlap
 
@@ -393,7 +396,8 @@ Templates without `lua:` will only have access to CLI-provided variables (`--var
 
 ## Next Steps
 
-1. ~~Phase 1: Lua-template linking~~ ✅ Complete
-2. Phase 2: Enhanced schema-driven prompts (enum selectors, date pickers)
-3. Phase 3: Validation integration
-4. Iterate based on usage feedback
+1. ~~Phase 1: Lua-template linking~~ ✅ Complete (v0.2.0)
+2. ~~Phase 2: Enhanced prompts~~ ✅ Complete (enum selectors, multiline, project-id prompt)
+3. Phase 3: Validation integration (run `validate()` on create)
+4. Phase 4: Migrate built-in templates
+5. Iterate based on usage feedback

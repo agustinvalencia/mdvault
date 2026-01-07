@@ -65,20 +65,38 @@ Built-in types: `daily`, `weekly`, `task`, `project`, `zettel`, `none`
 
 ### Templates
 
-Templates live in `~/.config/mdvault/templates/`. Example `task.md`:
+Templates live in `~/.config/mdvault/templates/`. Templates can reference a Lua type definition for schema-driven prompts and output paths.
 
+**Simple template** (`~/.config/mdvault/templates/note.md`):
 ```markdown
 ---
-type: task
-title: {{title}}
-status: open
-project: {{project}}
-created: {{today}}
+output: "notes/{{title | slugify}}.md"
 ---
 
 # {{title}}
 
 ```
+
+**Lua-integrated template** (`~/.config/mdvault/templates/meeting.md`):
+```markdown
+---
+lua: meeting.lua
+---
+
+# {{title}}
+
+**Attendees**: {{attendees}}
+**Priority**: {{priority}}
+
+## Notes
+
+```
+
+The `lua:` field references a type definition (relative to `types_dir`) that provides:
+- Schema with prompts for interactive input
+- Default values for fields
+- Output path template
+- Validation and lifecycle hooks
 
 ### Captures
 
@@ -281,23 +299,38 @@ mdv macro weekly-review
 
 ## Custom Type Definitions
 
-Create custom types in `~/.config/mdvault/types/`. Example `meeting.lua`:
+Create custom types in `~/.config/mdvault/types/`. These Lua scripts define schemas, prompts, output paths, and hooks.
+
+Example `~/.config/mdvault/types/meeting.lua`:
 
 ```lua
 return {
-    name = "meeting",
     description = "Meeting notes",
 
+    -- Output path template (used when template doesn't specify one)
+    output = "Meetings/{{title | slugify}}.md",
+
+    -- Schema defines fields with types, defaults, and prompts
     schema = {
-        attendees = { type = "list", required = true },
-        date = { type = "date", required = true },
-        status = {
+        -- Fields with 'prompt' will be asked interactively
+        attendees = {
             type = "string",
-            enum = { "scheduled", "completed", "cancelled" },
-            default = "scheduled"
+            required = true,
+            prompt = "Who's attending?",
+        },
+        priority = {
+            type = "string",
+            enum = { "low", "normal", "high" },
+            default = "normal",
+            prompt = "Priority level?",
+        },
+        date = {
+            type = "date",
+            default = "today",  -- Uses date math expressions
         },
     },
 
+    -- Custom validation (optional)
     validate = function(note)
         if note.frontmatter.status == "completed" then
             if not note.frontmatter.summary then
@@ -307,11 +340,58 @@ return {
         return true
     end,
 
+    -- Lifecycle hooks (optional)
     on_create = function(note, ctx)
-        -- Called when a meeting note is created
+        -- Called when a note is created
         print("Created meeting: " .. note.frontmatter.title)
+        return note
     end,
 }
+```
+
+### Schema Field Attributes
+
+| Attribute | Description |
+|-----------|-------------|
+| `type` | Field type: `string`, `number`, `boolean`, `date`, `list` |
+| `required` | Must have value (default: false) |
+| `default` | Default value if not provided |
+| `enum` | Allowed values (shows interactive selector) |
+| `prompt` | Prompt text (if set, will ask user interactively) |
+| `multiline` | Opens text editor for multi-line input |
+| `core` | Managed by Rust, cannot be overridden by user |
+
+**Interactive prompt behavior:**
+- **Enum fields**: Display a selector menu to choose from allowed values
+- **Multiline fields**: Open system editor (like vim/nano) for longer text
+- **Project ID**: Computed from title but user can override
+
+### Using with Templates
+
+Link a template to a type definition using `lua:`:
+
+```markdown
+---
+lua: meeting.lua
+---
+
+# {{title}}
+
+**Date**: {{date}}
+**Attendees**: {{attendees}}
+...
+```
+
+When creating notes:
+```bash
+# Interactive mode - prompts for fields with 'prompt' attribute
+mdv new --template meeting "Weekly Standup"
+
+# Provide values via --var to skip prompts
+mdv new --template meeting "Design Review" --var attendees="Alice, Bob"
+
+# Batch mode - uses defaults, fails if required fields missing
+mdv new --template meeting "Quick Sync" --batch --var attendees="Team"
 ```
 
 ## Date Math Expressions

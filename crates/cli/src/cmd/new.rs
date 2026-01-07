@@ -1,6 +1,6 @@
 use crate::prompt::{prompt_for_field, CollectedVars, PromptOptions};
 use crate::NewArgs;
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{theme::ColorfulTheme, Editor, Input, Select};
 use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
@@ -13,7 +13,7 @@ use mdvault_core::scripting::{
 };
 use mdvault_core::templates::discovery::TemplateInfo;
 use mdvault_core::templates::engine::{
-    build_minimal_context, render, resolve_template_output_path,
+    build_minimal_context, render, render_string, resolve_template_output_path,
 };
 use mdvault_core::templates::repository::{TemplateRepoError, TemplateRepository};
 use mdvault_core::types::{
@@ -118,9 +118,11 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
     // Convert provided vars to HashMap
     let mut provided_vars: HashMap<String, String> = args.vars.iter().cloned().collect();
 
-    // If title was provided as positional arg, add it to vars
-    if let Some(ref title) = args.title {
-        provided_vars.entry("title".to_string()).or_insert(title.clone());
+    // Handle title: In template mode, the first positional arg (note_type) is actually the title
+    // since --template replaces the type name. Also check args.title for completeness.
+    let title = args.title.clone().or_else(|| args.note_type.clone());
+    if let Some(ref t) = title {
+        provided_vars.entry("title".to_string()).or_insert(t.clone());
     }
 
     // For task templates: show project picker if project not already provided
@@ -244,11 +246,62 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
     }
 
     // Execute on_create hook if type definition exists
-    match run_on_create_hook_if_exists(cfg, &output_path, &rendered) {
+
+    match run_on_create_hook_if_exists(
+        cfg,
+        &output_path,
+        &rendered,
+        lua_typedef.as_ref(),
+        &ctx,
+    ) {
         Ok(hook_result) => {
             if hook_result.modified {
+                // Check if variables were updated by the hook
+
+                let final_content = if let Some(ref new_vars) = hook_result.variables {
+                    // Update context with new variables
+
+                    eprintln!("DEBUG: Hook returned variables: {:?}", new_vars);
+
+                    if let serde_yaml::Value::Mapping(map) = new_vars {
+                        for (k, v) in map {
+                            if let serde_yaml::Value::String(ks) = k {
+                                // Convert value to string for RenderContext
+
+                                let vs = match v {
+                                    serde_yaml::Value::String(s) => s.clone(),
+
+                                    serde_yaml::Value::Number(n) => n.to_string(),
+
+                                    serde_yaml::Value::Bool(b) => b.to_string(),
+
+                                    _ => format!("{:?}", v),
+                                };
+
+                                ctx.insert(ks.clone(), vs);
+                            }
+                        }
+                    }
+
+                    // Re-render template with new context
+
+                    match render(&loaded, &ctx) {
+                        Ok(s) => s,
+
+                        Err(e) => {
+                            eprintln!("Warning: failed to re-render template: {e}");
+
+                            rendered.clone()
+                        }
+                    }
+                } else {
+                    rendered.clone()
+                };
+
+                // Apply other modifications (frontmatter/content)
+
                 if let Err(e) =
-                    apply_hook_modifications(&output_path, &rendered, &hook_result)
+                    apply_hook_modifications(&output_path, &final_content, &hook_result)
                 {
                     eprintln!(
                         "Warning: failed to apply on_create hook modifications: {e}"
@@ -256,6 +309,7 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
                 }
             }
         }
+
         Err(e) => {
             eprintln!("Warning: on_create hook failed: {e}");
         }
@@ -351,14 +405,52 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
 
     // Handle project creation with ID generation
     let (output_path, note_id) = if type_name == "project" {
-        let project_id = generate_project_id(&title);
+        // Compute default project ID from title
+        let computed_id = generate_project_id(&title);
+
+        // Prompt for project ID with computed value as default (unless batch mode)
+        let project_id = if args.batch {
+            computed_id
+        } else {
+            match prompt_for_field(
+                "project-id",
+                "Project ID (3-letter code)",
+                Some(&computed_id),
+                true,
+            ) {
+                Ok(id) if !id.is_empty() => id.to_uppercase(),
+                Ok(_) => computed_id, // Empty input uses computed default
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        };
+
         vars.insert("project-id".to_string(), project_id.clone());
         vars.insert("task_counter".to_string(), "0".to_string());
+        vars.insert("title".to_string(), title.clone());
 
         let path = if let Some(ref out) = args.output {
             out.clone()
+        } else if let Some(ref td) = typedef {
+            // Use Lua typedef's output template if available
+            if let Some(ref output_template) = td.output {
+                match render_output_path(output_template, cfg, &vars) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("Warning: failed to render Lua output path: {e}");
+                        // Fall back to default
+                        cfg.vault_root
+                            .join(format!("Projects/{}/{}.md", project_id, project_id))
+                    }
+                }
+            } else {
+                // No output template in Lua, use default
+                cfg.vault_root.join(format!("Projects/{}/{}.md", project_id, project_id))
+            }
         } else {
-            // Projects go to Projects/<project-id>/<project-id>.md
+            // No typedef, use default
             cfg.vault_root.join(format!("Projects/{}/{}.md", project_id, project_id))
         };
         (path, project_id)
@@ -378,6 +470,9 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
             "inbox".to_string()
         };
 
+        // Add title to vars for output path rendering
+        vars.insert("title".to_string(), title.clone());
+
         // Get project info and generate task ID
         let (task_id, output_path) = if project_folder == "inbox" {
             // Inbox tasks get a simple incremental ID
@@ -385,6 +480,19 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
             vars.insert("task-id".to_string(), task_id.clone());
             let path = if let Some(ref out) = args.output {
                 out.clone()
+            } else if let Some(ref td) = typedef {
+                // Use Lua typedef's output template if available
+                if let Some(ref output_template) = td.output {
+                    match render_output_path(output_template, cfg, &vars) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("Warning: failed to render Lua output path: {e}");
+                            cfg.vault_root.join(format!("Inbox/{}.md", task_id))
+                        }
+                    }
+                } else {
+                    cfg.vault_root.join(format!("Inbox/{}.md", task_id))
+                }
             } else {
                 cfg.vault_root.join(format!("Inbox/{}.md", task_id))
             };
@@ -395,8 +503,30 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                 Ok((project_id, counter)) => {
                     let task_id = generate_task_id(&project_id, counter);
                     vars.insert("task-id".to_string(), task_id.clone());
+                    vars.insert("project-id".to_string(), project_id.clone());
                     let path = if let Some(ref out) = args.output {
                         out.clone()
+                    } else if let Some(ref td) = typedef {
+                        // Use Lua typedef's output template if available
+                        if let Some(ref output_template) = td.output {
+                            match render_output_path(output_template, cfg, &vars) {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    eprintln!(
+                                        "Warning: failed to render Lua output path: {e}"
+                                    );
+                                    cfg.vault_root.join(format!(
+                                        "Projects/{}/Tasks/{}.md",
+                                        project_folder, task_id
+                                    ))
+                                }
+                            }
+                        } else {
+                            cfg.vault_root.join(format!(
+                                "Projects/{}/Tasks/{}.md",
+                                project_folder, task_id
+                            ))
+                        }
                     } else {
                         cfg.vault_root.join(format!(
                             "Projects/{}/Tasks/{}.md",
@@ -410,10 +540,27 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                     // Fall back to inbox-style ID
                     let task_id = generate_inbox_task_id(cfg);
                     vars.insert("task-id".to_string(), task_id.clone());
-                    let path = cfg.vault_root.join(format!(
-                        "Projects/{}/Tasks/{}.md",
-                        project_folder, task_id
-                    ));
+                    let path = if let Some(ref td) = typedef {
+                        if let Some(ref output_template) = td.output {
+                            match render_output_path(output_template, cfg, &vars) {
+                                Ok(p) => p,
+                                Err(_) => cfg.vault_root.join(format!(
+                                    "Projects/{}/Tasks/{}.md",
+                                    project_folder, task_id
+                                )),
+                            }
+                        } else {
+                            cfg.vault_root.join(format!(
+                                "Projects/{}/Tasks/{}.md",
+                                project_folder, task_id
+                            ))
+                        }
+                    } else {
+                        cfg.vault_root.join(format!(
+                            "Projects/{}/Tasks/{}.md",
+                            project_folder, task_id
+                        ))
+                    };
                     (task_id, path)
                 }
             }
@@ -566,11 +713,52 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     }
 
     // Execute on_create hook if defined
-    match run_on_create_hook_if_exists(cfg, &output_path, &content) {
+    match run_on_create_hook_if_exists(
+        cfg,
+        &output_path,
+        &content,
+        typedef.as_deref(),
+        &vars,
+    ) {
         Ok(hook_result) => {
             if hook_result.modified {
+                let mut final_content = content.clone();
+
+                if let Some(ref new_vars) = hook_result.variables {
+                    // Update vars
+                    if let serde_yaml::Value::Mapping(map) = new_vars {
+                        for (k, v) in map {
+                            if let serde_yaml::Value::String(ks) = k {
+                                let vs = match v {
+                                    serde_yaml::Value::String(s) => s.clone(),
+                                    serde_yaml::Value::Number(n) => n.to_string(),
+                                    serde_yaml::Value::Bool(b) => b.to_string(),
+                                    _ => format!("{:?}", v),
+                                };
+                                vars.insert(ks.clone(), vs);
+                            }
+                        }
+                    }
+                    // Regenerate scaffolding
+                    let regenerated = generate_scaffolding(
+                        type_name,
+                        typedef.as_deref(),
+                        &title,
+                        &vars,
+                    );
+                    // Re-apply core metadata
+                    final_content = if type_name == "project" || type_name == "task" {
+                        match ensure_core_metadata(&regenerated, &core_metadata) {
+                            Ok(c) => c,
+                            Err(_) => regenerated,
+                        }
+                    } else {
+                        regenerated
+                    };
+                }
+
                 if let Err(e) =
-                    apply_hook_modifications(&output_path, &content, &hook_result)
+                    apply_hook_modifications(&output_path, &final_content, &hook_result)
                 {
                     eprintln!(
                         "Warning: failed to apply on_create hook modifications: {e}"
@@ -854,25 +1042,52 @@ fn run_on_create_hook_if_exists(
     cfg: &ResolvedConfig,
     output_path: &Path,
     content: &str,
+    explicit_typedef: Option<&TypeDefinition>,
+    variables: &HashMap<String, String>,
 ) -> Result<HookResult, String> {
-    // Extract note type from frontmatter
-    let note_type = match extract_note_type(content) {
-        Some(t) => t,
-        None => {
-            return Ok(HookResult { modified: false, frontmatter: None, content: None })
-        }
-    };
-
-    // Load type registry
+    // Load type registry first, as we need it for VaultContext anyway
     let typedef_repo =
         TypedefRepository::new(&cfg.typedefs_dir).map_err(|e| e.to_string())?;
     let type_registry =
         TypeRegistry::from_repository(&typedef_repo).map_err(|e| e.to_string())?;
 
-    // Check if type has on_create hook
-    let typedef = match type_registry.get(&note_type) {
-        Some(td) if td.has_on_create_hook => td,
-        _ => return Ok(HookResult { modified: false, frontmatter: None, content: None }),
+    // Determine which typedef to use
+    let typedef = if let Some(td) = explicit_typedef {
+        if !td.has_on_create_hook {
+            return Ok(HookResult {
+                modified: false,
+                frontmatter: None,
+                content: None,
+                variables: None,
+            });
+        }
+        td.clone()
+    } else {
+        // Extract note type from frontmatter
+        let note_type = match extract_note_type(content) {
+            Some(t) => t,
+            None => {
+                return Ok(HookResult {
+                    modified: false,
+                    frontmatter: None,
+                    content: None,
+                    variables: None,
+                })
+            }
+        };
+
+        // Check if type has on_create hook
+        match type_registry.get(&note_type) {
+            Some(td) if td.has_on_create_hook => (*td).clone(),
+            _ => {
+                return Ok(HookResult {
+                    modified: false,
+                    frontmatter: None,
+                    content: None,
+                    variables: None,
+                })
+            }
+        }
     };
 
     // Load all repositories for VaultContext
@@ -906,12 +1121,23 @@ fn run_on_create_hook_if_exists(
         None => serde_yaml::Value::Null,
     };
 
+    // Convert variables to serde_yaml::Value
+    let mut vars_mapping = serde_yaml::Mapping::new();
+    for (k, v) in variables {
+        vars_mapping.insert(
+            serde_yaml::Value::String(k.clone()),
+            serde_yaml::Value::String(v.clone()),
+        );
+    }
+    let vars_value = serde_yaml::Value::Mapping(vars_mapping);
+
     // Build NoteContext
     let note_ctx = NoteContext::new(
         output_path.to_path_buf(),
-        note_type,
+        typedef.name.clone(),
         frontmatter,
         content.to_string(),
+        vars_value,
     );
 
     // Run the hook and return its result
@@ -963,6 +1189,10 @@ fn apply_hook_modifications(
             serde_yaml::to_string(&final_frontmatter).map_err(|e| e.to_string())?;
         format!("---\n{}---\n{}", yaml_str, final_body)
     };
+    eprintln!(
+        "DEBUG: apply_hook_modifications: final content to write:\n{}",
+        final_content
+    );
 
     // Write back to file
     fs::write(output_path, final_content).map_err(|e| e.to_string())
@@ -1157,13 +1387,13 @@ fn collect_schema_variables(
                 }
             } else {
                 // Interactive: prompt for field
-                let enum_hint = schema.enum_values.as_ref().map(|v| v.join("/"));
+                let enum_values = schema.enum_values.as_deref();
                 let default_str = schema.default.as_ref().map(yaml_value_to_string);
 
                 match prompt_for_schema_field(
                     field_name,
                     prompt_text,
-                    enum_hint.as_deref(),
+                    enum_values,
                     default_str.as_deref(),
                     schema.required,
                     schema.multiline,
@@ -1197,24 +1427,56 @@ fn collect_schema_variables(
 }
 
 /// Prompt for a single schema field value.
+///
+/// Uses different widgets based on field type:
+/// - Enum fields: Select widget for choosing from options
+/// - Multiline fields: Editor widget for multi-line text
+/// - Other fields: Input widget for single-line text
 fn prompt_for_schema_field(
     field_name: &str,
     prompt_text: &str,
-    enum_hint: Option<&str>,
+    enum_values: Option<&[String]>,
     default: Option<&str>,
     required: bool,
-    _multiline: bool,
+    multiline: bool,
 ) -> Result<String, String> {
-    use dialoguer::Input;
-
-    let prompt = if let Some(hint) = enum_hint {
-        format!("{} [{}]", prompt_text, hint)
-    } else {
-        prompt_text.to_string()
-    };
-
     let theme = ColorfulTheme::default();
-    let mut builder = Input::<String>::with_theme(&theme).with_prompt(&prompt);
+
+    // If enum values provided, use Select widget
+    if let Some(values) = enum_values {
+        let default_idx =
+            default.and_then(|d| values.iter().position(|v| v == d)).unwrap_or(0);
+
+        let selection = Select::with_theme(&theme)
+            .with_prompt(prompt_text)
+            .items(values)
+            .default(default_idx)
+            .interact_opt()
+            .map_err(|e| {
+                format!("Failed to read selection for '{}': {}", field_name, e)
+            })?;
+
+        return match selection {
+            Some(idx) => Ok(values[idx].clone()),
+            None => {
+                // User cancelled - use default if available, else empty
+                Ok(default.unwrap_or("").to_string())
+            }
+        };
+    }
+
+    // If multiline, use Editor widget
+    if multiline {
+        let initial = default.unwrap_or("");
+        let content = Editor::new()
+            .edit(initial)
+            .map_err(|e| format!("Editor error for '{}': {}", field_name, e))?
+            .unwrap_or_else(|| initial.to_string());
+        return Ok(content);
+    }
+
+    // Default: use Input widget
+    let mut builder = Input::<String>::with_theme(&theme).with_prompt(prompt_text);
 
     if let Some(def) = default {
         builder = builder.default(def.to_string());
@@ -1239,26 +1501,17 @@ fn yaml_value_to_string(value: &serde_yaml::Value) -> String {
 }
 
 /// Render an output path template with variable substitution.
+/// Uses the template engine to support filters like `{{title | slugify}}`.
 fn render_output_path(
     template: &str,
     cfg: &ResolvedConfig,
     ctx: &HashMap<String, String>,
 ) -> Result<PathBuf, String> {
-    // Simple {{var}} substitution
-    let mut result = template.to_string();
-
-    for (key, value) in ctx {
-        let pattern = format!("{{{{{}}}}}", key);
-        result = result.replace(&pattern, value);
-    }
-
-    // Check for unresolved variables
-    if result.contains("{{") && result.contains("}}") {
-        return Err(format!("Unresolved variables in output path: {}", result));
-    }
+    // Use the template engine to render with filter support
+    let rendered = render_string(template, ctx).map_err(|e| e.to_string())?;
 
     // Make path absolute relative to vault root
-    let path = PathBuf::from(&result);
+    let path = PathBuf::from(&rendered);
     if path.is_absolute() {
         Ok(path)
     } else {
