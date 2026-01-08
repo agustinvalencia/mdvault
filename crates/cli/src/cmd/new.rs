@@ -261,8 +261,6 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
                 let final_content = if let Some(ref new_vars) = hook_result.variables {
                     // Update context with new variables
 
-                    eprintln!("DEBUG: Hook returned variables: {:?}", new_vars);
-
                     if let serde_yaml::Value::Mapping(map) = new_vars {
                         for (k, v) in map {
                             if let serde_yaml::Value::String(ks) = k {
