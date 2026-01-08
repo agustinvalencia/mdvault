@@ -22,20 +22,17 @@ fn lua_hook_can_modify_variables_and_rerender() {
 
     // Vault
     let vault = tmp.path().join("vault");
-    
+
     // Type definitions
     let typedefs_dir = vault.join(".mdvault/types");
     let lua_path = typedefs_dir.join("meeting.lua");
-    
+
     // Templates
     let tpl_root = vault.join(".mdvault/templates");
     let tpl_meeting = tpl_root.join("meeting.md");
 
     // 1. Create Template
-    write(
-        &tpl_meeting,
-        "---\ntype: meeting\n---\n# Meeting with {{ host }}\n",
-    );
+    write(&tpl_meeting, "---\ntype: meeting\n---\n# Meeting with {{ host }}\n");
 
     // Create captures and macros dirs to satisfy VaultContext
     fs::create_dir_all(vault.join(".mdvault/captures")).unwrap();
@@ -92,13 +89,16 @@ macros_dir    = "{{{{vault_root}}}}/.mdvault/macros"
         output.to_str().unwrap(),
     ]);
 
-    cmd.assert()
-        .success();
+    cmd.assert().success();
 
     // 5. Verify Output
     let rendered = fs::read_to_string(&output).unwrap();
-    
+
     // Should contain "Meeting with LuaHost" not "Meeting with OriginalHost"
-    assert!(rendered.contains("Meeting with LuaHost"), "Expected 'Meeting with LuaHost', found:\n{}", rendered);
+    assert!(
+        rendered.contains("Meeting with LuaHost"),
+        "Expected 'Meeting with LuaHost', found:\n{}",
+        rendered
+    );
     assert!(!rendered.contains("OriginalHost"), "Should not contain 'OriginalHost'");
 }

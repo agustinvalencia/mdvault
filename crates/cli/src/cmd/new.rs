@@ -18,7 +18,7 @@ use mdvault_core::templates::engine::{
 use mdvault_core::templates::repository::{TemplateRepoError, TemplateRepository};
 use mdvault_core::types::{
     discovery::load_typedef_from_file, generate_scaffolding, get_missing_required_fields,
-    TypeDefinition, TypeRegistry, TypedefRepository,
+    validate_note, TypeDefinition, TypeRegistry, TypedefRepository,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -232,6 +232,26 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
             std::process::exit(1);
         }
     };
+
+    // Phase 3: Validate content before writing
+    // Load type registry for validation (only if we have a Lua typedef)
+    if let Some(ref typedef) = lua_typedef {
+        // Try to load type registry, skip validation if it fails
+        if let Ok(typedef_repo) = TypedefRepository::new(&cfg.typedefs_dir) {
+            if let Ok(type_registry) = TypeRegistry::from_repository(&typedef_repo) {
+                // Extract note type from rendered content for validation
+                let note_type = extract_note_type(&rendered).unwrap_or_else(|| typedef.name.clone());
+
+                if let Err(errors) = validate_before_write(&type_registry, &note_type, &output_path, &rendered) {
+                    eprintln!("Validation failed:");
+                    for err in &errors {
+                        eprintln!("  - {}", err);
+                    }
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
 
     if let Some(parent) = output_path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
@@ -695,6 +715,15 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     } else {
         content
     };
+
+    // Phase 3: Validate content before writing
+    if let Err(errors) = validate_before_write(&type_registry, type_name, &output_path, &content) {
+        eprintln!("Validation failed:");
+        for err in &errors {
+            eprintln!("  - {}", err);
+        }
+        std::process::exit(1);
+    }
 
     // Create parent directories
     if let Some(parent) = output_path.parent() {
@@ -1514,5 +1543,46 @@ fn render_output_path(
         Ok(path)
     } else {
         Ok(cfg.vault_root.join(path))
+    }
+}
+
+/// Validate note content before writing.
+///
+/// This runs schema validation and custom Lua validate() function (if defined).
+/// Returns Ok(()) if valid, or Err with error messages if validation fails.
+fn validate_before_write(
+    registry: &TypeRegistry,
+    note_type: &str,
+    output_path: &Path,
+    content: &str,
+) -> Result<(), Vec<String>> {
+    // Parse frontmatter from rendered content
+    let parsed = match parse_frontmatter(content) {
+        Ok(p) => p,
+        Err(e) => return Err(vec![format!("Failed to parse frontmatter: {}", e)]),
+    };
+
+    // Convert frontmatter to serde_yaml::Value for validation
+    let frontmatter = match parsed.frontmatter {
+        Some(fm) => {
+            let mut mapping = serde_yaml::Mapping::new();
+            for (k, v) in fm.fields {
+                mapping.insert(serde_yaml::Value::String(k), v);
+            }
+            serde_yaml::Value::Mapping(mapping)
+        }
+        None => serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+    };
+
+    // Run validation
+    let path_str = output_path.to_string_lossy();
+    let result = validate_note(registry, note_type, &path_str, &frontmatter, &parsed.body);
+
+    if result.valid {
+        Ok(())
+    } else {
+        // Collect all error messages
+        let errors: Vec<String> = result.errors.iter().map(|e| e.to_string()).collect();
+        Err(errors)
     }
 }
