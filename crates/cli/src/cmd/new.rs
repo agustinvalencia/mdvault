@@ -240,9 +240,15 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         if let Ok(typedef_repo) = TypedefRepository::new(&cfg.typedefs_dir) {
             if let Ok(type_registry) = TypeRegistry::from_repository(&typedef_repo) {
                 // Extract note type from rendered content for validation
-                let note_type = extract_note_type(&rendered).unwrap_or_else(|| typedef.name.clone());
+                let note_type =
+                    extract_note_type(&rendered).unwrap_or_else(|| typedef.name.clone());
 
-                if let Err(errors) = validate_before_write(&type_registry, &note_type, &output_path, &rendered) {
+                if let Err(errors) = validate_before_write(
+                    &type_registry,
+                    &note_type,
+                    &output_path,
+                    &rendered,
+                ) {
                     eprintln!("Validation failed:");
                     for err in &errors {
                         eprintln!("  - {}", err);
@@ -717,7 +723,9 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     };
 
     // Phase 3: Validate content before writing
-    if let Err(errors) = validate_before_write(&type_registry, type_name, &output_path, &content) {
+    if let Err(errors) =
+        validate_before_write(&type_registry, type_name, &output_path, &content)
+    {
         eprintln!("Validation failed:");
         for err in &errors {
             eprintln!("  - {}", err);
@@ -1576,7 +1584,8 @@ fn validate_before_write(
 
     // Run validation
     let path_str = output_path.to_string_lossy();
-    let result = validate_note(registry, note_type, &path_str, &frontmatter, &parsed.body);
+    let result =
+        validate_note(registry, note_type, &path_str, &frontmatter, &parsed.body);
 
     if result.valid {
         Ok(())

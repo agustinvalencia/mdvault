@@ -935,3 +935,287 @@ impl SandboxConfig {
     pub fn unrestricted() -> Self; // No limits (dangerous!)
 }
 ```
+
+## Built-in Type Examples
+
+These examples show how to create Lua-first type definitions for the built-in types (task, project). Place these files in your `types_dir` (default: `~/.config/mdvault/types/`).
+
+### Task Type Definition
+
+**`types/task.lua`**:
+```lua
+return {
+    name = "task",
+    description = "Actionable task with project association",
+
+    -- Output path template
+    output = "Projects/{{project}}/Tasks/{{title | slugify}}.md",
+
+    -- Schema defines all fields
+    schema = {
+        -- Core fields (managed by Rust)
+        ["type"] = { type = "string", core = true },
+        ["title"] = { type = "string", core = true, required = true },
+        ["task-id"] = { type = "string", core = true },
+        ["project"] = { type = "string", core = true },
+
+        -- User fields
+        ["status"] = {
+            type = "string",
+            enum = { "todo", "in-progress", "blocked", "done" },
+            default = "todo",
+            prompt = "Status?",
+        },
+        ["priority"] = {
+            type = "string",
+            enum = { "low", "medium", "high" },
+            default = "medium",
+            prompt = "Priority?",
+        },
+        ["due"] = {
+            type = "date",
+            required = false,
+            prompt = "Due date (optional)?",
+        },
+        ["tags"] = {
+            type = "list",
+            required = false,
+        },
+    },
+
+    -- Custom validation
+    validate = function(note)
+        local fm = note.frontmatter
+
+        -- Completed tasks should have completed_at
+        if fm.status == "done" and not fm.completed_at then
+            -- This is a warning, not a hard failure
+            -- The on_create hook will set completed_at
+        end
+
+        return true
+    end,
+
+    -- Lifecycle hook: called when task is created
+    on_create = function(note)
+        local fm = note.frontmatter
+
+        -- Auto-set completed_at when status is done
+        if fm.status == "done" and not fm.completed_at then
+            fm.completed_at = mdv.date("now", "%Y-%m-%dT%H:%M:%S")
+        end
+
+        -- Ensure created timestamp exists
+        if not fm.created then
+            fm.created = mdv.date("today")
+        end
+
+        note.frontmatter = fm
+        return note
+    end,
+}
+```
+
+**`templates/task.md`**:
+```markdown
+---
+lua: task.lua
+---
+
+# {{title}}
+
+**Status**: {{status}}
+**Priority**: {{priority}}
+{{#if due}}**Due**: {{due}}{{/if}}
+
+## Description
+
+{{description}}
+
+## Checklist
+
+- [ ]
+
+## Notes
+
+```
+
+### Project Type Definition
+
+**`types/project.lua`**:
+```lua
+return {
+    name = "project",
+    description = "Project with associated tasks",
+
+    -- Output path template
+    output = "Projects/{{project-id}}/{{project-id}}.md",
+
+    schema = {
+        -- Core fields
+        ["type"] = { type = "string", core = true },
+        ["title"] = { type = "string", core = true, required = true },
+        ["project-id"] = {
+            type = "string",
+            core = true,
+            prompt = "Project ID (3-letter code)?",
+        },
+        ["task_counter"] = { type = "number", core = true, default = 0 },
+
+        -- User fields
+        ["status"] = {
+            type = "string",
+            enum = { "planning", "active", "on-hold", "completed", "archived" },
+            default = "active",
+            prompt = "Project status?",
+        },
+        ["description"] = {
+            type = "string",
+            prompt = "Project description?",
+            multiline = true,
+        },
+        ["start_date"] = {
+            type = "date",
+            default = "today",
+        },
+        ["target_date"] = {
+            type = "date",
+            required = false,
+            prompt = "Target completion date (optional)?",
+        },
+        ["tags"] = {
+            type = "list",
+            required = false,
+        },
+    },
+
+    validate = function(note)
+        local fm = note.frontmatter
+
+        -- Project ID should be uppercase letters
+        if fm["project-id"] then
+            local id = fm["project-id"]
+            if not id:match("^%u+$") then
+                return false, "project-id must be uppercase letters only"
+            end
+        end
+
+        return true
+    end,
+
+    on_create = function(note)
+        local fm = note.frontmatter
+
+        -- Ensure project-id is uppercase
+        if fm["project-id"] then
+            fm["project-id"] = string.upper(fm["project-id"])
+        end
+
+        -- Set created timestamp
+        if not fm.created then
+            fm.created = mdv.date("today")
+        end
+
+        note.frontmatter = fm
+        return note
+    end,
+}
+```
+
+**`templates/project.md`**:
+```markdown
+---
+lua: project.lua
+---
+
+# {{title}}
+
+**ID**: {{project-id}}
+**Status**: {{status}}
+**Started**: {{start_date}}
+{{#if target_date}}**Target**: {{target_date}}{{/if}}
+
+## Overview
+
+{{description}}
+
+## Tasks
+
+<!-- Tasks will be linked here -->
+
+## Notes
+
+```
+
+### Daily Note Type Definition
+
+**`types/daily.lua`**:
+```lua
+return {
+    name = "daily",
+    description = "Daily journal entry",
+
+    output = "Journal/Daily/{{today}}.md",
+
+    schema = {
+        ["type"] = { type = "string", core = true },
+        ["date"] = { type = "date", core = true },
+        ["mood"] = {
+            type = "string",
+            enum = { "great", "good", "okay", "rough" },
+            required = false,
+            prompt = "How are you feeling?",
+        },
+    },
+
+    on_create = function(note)
+        -- Set date to today
+        note.frontmatter.date = mdv.date("today")
+
+        -- Add dynamic variables for template
+        note.variables = note.variables or {}
+        note.variables.day_name = mdv.date("today", "%A")
+        note.variables.week_number = mdv.date("week", "%V")
+
+        return note
+    end,
+}
+```
+
+**`templates/daily.md`**:
+```markdown
+---
+lua: daily.lua
+---
+
+# {{day_name}}, {{today}}
+
+Week {{week_number}}
+
+## Morning
+
+- [ ]
+
+## Tasks
+
+## Notes
+
+## Evening Reflection
+
+```
+
+### Using the Built-in Types
+
+```bash
+# Create a new project (prompts for ID and status)
+mdv new project "My New Project"
+
+# Create a task in a project
+mdv new task "Implement feature X" --var project=MNP
+
+# Create today's daily note
+mdv new --template daily
+
+# Batch mode (uses defaults, no prompts)
+mdv new project "Quick Project" --batch --var project-id=QKP
+```

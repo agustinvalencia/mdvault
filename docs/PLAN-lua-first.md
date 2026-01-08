@@ -212,9 +212,9 @@ output: Projects/MCP/Tasks/MCP-042.md
 - [x] Run Lua `validate()` function during creation
 - [x] Show clear error messages for validation failures
 
-#### Phase 4: Built-in templates (Planned)
-- [ ] Migrate built-in task/project templates to Lua-first
-- [ ] Add example templates in documentation
+#### Phase 4: Built-in templates (Completed)
+- [x] Migrate built-in task/project templates to Lua-first
+- [x] Add example templates in documentation (lua-scripting.md)
 
 #### Phase 5: Captures and Macros (Future)
 - [ ] Consider if captures should also be Lua-based
@@ -399,5 +399,6 @@ Templates without `lua:` will only have access to CLI-provided variables (`--var
 1. ~~Phase 1: Lua-template linking~~ Complete (v0.2.0)
 2. ~~Phase 2: Enhanced prompts~~ Complete (enum selectors, multiline, project-id prompt)
 3. ~~Phase 3: Validation integration~~ Complete (schema + Lua validate() on create)
-4. Phase 4: Migrate built-in templates
-5. Iterate based on usage feedback
+4. ~~Phase 4: Built-in templates~~ Complete (task, project, daily examples in docs)
+5. Phase 5: Captures and Macros (future consideration)
+6. Iterate based on usage feedback
