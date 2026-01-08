@@ -1,4 +1,6 @@
-use crate::config::types::{ConfigFile, Profile, ResolvedConfig, SecurityPolicy};
+use crate::config::types::{
+    ConfigFile, LoggingConfig, Profile, ResolvedConfig, SecurityPolicy,
+};
 use shellexpand::full;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
@@ -69,7 +71,7 @@ impl ConfigLoader {
             .get(&active)
             .ok_or_else(|| ConfigError::ProfileNotFound(active.clone()))?;
 
-        let resolved = Self::resolve_profile(&active, prof, &cf.security)?;
+        let resolved = Self::resolve_profile(&active, prof, &cf.security, &cf.logging)?;
         Ok(resolved)
     }
 
@@ -77,6 +79,7 @@ impl ConfigLoader {
         active: &str,
         prof: &Profile,
         sec: &SecurityPolicy,
+        log_cfg: &LoggingConfig,
     ) -> Result<ResolvedConfig, ConfigError> {
         let vault_root = expand_path(&prof.vault_root)?;
         let sub = |s: &str| s.replace("{{vault_root}}", &vault_root.to_string_lossy());
@@ -89,6 +92,18 @@ impl ConfigLoader {
             None => default_typedefs_dir(),
         };
 
+        // Resolve log file path if present
+        let logging = if let Some(ref file) = log_cfg.file {
+            let expanded_file = expand_path(&sub(&file.to_string_lossy()))?;
+            LoggingConfig {
+                level: log_cfg.level.clone(),
+                file_level: log_cfg.file_level.clone(),
+                file: Some(expanded_file),
+            }
+        } else {
+            log_cfg.clone()
+        };
+
         Ok(ResolvedConfig {
             active_profile: active.to_string(),
             vault_root,
@@ -97,6 +112,7 @@ impl ConfigLoader {
             macros_dir,
             typedefs_dir,
             security: sec.clone(),
+            logging,
         })
     }
 }
