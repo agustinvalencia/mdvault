@@ -1,6 +1,5 @@
 mod cmd;
 mod completions;
-mod logging;
 mod prompt;
 mod tui;
 
@@ -8,7 +7,6 @@ use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::engine::ArgValueCompleter;
 use clap_complete::env::CompleteEnv;
 use clap_complete::Shell;
-use mdvault_core::config::loader::ConfigLoader;
 use std::path::PathBuf;
 
 /// Output format for query commands.
@@ -576,12 +574,6 @@ fn main() {
     CompleteEnv::with_factory(Cli::command).complete();
 
     let cli = Cli::parse();
-
-    // Initialize logging if config is valid
-    // We ignore errors here because individual commands will report them properly
-    if let Ok(cfg) = ConfigLoader::load(cli.config.as_deref(), cli.profile.as_deref()) {
-        logging::init(&cfg);
-    }
 
     match cli.command {
         // No command provided - launch TUI
