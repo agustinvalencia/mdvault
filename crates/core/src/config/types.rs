@@ -10,6 +10,8 @@ pub struct ConfigFile {
     pub profiles: HashMap<String, Profile>,
     #[serde(default)]
     pub security: SecurityPolicy,
+    #[serde(default)]
+    pub logging: LoggingConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +32,26 @@ pub struct SecurityPolicy {
     pub allow_http: bool,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct LoggingConfig {
+    #[serde(default = "default_log_level")]
+    pub level: String,
+    #[serde(default)]
+    pub file_level: Option<String>,
+    #[serde(default)]
+    pub file: Option<PathBuf>,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self { level: default_log_level(), file_level: None, file: None }
+    }
+}
+
+fn default_log_level() -> String {
+    "info".to_string()
+}
+
 #[derive(Debug, Clone)]
 pub struct ResolvedConfig {
     pub active_profile: String,
@@ -40,4 +62,5 @@ pub struct ResolvedConfig {
     /// Directory for Lua type definitions (global, not per-profile).
     pub typedefs_dir: PathBuf,
     pub security: SecurityPolicy,
+    pub logging: LoggingConfig,
 }
