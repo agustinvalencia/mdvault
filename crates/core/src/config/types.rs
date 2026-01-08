@@ -37,12 +37,14 @@ pub struct LoggingConfig {
     #[serde(default = "default_log_level")]
     pub level: String,
     #[serde(default)]
+    pub file_level: Option<String>,
+    #[serde(default)]
     pub file: Option<PathBuf>,
 }
 
 impl Default for LoggingConfig {
     fn default() -> Self {
-        Self { level: default_log_level(), file: None }
+        Self { level: default_log_level(), file_level: None, file: None }
     }
 }
 

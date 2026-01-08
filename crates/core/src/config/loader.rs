@@ -95,7 +95,11 @@ impl ConfigLoader {
         // Resolve log file path if present
         let logging = if let Some(ref file) = log_cfg.file {
             let expanded_file = expand_path(&sub(&file.to_string_lossy()))?;
-            LoggingConfig { level: log_cfg.level.clone(), file: Some(expanded_file) }
+            LoggingConfig {
+                level: log_cfg.level.clone(),
+                file_level: log_cfg.file_level.clone(),
+                file: Some(expanded_file),
+            }
         } else {
             log_cfg.clone()
         };
