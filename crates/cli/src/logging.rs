@@ -62,7 +62,9 @@ pub fn init(cfg: &ResolvedConfig) {
 }
 
 fn parse_level(s: &str) -> Option<LevelFilter> {
+
     match s.to_lowercase().as_str() {
+
         "error" => Some(LevelFilter::ERROR),
 
         "warn" => Some(LevelFilter::WARN),
@@ -74,5 +76,41 @@ fn parse_level(s: &str) -> Option<LevelFilter> {
         "trace" => Some(LevelFilter::TRACE),
 
         _ => None,
+
     }
+
+}
+
+
+
+#[cfg(test)]
+
+mod tests {
+
+    use super::*;
+
+    use tracing_subscriber::filter::LevelFilter;
+
+
+
+    #[test]
+
+    fn test_parse_level() {
+
+        assert_eq!(parse_level("error"), Some(LevelFilter::ERROR));
+
+        assert_eq!(parse_level("WARN"), Some(LevelFilter::WARN));
+
+        assert_eq!(parse_level("Info"), Some(LevelFilter::INFO));
+
+        assert_eq!(parse_level("debug"), Some(LevelFilter::DEBUG));
+
+        assert_eq!(parse_level("trace"), Some(LevelFilter::TRACE));
+
+        assert_eq!(parse_level("invalid"), None);
+
+        assert_eq!(parse_level(""), None);
+
+    }
+
 }
