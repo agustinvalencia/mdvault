@@ -310,6 +310,11 @@ return {
     -- Output path template (used when template doesn't specify one)
     output = "Meetings/{{title | slugify}}.md",
 
+    -- Template variables (used in body, not saved to frontmatter)
+    variables = {
+        context = "Meeting context?",
+    },
+
     -- Schema defines fields with types, defaults, and prompts
     schema = {
         -- Fields with 'prompt' will be asked interactively

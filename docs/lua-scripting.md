@@ -288,6 +288,15 @@ return {
     -- Supports filters like {{title | slugify}}
     output = "Meetings/{{title | slugify}}.md",
 
+    -- Template variables (ephemeral inputs for the template body)
+    -- These are NOT saved to frontmatter unless you explicitly add them
+    variables = {
+        context = {
+            prompt = "Meeting context?",
+            default = "General"
+        }
+    },
+
     -- Schema defines the expected frontmatter fields
     schema = {
         title = {
@@ -385,6 +394,26 @@ field_name = {
     note_type = "project"      -- Restrict to specific type
 }
 ```
+
+### Template Variables
+
+The `variables` block defines ephemeral inputs that are used for template rendering but are **not** automatically added to the note's frontmatter (unlike `schema` fields). This is useful for helper variables or context that you don't want to persist.
+
+```lua
+variables = {
+    context = {
+        prompt = "What is the context?",  -- Prompts user interactively
+        default = "General",              -- Default value
+        required = true,                  -- Must provide value
+        description = "Context for the note"
+    },
+    -- Simple form (string is treated as prompt if it ends with ?, or default otherwise)
+    mood = "How are you feeling?",
+    tags = "default,tags"
+}
+```
+
+Values collected from `variables` are available in the template as `{{context}}`, `{{mood}}`, etc., and are passed to lifecycle hooks in `note.variables`.
 
 #### Interactive Prompt Behavior
 
