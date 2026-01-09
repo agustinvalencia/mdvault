@@ -1,4 +1,4 @@
-use crate::prompt::{prompt_for_field, CollectedVars, PromptOptions};
+use crate::prompt::{prompt_for_enum, prompt_for_field, CollectedVars, PromptOptions};
 use crate::NewArgs;
 use dialoguer::{theme::ColorfulTheme, Editor, Input, Select};
 use mdvault_core::captures::CaptureRepository;
@@ -16,13 +16,15 @@ use mdvault_core::templates::engine::{
     build_minimal_context, render, render_string, resolve_template_output_path,
 };
 use mdvault_core::templates::repository::{TemplateRepoError, TemplateRepository};
+use mdvault_core::types::try_fix_note;
 use mdvault_core::types::{
     discovery::load_typedef_from_file, generate_scaffolding, get_missing_required_fields,
-    validate_note, TypeDefinition, TypeRegistry, TypedefRepository,
+    validate_note, FieldType, TypeDefinition, TypeRegistry, TypedefRepository,
 };
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use tracing::debug;
 
 /// Core metadata that must be preserved in notes regardless of template/hook modifications.
 /// These fields are managed by mdvault and should not be removed or overwritten by user code.
@@ -43,6 +45,7 @@ struct CoreMetadata {
 }
 
 pub fn run(config: Option<&Path>, profile: Option<&str>, args: NewArgs) {
+    debug!("Running create new");
     let cfg = match ConfigLoader::load(config, profile) {
         Ok(rc) => rc,
         Err(e) => {
@@ -157,6 +160,7 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
     };
 
     // Merge collected variables into context
+    debug!("Collected variables: {:?}", collected.values);
     let mut ctx = minimal_ctx;
     for (k, v) in collected.values {
         ctx.insert(k, v);
@@ -225,7 +229,8 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         std::process::exit(1);
     }
 
-    let rendered = match render(&loaded, &ctx) {
+    debug!("Render context: {:?}", ctx);
+    let mut rendered = match render(&loaded, &ctx) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to render template: {e}");
@@ -243,17 +248,21 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
                 let note_type =
                     extract_note_type(&rendered).unwrap_or_else(|| typedef.name.clone());
 
-                if let Err(errors) = validate_before_write(
+                match validate_before_write(
                     &type_registry,
                     &note_type,
                     &output_path,
                     &rendered,
                 ) {
-                    eprintln!("Validation failed:");
-                    for err in &errors {
-                        eprintln!("  - {}", err);
+                    Ok(Some(fixed)) => rendered = fixed,
+                    Ok(None) => {}
+                    Err(errors) => {
+                        eprintln!("Validation failed:");
+                        for err in &errors {
+                            eprintln!("  - {}", err);
+                        }
+                        std::process::exit(1);
                     }
-                    std::process::exit(1);
                 }
             }
         }
@@ -397,12 +406,9 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     let loaded_template =
         template_repo.as_ref().and_then(|repo| repo.get_by_name(type_name).ok());
 
-    // For non-project/task types with templates, delegate to template mode
-    // For projects and tasks, we ALWAYS use scaffolding mode to ensure proper ID generation
-    if loaded_template.is_some() && type_name != "project" && type_name != "task" {
-        run_template_mode(cfg, type_name, args);
-        return;
-    }
+    // Note: We no longer delegate to template mode for non-project/task types.
+    // Scaffolding mode handles template rendering AND validation with the type registry,
+    // which is required for autofix to work correctly.
 
     // Get title (required for scaffolding)
     let title = match &args.title {
@@ -591,9 +597,27 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         };
         (output_path, task_id)
     } else {
-        // Other types use default output path
+        // Other types: check CLI arg, then typedef output template, then default
+        vars.insert("title".to_string(), title.clone());
         let path = if let Some(ref out) = args.output {
             out.clone()
+        } else if let Some(ref td) = typedef {
+            // Use Lua typedef's output template if available
+            if let Some(ref output_template) = td.output {
+                match render_output_path(output_template, cfg, &vars) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("Warning: failed to render Lua output path: {e}");
+                        cfg.vault_root.join(format!(
+                            "{}s/{}.md",
+                            type_name,
+                            slugify(&title)
+                        ))
+                    }
+                }
+            } else {
+                cfg.vault_root.join(format!("{}s/{}.md", type_name, slugify(&title)))
+            }
         } else {
             cfg.vault_root.join(format!("{}s/{}.md", type_name, slugify(&title)))
         };
@@ -652,10 +676,24 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                     format!("{} ({})", field, type_hint)
                 };
 
-                // For enums, show available values
-                let enum_hint = schema.enum_values.as_ref().map(|v| v.join("/"));
+                // Use picker for enum fields, text input for others
+                let result = if let Some(ref enum_values) = schema.enum_values {
+                    if !enum_values.is_empty() {
+                        // Use picker widget for enum selection
+                        prompt_for_enum(
+                            field,
+                            &prompt,
+                            enum_values,
+                            schema.default.as_ref().and_then(|v| v.as_str()),
+                        )
+                    } else {
+                        prompt_for_field(field, &prompt, None, true)
+                    }
+                } else {
+                    prompt_for_field(field, &prompt, None, true)
+                };
 
-                match prompt_for_field(field, &prompt, enum_hint.as_deref(), true) {
+                match result {
                     Ok(value) => {
                         vars.insert(field.clone(), value);
                     }
@@ -666,12 +704,71 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                 }
             }
         }
+
+        // Prompt for template variables defined in the typedef
+        for (var_name, var_spec) in &td.variables {
+            // Skip if already provided via CLI
+            if vars.contains_key(var_name) {
+                continue;
+            }
+
+            // Get the prompt text (if any)
+            let prompt_text = var_spec.prompt();
+            let default_value = var_spec.default();
+
+            // Only prompt if there's a prompt defined or variable is required
+            if !prompt_text.is_empty() || var_spec.is_required() {
+                if args.batch {
+                    // In batch mode, use default if available
+                    if let Some(default) = default_value {
+                        vars.insert(var_name.clone(), default.to_string());
+                    } else if var_spec.is_required() {
+                        eprintln!("Error: missing required variable: {}", var_name);
+                        std::process::exit(1);
+                    }
+                } else {
+                    // Interactive mode: prompt the user
+                    let prompt_label = if prompt_text.is_empty() {
+                        var_name.to_string()
+                    } else {
+                        prompt_text.to_string()
+                    };
+
+                    match prompt_for_field(
+                        var_name,
+                        &prompt_label,
+                        default_value,
+                        var_spec.is_required(),
+                    ) {
+                        Ok(value) => {
+                            // Use provided value or fall back to default
+                            if value.is_empty() {
+                                if let Some(default) = default_value {
+                                    vars.insert(var_name.clone(), default.to_string());
+                                }
+                            } else {
+                                vars.insert(var_name.clone(), value);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Error: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+            } else if let Some(default) = default_value {
+                // Variable has a default but no prompt - just use the default
+                vars.insert(var_name.clone(), default.to_string());
+            }
+        }
     }
 
     if output_path.exists() {
         eprintln!("Refusing to overwrite existing file: {}", output_path.display());
         std::process::exit(1);
     }
+
+    debug!("Scaffolding vars: {:?}", vars);
 
     // Generate content - use template if available, otherwise scaffolding
     // For projects/tasks, we'll ensure core metadata is preserved either way
@@ -697,7 +794,10 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
 
         // Render template
         match render(loaded, &ctx) {
-            Ok(rendered) => rendered,
+            Ok(rendered) => {
+                inject_vars_into_frontmatter(&rendered, &vars, typedef.as_deref())
+                    .unwrap_or(rendered)
+            }
             Err(e) => {
                 eprintln!("Failed to render template: {e}");
                 eprintln!("Falling back to scaffolding...");
@@ -710,7 +810,7 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
 
     // Apply core metadata immediately after content generation (before writing)
     // This ensures template output has the required fields
-    let content = if type_name == "project" || type_name == "task" {
+    let mut content = if type_name == "project" || type_name == "task" {
         match ensure_core_metadata(&content, &core_metadata) {
             Ok(fixed) => fixed,
             Err(e) => {
@@ -723,14 +823,16 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     };
 
     // Phase 3: Validate content before writing
-    if let Err(errors) =
-        validate_before_write(&type_registry, type_name, &output_path, &content)
-    {
-        eprintln!("Validation failed:");
-        for err in &errors {
-            eprintln!("  - {}", err);
+    match validate_before_write(&type_registry, type_name, &output_path, &content) {
+        Ok(Some(fixed)) => content = fixed,
+        Ok(None) => {}
+        Err(errors) => {
+            eprintln!("Validation failed:");
+            for err in &errors {
+                eprintln!("  - {}", err);
+            }
+            std::process::exit(1);
         }
-        std::process::exit(1);
     }
 
     // Create parent directories
@@ -755,11 +857,24 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         typedef.as_deref(),
         &vars,
     ) {
-        Ok(hook_result) => {
+        Ok(mut hook_result) => {
             if hook_result.modified {
                 let mut final_content = content.clone();
 
                 if let Some(ref new_vars) = hook_result.variables {
+                    // Sync updated variables with frontmatter if both exist
+                    if let (
+                        Some(serde_yaml::Value::Mapping(ref mut fm)),
+                        serde_yaml::Value::Mapping(ref vars_map),
+                    ) = (&mut hook_result.frontmatter, new_vars)
+                    {
+                        for (k, v) in vars_map {
+                            if k.as_str() != Some("type") && k.as_str() != Some("title") {
+                                fm.insert(k.clone(), v.clone());
+                            }
+                        }
+                    }
+
                     // Update vars
                     if let serde_yaml::Value::Mapping(map) = new_vars {
                         for (k, v) in map {
@@ -774,13 +889,44 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                             }
                         }
                     }
-                    // Regenerate scaffolding
-                    let regenerated = generate_scaffolding(
-                        type_name,
-                        typedef.as_deref(),
-                        &title,
-                        &vars,
-                    );
+                    // Re-render template or scaffolding with updated vars
+                    let regenerated = if let Some(ref loaded) = loaded_template {
+                        // Re-render template with updated context
+                        let info = TemplateInfo {
+                            logical_name: loaded.logical_name.clone(),
+                            path: loaded.path.clone(),
+                        };
+                        let mut ctx = build_minimal_context(cfg, &info);
+                        ctx.insert("title".to_string(), title.clone());
+                        for (k, v) in &vars {
+                            ctx.insert(k.clone(), v.clone());
+                        }
+                        ctx.insert(
+                            "output_path".to_string(),
+                            output_path.to_string_lossy().to_string(),
+                        );
+                        if let Some(name) =
+                            output_path.file_name().and_then(|s| s.to_str())
+                        {
+                            ctx.insert("output_filename".to_string(), name.to_string());
+                        }
+                        match render(loaded, &ctx) {
+                            Ok(rendered) => inject_vars_into_frontmatter(
+                                &rendered,
+                                &vars,
+                                typedef.as_deref(),
+                            )
+                            .unwrap_or(rendered),
+                            Err(_) => generate_scaffolding(
+                                type_name,
+                                typedef.as_deref(),
+                                &title,
+                                &vars,
+                            ),
+                        }
+                    } else {
+                        generate_scaffolding(type_name, typedef.as_deref(), &title, &vars)
+                    };
                     // Re-apply core metadata
                     final_content = if type_name == "project" || type_name == "task" {
                         match ensure_core_metadata(&regenerated, &core_metadata) {
@@ -1224,10 +1370,6 @@ fn apply_hook_modifications(
             serde_yaml::to_string(&final_frontmatter).map_err(|e| e.to_string())?;
         format!("---\n{}---\n{}", yaml_str, final_body)
     };
-    eprintln!(
-        "DEBUG: apply_hook_modifications: final content to write:\n{}",
-        final_content
-    );
 
     // Write back to file
     fs::write(output_path, final_content).map_err(|e| e.to_string())
@@ -1284,7 +1426,7 @@ fn log_to_daily(
 
     // Format: "- **HH:MM** Created task [MCP-001]: [[MCP-001|Title]]"
     let id_display =
-        if note_id.is_empty() { String::new() } else { format!(" [{}]", note_id) };
+        if note_id.is_empty() { String::new() } else { format!(" {}", note_id) };
 
     let log_entry = format!(
         "- **{}** Created {}{}: [[{}|{}]]\n",
@@ -1557,13 +1699,14 @@ fn render_output_path(
 /// Validate note content before writing.
 ///
 /// This runs schema validation and custom Lua validate() function (if defined).
-/// Returns Ok(()) if valid, or Err with error messages if validation fails.
+/// Returns Ok(None) if valid, Ok(Some(content)) if valid after auto-fixing,
+/// or Err with error messages if validation fails.
 fn validate_before_write(
     registry: &TypeRegistry,
     note_type: &str,
     output_path: &Path,
     content: &str,
-) -> Result<(), Vec<String>> {
+) -> Result<Option<String>, Vec<String>> {
     // Parse frontmatter from rendered content
     let parsed = match parse_frontmatter(content) {
         Ok(p) => p,
@@ -1588,10 +1731,107 @@ fn validate_before_write(
         validate_note(registry, note_type, &path_str, &frontmatter, &parsed.body);
 
     if result.valid {
-        Ok(())
+        Ok(None)
     } else {
-        // Collect all error messages
-        let errors: Vec<String> = result.errors.iter().map(|e| e.to_string()).collect();
-        Err(errors)
+        // Try to auto-fix validation errors
+        let fix_result = try_fix_note(registry, note_type, content, &result.errors);
+        if fix_result.fixed {
+            if let Some(new_content) = fix_result.content {
+                println!("Auto-fixed validation errors:");
+                for fix in fix_result.fixes {
+                    println!("  - {}", fix);
+                }
+                Ok(Some(new_content))
+            } else {
+                // Should not happen if fixed is true
+                let errors: Vec<String> =
+                    result.errors.iter().map(|e| e.to_string()).collect();
+                Err(errors)
+            }
+        } else {
+            // Collect all error messages
+            let errors: Vec<String> =
+                result.errors.iter().map(|e| e.to_string()).collect();
+            Err(errors)
+        }
     }
+}
+
+/// Helper to convert string to yaml value based on type hint
+fn string_to_yaml_value(s: &str, field_type: Option<FieldType>) -> serde_yaml::Value {
+    match field_type {
+        Some(FieldType::Number) => {
+            if let Ok(n) = s.parse::<i64>() {
+                serde_yaml::Value::Number(n.into())
+            } else if let Ok(n) = s.parse::<f64>() {
+                serde_yaml::Value::Number(serde_yaml::Number::from(n))
+            } else {
+                serde_yaml::Value::String(s.to_string())
+            }
+        }
+        Some(FieldType::Boolean) => {
+            serde_yaml::Value::Bool(s.eq_ignore_ascii_case("true") || s == "1")
+        }
+        Some(FieldType::List) => {
+            let items: Vec<serde_yaml::Value> = s
+                .split(',')
+                .map(|item| serde_yaml::Value::String(item.trim().to_string()))
+                .collect();
+            serde_yaml::Value::Sequence(items)
+        }
+        _ => serde_yaml::Value::String(s.to_string()),
+    }
+}
+
+/// Inject user-provided variables into frontmatter if not already present.
+///
+/// This ensures that variables prompted for (or passed via CLI) appear in the output note
+/// even if the template didn't explicitly include them.
+fn inject_vars_into_frontmatter(
+    content: &str,
+    vars: &HashMap<String, String>,
+    typedef: Option<&TypeDefinition>,
+) -> Result<String, String> {
+    let parsed = parse_frontmatter(content).map_err(|e| e.to_string())?;
+
+    let mut fields: HashMap<String, serde_yaml::Value> =
+        if let Some(fm) = parsed.frontmatter { fm.fields } else { HashMap::new() };
+
+    let mut modified = false;
+
+    for (k, v) in vars {
+        // Skip keys that are usually handled specially or shouldn't be overridden blindly
+        if k == "type" || k == "title" {
+            continue;
+        }
+
+        // If field already exists, don't overwrite
+        if fields.contains_key(k) {
+            continue;
+        }
+
+        // Only inject if the variable is defined in the schema
+        // Variables not in schema are considered ephemeral template inputs
+        if let Some(td) = typedef {
+            if let Some(schema) = td.schema.get(k) {
+                let val = string_to_yaml_value(v, schema.field_type);
+                fields.insert(k.clone(), val);
+                modified = true;
+            }
+        }
+    }
+
+    if !modified {
+        return Ok(content.to_string());
+    }
+
+    // Rebuild
+    let mut mapping = serde_yaml::Mapping::new();
+    for (k, v) in fields {
+        mapping.insert(serde_yaml::Value::String(k), v);
+    }
+    let yaml_str = serde_yaml::to_string(&serde_yaml::Value::Mapping(mapping))
+        .map_err(|e| e.to_string())?;
+
+    Ok(format!("---\n{}---\n{}", yaml_str, parsed.body))
 }

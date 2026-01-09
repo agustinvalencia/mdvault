@@ -497,6 +497,7 @@ mod tests {
             source_path: std::path::PathBuf::new(),
             schema,
             output: None,
+            variables: crate::vars::VarsMap::new(),
             has_validate_fn: false,
             has_on_create_hook: false,
             has_on_update_hook: false,

@@ -10,6 +10,7 @@ use super::definition::{TypeDefinition, TypedefInfo};
 use super::errors::TypedefError;
 use super::schema::{FieldSchema, FieldType};
 use crate::scripting::LuaEngine;
+use crate::vars::{VarMetadata, VarSpec, VarsMap};
 
 /// Built-in type names that can be overridden by Lua definitions.
 const BUILTIN_TYPES: &[&str] = &["daily", "weekly", "task", "project", "zettel"];
@@ -153,6 +154,9 @@ fn parse_typedef(
     // Extract schema
     let schema = extract_schema(&table, path)?;
 
+    // Extract variables (for template body substitution)
+    let variables = extract_variables(&table, path)?;
+
     // Check for hook functions
     let has_validate_fn = table.get::<mlua::Function>("validate").is_ok();
     let has_on_create_hook = table.get::<mlua::Function>("on_create").is_ok();
@@ -167,6 +171,7 @@ fn parse_typedef(
         source_path: path.to_path_buf(),
         schema,
         output,
+        variables,
         has_validate_fn,
         has_on_create_hook,
         has_on_update_hook,
@@ -198,6 +203,62 @@ fn extract_schema(
     }
 
     Ok(schema)
+}
+
+/// Extract variables from Lua table.
+///
+/// Variables support two formats in Lua:
+/// - Simple: `foo = "bar"` (direct value assignment)
+/// - Full: `foo = { default = "bar", prompt = "Enter foo" }` (with metadata)
+fn extract_variables(table: &mlua::Table, path: &Path) -> Result<VarsMap, TypedefError> {
+    let mut variables = VarsMap::new();
+
+    let vars_table: mlua::Table = match table.get("variables") {
+        Ok(t) => t,
+        Err(_) => return Ok(variables), // No variables defined is valid
+    };
+
+    for pair in vars_table.pairs::<String, mlua::Value>() {
+        let (var_name, var_value) = pair.map_err(|e| TypedefError::LuaParse {
+            path: path.to_path_buf(),
+            source: crate::scripting::ScriptingError::Lua(e),
+        })?;
+
+        let var_spec = match var_value {
+            // Simple form: variable = "value"
+            mlua::Value::String(s) => {
+                let value = s.to_str().map_err(|e| TypedefError::LuaParse {
+                    path: path.to_path_buf(),
+                    source: crate::scripting::ScriptingError::Lua(e),
+                })?;
+                // A simple string is treated as either a prompt or a default value
+                // If it looks like a prompt (ends with ?), treat it as a prompt
+                // Otherwise, treat it as a default value
+                if value.ends_with('?') {
+                    VarSpec::Simple(value.to_string())
+                } else {
+                    VarSpec::Full(VarMetadata {
+                        default: Some(value.to_string()),
+                        ..Default::default()
+                    })
+                }
+            }
+            // Full form: variable = { default = "value", prompt = "Enter value" }
+            mlua::Value::Table(t) => {
+                let default: Option<String> = t.get("default").ok();
+                let prompt: Option<String> = t.get("prompt").ok();
+                let required: Option<bool> = t.get("required").ok();
+                let description: Option<String> = t.get("description").ok();
+
+                VarSpec::Full(VarMetadata { prompt, description, required, default })
+            }
+            _ => continue, // Skip invalid values
+        };
+
+        variables.insert(var_name, var_spec);
+    }
+
+    Ok(variables)
 }
 
 /// Parse a field schema from a Lua table.

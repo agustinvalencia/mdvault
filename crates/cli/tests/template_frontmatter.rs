@@ -220,13 +220,14 @@ Attendees: {{attendees}}
     let content = fs::read_to_string(&file_path).unwrap();
 
     // User variables should be substituted in frontmatter
+    // Note: quotes are preserved from the template since we do raw text substitution
     assert!(
-        content.contains("title: Quarterly Review"),
+        content.contains("title: \"Quarterly Review\""),
         "title should have user value, got: {}",
         content
     );
     assert!(
-        content.contains("attendees: Alice, Bob"),
+        content.contains("attendees: \"Alice, Bob\""),
         "attendees should have user value"
     );
 

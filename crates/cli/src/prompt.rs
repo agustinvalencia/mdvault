@@ -6,7 +6,7 @@
 //! - Handle defaults and required/optional status
 //! - Support batch mode (non-interactive) for CI/scripting
 
-use dialoguer::{theme::ColorfulTheme, Input};
+use dialoguer::{theme::ColorfulTheme, Input, Select};
 use mdvault_core::templates::engine::RenderContext;
 use mdvault_core::vars::{
     collect_all_variables, try_evaluate_date_expr, VarSpec, VarsMap,
@@ -263,6 +263,56 @@ pub fn prompt_for_field(
     }
 
     Ok(input)
+}
+
+/// Prompt for a field value using a selection widget when enum values are available.
+///
+/// This shows a picker UI for enum values, making it easier to select the correct value.
+///
+/// # Arguments
+/// * `field` - Field name (for error messages)
+/// * `prompt` - The prompt text to display
+/// * `options` - Available enum values
+/// * `default_value` - Default value to pre-select (if in options)
+///
+/// # Returns
+/// The selected value, or an error if cancelled.
+pub fn prompt_for_enum(
+    field: &str,
+    prompt: &str,
+    options: &[String],
+    default_value: Option<&str>,
+) -> Result<String, PromptError> {
+    let is_interactive = io::stdin().is_terminal();
+
+    if !is_interactive {
+        return Err(PromptError::MissingRequired(field.to_string()));
+    }
+
+    if options.is_empty() {
+        return Err(PromptError::MissingRequired(format!(
+            "{}: no options available",
+            field
+        )));
+    }
+
+    let theme = ColorfulTheme::default();
+
+    // Find the default index if a default value is provided
+    let default_idx =
+        default_value.and_then(|dv| options.iter().position(|o| o == dv)).unwrap_or(0);
+
+    let selection = Select::with_theme(&theme)
+        .with_prompt(prompt)
+        .items(options)
+        .default(default_idx)
+        .interact_opt()
+        .map_err(dialoguer_error_to_prompt_error)?;
+
+    match selection {
+        Some(idx) => Ok(options[idx].clone()),
+        None => Err(PromptError::MissingRequired(field.to_string())),
+    }
 }
 
 /// Parse --var arguments into a HashMap.

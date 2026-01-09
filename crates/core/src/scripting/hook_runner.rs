@@ -8,6 +8,7 @@ use super::types::SandboxConfig;
 use super::vault_context::VaultContext;
 use crate::types::definition::TypeDefinition;
 use crate::types::validation::yaml_to_lua_table;
+use tracing::debug;
 
 /// Result of running a hook that may modify the note.
 #[derive(Debug)]
@@ -105,6 +106,7 @@ pub fn run_on_create_hook(
         .map_err(|e| HookError::LuaError(e.to_string()))?;
 
     // Convert variables to Lua table
+    debug!("Hook input variables: {:?}", note_ctx.variables);
     let vars_table = yaml_to_lua_table(lua, &note_ctx.variables)
         .map_err(|e| HookError::LuaError(e.to_string()))?;
 
@@ -141,7 +143,9 @@ pub fn run_on_create_hook(
 
             let variables: Option<serde_yaml::Value> =
                 if let Ok(vars_table) = returned_note.get::<mlua::Table>("variables") {
-                    Some(lua_table_to_yaml(&vars_table)?)
+                    let v = Some(lua_table_to_yaml(&vars_table)?);
+                    debug!("Hook output variables: {:?}", v);
+                    v
                 } else {
                     None
                 };
@@ -382,6 +386,7 @@ mod tests {
             source_path: PathBuf::new(),
             schema: HashMap::new(),
             output: None,
+            variables: crate::vars::VarsMap::new(),
             has_validate_fn: false,
             has_on_create_hook: true,
             has_on_update_hook: false,
@@ -408,6 +413,7 @@ mod tests {
             source_path: PathBuf::new(),
             schema: HashMap::new(),
             output: None,
+            variables: crate::vars::VarsMap::new(),
             has_validate_fn: false,
             has_on_create_hook: false, // No hook
             has_on_update_hook: false,
