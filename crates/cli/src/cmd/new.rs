@@ -863,13 +863,27 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
 
                 if let Some(ref new_vars) = hook_result.variables {
                     // Sync updated variables with frontmatter if both exist
+                    // Only sync if the variable is already in frontmatter OR is defined in the schema
                     if let (
                         Some(serde_yaml::Value::Mapping(ref mut fm)),
                         serde_yaml::Value::Mapping(ref vars_map),
                     ) = (&mut hook_result.frontmatter, new_vars)
                     {
                         for (k, v) in vars_map {
-                            if k.as_str() != Some("type") && k.as_str() != Some("title") {
+                            let key_str = k.as_str().unwrap_or_default();
+                            // Skip core fields
+                            if key_str == "type" || key_str == "title" {
+                                continue;
+                            }
+
+                            // Check if variable should be in frontmatter
+                            let is_in_fm = fm.contains_key(k);
+                            let is_in_schema = typedef
+                                .as_deref()
+                                .map(|td| td.schema.contains_key(key_str))
+                                .unwrap_or(false);
+
+                            if is_in_fm || is_in_schema {
                                 fm.insert(k.clone(), v.clone());
                             }
                         }
