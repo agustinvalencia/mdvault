@@ -199,7 +199,7 @@ fn prompt_with_default(
 
     Input::<String>::with_theme(&theme)
         .with_prompt(prompt_text)
-        .default(default.to_string())
+        .with_initial_text(default)
         .allow_empty(true)
         .interact_text()
         .map_err(dialoguer_error_to_prompt_error)
@@ -234,7 +234,7 @@ fn dialoguer_error_to_prompt_error(e: dialoguer::Error) -> PromptError {
 pub fn prompt_for_field(
     field: &str,
     prompt: &str,
-    enum_hint: Option<&str>,
+    default_value: Option<&str>,
     required: bool,
 ) -> Result<String, PromptError> {
     let is_interactive = io::stdin().is_terminal();
@@ -245,24 +245,22 @@ pub fn prompt_for_field(
 
     let theme = ColorfulTheme::default();
 
-    // Build prompt with enum hint if provided
-    let prompt_text = if let Some(hint) = enum_hint {
-        format!("{} [{}]", prompt, hint)
-    } else {
-        prompt.to_string()
-    };
+    let mut input = Input::<String>::with_theme(&theme);
+    input = input.with_prompt(prompt);
+    input = input.allow_empty(!required);
 
-    let input: String = Input::with_theme(&theme)
-        .with_prompt(&prompt_text)
-        .allow_empty(!required)
-        .interact_text()
-        .map_err(dialoguer_error_to_prompt_error)?;
+    if let Some(default) = default_value {
+        input = input.with_initial_text(default);
+    }
 
-    if required && input.is_empty() {
+    let input_value: String =
+        input.interact_text().map_err(dialoguer_error_to_prompt_error)?;
+
+    if required && input_value.is_empty() {
         return Err(PromptError::MissingRequired(field.to_string()));
     }
 
-    Ok(input)
+    Ok(input_value)
 }
 
 /// Prompt for a field value using a selection widget when enum values are available.

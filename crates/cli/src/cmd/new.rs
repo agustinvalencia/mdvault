@@ -1653,15 +1653,15 @@ fn prompt_for_schema_field(
     }
 
     // Default: use Input widget
-    let mut builder = Input::<String>::with_theme(&theme).with_prompt(prompt_text);
+    let mut input = Input::<String>::with_theme(&theme);
+    input = input.with_prompt(prompt_text);
+    input = input.allow_empty(!required);
 
     if let Some(def) = default {
-        builder = builder.default(def.to_string());
+        input = input.with_initial_text(def);
     }
 
-    builder = builder.allow_empty(!required);
-
-    builder
+    input
         .interact_text()
         .map_err(|e| format!("Failed to read input for '{}': {}", field_name, e))
 }
