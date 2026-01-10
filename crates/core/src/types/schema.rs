@@ -92,6 +92,14 @@ pub struct FieldSchema {
     #[serde(default)]
     pub multiline: bool,
 
+    /// Whether this field's value will be inherited/set by an on_create hook.
+    /// When true:
+    /// - The field will NOT be prompted for during note creation
+    /// - Validation will skip required checks during creation (pre-hook)
+    /// - The on_create hook is responsible for setting the value
+    #[serde(default)]
+    pub inherited: bool,
+
     // String constraints
     /// Allowed values for enum fields.
     #[serde(default, rename = "enum")]

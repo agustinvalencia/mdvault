@@ -50,5 +50,5 @@ pub use scaffolding::{
 pub use schema::{FieldSchema, FieldType};
 pub use validation::{
     BrokenLink, LinkIntegrityResult, add_link_integrity_warnings, check_link_integrity,
-    validate_note,
+    validate_note, validate_note_for_creation,
 };

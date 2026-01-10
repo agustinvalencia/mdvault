@@ -127,6 +127,7 @@ fn string_to_yaml_value(s: &str, field_type: Option<FieldType>) -> serde_yaml::V
 /// - Are marked as required in the schema
 /// - Have no default value
 /// - Are not provided in vars
+/// - Are NOT marked as inherited (inherited fields are set by hooks)
 pub fn get_missing_required_fields<'a>(
     typedef: &'a TypeDefinition,
     vars: &HashMap<String, String>,
@@ -137,6 +138,7 @@ pub fn get_missing_required_fields<'a>(
         .filter(|(field, schema)| {
             schema.required
                 && schema.default.is_none()
+                && !schema.inherited // Skip fields that will be set by on_create hook
                 && !vars.contains_key(*field)
                 && *field != "title"
                 && *field != "type"

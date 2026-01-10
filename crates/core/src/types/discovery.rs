@@ -323,6 +323,9 @@ fn parse_field_schema(
     // Get multiline flag for string fields
     let multiline: bool = table.get("multiline").unwrap_or(false);
 
+    // Get inherited flag (field value will be set by on_create hook)
+    let inherited: bool = table.get("inherited").unwrap_or(false);
+
     Ok(FieldSchema {
         field_type,
         required,
@@ -342,6 +345,7 @@ fn parse_field_schema(
         prompt,
         core,
         multiline,
+        inherited,
     })
 }
 

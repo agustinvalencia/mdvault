@@ -19,7 +19,8 @@ use mdvault_core::templates::repository::{TemplateRepoError, TemplateRepository}
 use mdvault_core::types::try_fix_note;
 use mdvault_core::types::{
     discovery::load_typedef_from_file, generate_scaffolding, get_missing_required_fields,
-    validate_note, FieldType, TypeDefinition, TypeRegistry, TypedefRepository,
+    validate_note_for_creation, FieldType, TypeDefinition, TypeRegistry,
+    TypedefRepository,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -440,7 +441,7 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
 
         // Prompt for project ID with computed value as default (unless batch mode)
         let project_id = if args.batch {
-            computed_id
+            vars.get("project-id").cloned().unwrap_or(computed_id)
         } else {
             match prompt_for_field(
                 "project-id",
@@ -876,15 +877,22 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                                 continue;
                             }
 
-                            // Check if variable should be in frontmatter
-                            let is_in_fm = fm.contains_key(k);
-                            let is_in_schema = typedef
-                                .as_deref()
-                                .map(|td| td.schema.contains_key(key_str))
-                                .unwrap_or(false);
+                            // Only sync if variable changed from original input
+                            let new_val_str = yaml_value_to_string(v);
+                            let changed =
+                                vars.get(key_str).is_none_or(|orig| *orig != new_val_str);
 
-                            if is_in_fm || is_in_schema {
-                                fm.insert(k.clone(), v.clone());
+                            if changed {
+                                // Check if variable should be in frontmatter
+                                let is_in_fm = fm.contains_key(k);
+                                let is_in_schema = typedef
+                                    .as_deref()
+                                    .map(|td| td.schema.contains_key(key_str))
+                                    .unwrap_or(false);
+
+                                if is_in_fm || is_in_schema {
+                                    fm.insert(k.clone(), v.clone());
+                                }
                             }
                         }
                     }
@@ -1292,14 +1300,23 @@ fn run_on_create_hook_if_exists(
         CaptureRepository::new(&cfg.captures_dir).map_err(|e| e.to_string())?;
     let macro_repo = MacroRepository::new(&cfg.macros_dir).map_err(|e| e.to_string())?;
 
+    // Try to open index
+    let index_db = IndexDb::open(&cfg.vault_root.join(".mdvault/index.db"))
+        .ok()
+        .map(std::sync::Arc::new);
+
     // Build VaultContext
-    let vault_ctx = VaultContext::new(
+    let mut vault_ctx = VaultContext::new(
         cfg.clone(),
         template_repo,
         capture_repo,
         macro_repo,
         type_registry,
     );
+
+    if let Some(db) = index_db {
+        vault_ctx = vault_ctx.with_index(db);
+    }
 
     // Parse frontmatter for NoteContext
     let parsed = parse_frontmatter(content).map_err(|e| e.to_string())?;
@@ -1739,10 +1756,15 @@ fn validate_before_write(
         None => serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
     };
 
-    // Run validation
+    // Run validation (use creation variant to skip inherited fields)
     let path_str = output_path.to_string_lossy();
-    let result =
-        validate_note(registry, note_type, &path_str, &frontmatter, &parsed.body);
+    let result = validate_note_for_creation(
+        registry,
+        note_type,
+        &path_str,
+        &frontmatter,
+        &parsed.body,
+    );
 
     if result.valid {
         Ok(None)

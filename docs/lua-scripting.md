@@ -373,6 +373,7 @@ field_name = {
     prompt = "Enter value?",   -- If set, prompts user interactively
     multiline = false,         -- Allow multiline input (for strings)
     core = false,              -- If true, managed by Rust (not user-editable)
+    inherited = false,         -- If true, value will be set by on_create hook
 
     -- String constraints
     enum = { "a", "b", "c" },  -- Allowed values (shown as selector)
@@ -394,6 +395,45 @@ field_name = {
     note_type = "project"      -- Restrict to specific type
 }
 ```
+
+### Inherited Fields
+
+Fields marked with `inherited = true` indicate that their value will be set by the `on_create` hook rather than being prompted or required upfront. This is useful for fields that should be derived from other data (like a parent note):
+
+```lua
+schema = {
+    context = {
+        type = "string",
+        required = true,
+        enum = { "work", "personal", "uni" },
+        inherited = true  -- Value will be set by on_create hook
+    }
+}
+```
+
+When a field has `inherited = true`:
+1. **No prompting**: The user is not prompted for this field during note creation
+2. **Validation skipped**: Required-field validation is skipped before hooks run
+3. **Hook responsibility**: The `on_create` hook must set the value
+
+Example: A task inherits its `context` from its parent project:
+
+```lua
+on_create = function(note)
+    local project_id = note.variables["project-id"]
+    if project_id then
+        local project = mdv.find_project(project_id)
+        if project and project.frontmatter then
+            if not note.frontmatter.context and project.frontmatter.context then
+                note.frontmatter.context = project.frontmatter.context
+            end
+        end
+    end
+    return note
+end
+```
+
+> **Important**: Use `note.variables` (not `note.frontmatter`) to access template variables like `project-id` in hooks.
 
 ### Template Variables
 
@@ -858,6 +898,9 @@ local outlinks = mdv.outlinks(note.path)
 
 -- Query the vault index
 local tasks = mdv.query({ type = "task", limit = 10 })
+
+-- Find a project by its project-id
+local project = mdv.find_project("MCP")
 ```
 
 > **Note**: These functions require running `mdv reindex` first to build the vault index.
