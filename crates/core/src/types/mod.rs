@@ -45,10 +45,10 @@ pub use discovery::TypedefRepository;
 pub use errors::{TypedefError, ValidationError, ValidationResult};
 pub use registry::TypeRegistry;
 pub use scaffolding::{
-    default_output_path, generate_scaffolding, get_missing_required_fields,
+    generate_scaffolding, get_missing_required_fields,
 };
 pub use schema::{FieldSchema, FieldType};
 pub use validation::{
     BrokenLink, LinkIntegrityResult, add_link_integrity_warnings, check_link_integrity,
-    validate_note,
+    validate_note, validate_note_for_creation,
 };

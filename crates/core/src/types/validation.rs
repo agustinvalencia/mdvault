@@ -14,12 +14,46 @@ use crate::scripting::LuaEngine;
 /// Validate a note's frontmatter against its type definition.
 ///
 /// Returns a ValidationResult with any errors and warnings found.
+///
+/// # Arguments
+///
+/// * `registry` - Type registry containing type definitions
+/// * `note_type` - The type of the note being validated
+/// * `note_path` - Path to the note file
+/// * `frontmatter` - The note's frontmatter as YAML
+/// * `content` - The note's body content
 pub fn validate_note(
     registry: &TypeRegistry,
     note_type: &str,
     note_path: &str,
     frontmatter: &serde_yaml::Value,
     content: &str,
+) -> ValidationResult {
+    validate_note_impl(registry, note_type, note_path, frontmatter, content, false)
+}
+
+/// Validate a note during creation, before on_create hooks run.
+///
+/// This variant skips required-field validation for fields marked as `inherited`,
+/// since those will be populated by the on_create hook.
+pub fn validate_note_for_creation(
+    registry: &TypeRegistry,
+    note_type: &str,
+    note_path: &str,
+    frontmatter: &serde_yaml::Value,
+    content: &str,
+) -> ValidationResult {
+    validate_note_impl(registry, note_type, note_path, frontmatter, content, true)
+}
+
+/// Internal implementation of note validation.
+fn validate_note_impl(
+    registry: &TypeRegistry,
+    note_type: &str,
+    note_path: &str,
+    frontmatter: &serde_yaml::Value,
+    content: &str,
+    skip_inherited: bool,
 ) -> ValidationResult {
     // Get type definition (if any)
     let typedef = match registry.get(note_type) {
@@ -31,7 +65,7 @@ pub fn validate_note(
 
     // Phase 1: Schema validation
     if let serde_yaml::Value::Mapping(map) = frontmatter {
-        let schema_result = validate_schema(&typedef, map);
+        let schema_result = validate_schema(&typedef, map, skip_inherited);
         result.merge(schema_result);
     }
 
@@ -54,9 +88,16 @@ pub fn validate_note(
 }
 
 /// Validate frontmatter against schema.
+///
+/// # Arguments
+///
+/// * `typedef` - The type definition containing the schema
+/// * `frontmatter` - The frontmatter mapping to validate
+/// * `skip_inherited` - If true, skip required-field checks for inherited fields
 fn validate_schema(
     typedef: &TypeDefinition,
     frontmatter: &serde_yaml::Mapping,
+    skip_inherited: bool,
 ) -> ValidationResult {
     let mut result = ValidationResult::success();
 
@@ -64,7 +105,12 @@ fn validate_schema(
         let value = frontmatter.get(serde_yaml::Value::String(field_name.clone()));
 
         // Check required fields
+        // Skip inherited fields during creation (they'll be set by on_create hook)
         if schema.required && value.is_none() {
+            if skip_inherited && schema.inherited {
+                // Skip - inherited field will be populated by hook
+                continue;
+            }
             result.add_error(ValidationError::MissingRequired {
                 field: field_name.clone(),
             });
@@ -496,6 +542,8 @@ mod tests {
             description: None,
             source_path: std::path::PathBuf::new(),
             schema,
+            output: None,
+            variables: crate::vars::VarsMap::new(),
             has_validate_fn: false,
             has_on_create_hook: false,
             has_on_update_hook: false,

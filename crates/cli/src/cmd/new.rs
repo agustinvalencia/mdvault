@@ -1,6 +1,6 @@
-use crate::prompt::{collect_variables, prompt_for_field, PromptOptions};
+use crate::prompt::{prompt_for_enum, prompt_for_field, CollectedVars, PromptOptions};
 use crate::NewArgs;
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{theme::ColorfulTheme, Editor, Input, Select};
 use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
@@ -13,15 +13,19 @@ use mdvault_core::scripting::{
 };
 use mdvault_core::templates::discovery::TemplateInfo;
 use mdvault_core::templates::engine::{
-    build_minimal_context, render, resolve_template_output_path,
+    build_minimal_context, render, render_string, resolve_template_output_path,
 };
 use mdvault_core::templates::repository::{TemplateRepoError, TemplateRepository};
+use mdvault_core::types::try_fix_note;
 use mdvault_core::types::{
-    generate_scaffolding, get_missing_required_fields, TypeRegistry, TypedefRepository,
+    discovery::load_typedef_from_file, generate_scaffolding, get_missing_required_fields,
+    validate_note_for_creation, FieldType, TypeDefinition, TypeRegistry,
+    TypedefRepository,
 };
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use tracing::debug;
 
 /// Core metadata that must be preserved in notes regardless of template/hook modifications.
 /// These fields are managed by mdvault and should not be removed or overwritten by user code.
@@ -42,6 +46,7 @@ struct CoreMetadata {
 }
 
 pub fn run(config: Option<&Path>, profile: Option<&str>, args: NewArgs) {
+    debug!("Running create new");
     let cfg = match ConfigLoader::load(config, profile) {
         Ok(rc) => rc,
         Err(e) => {
@@ -100,12 +105,28 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         path: loaded.path.clone(),
     };
 
+    // Check if template links to a Lua script
+    let lua_typedef: Option<TypeDefinition> = 
+        loaded.frontmatter.as_ref().and_then(|fm| fm.lua.as_ref()).and_then(|lua_path| {
+            // Resolve lua path relative to typedefs directory
+            let lua_file = cfg.typedefs_dir.join(lua_path);
+            match load_typedef_from_file(&lua_file) {
+                Ok(td) => Some(td),
+                Err(e) => {
+                    eprintln!("Warning: failed to load Lua script '{}': {}", lua_path, e);
+                    None
+                }
+            }
+        });
+
     // Convert provided vars to HashMap
     let mut provided_vars: HashMap<String, String> = args.vars.iter().cloned().collect();
 
-    // If title was provided as positional arg, add it to vars
-    if let Some(ref title) = args.title {
-        provided_vars.entry("title".to_string()).or_insert(title.clone());
+    // Handle title: In template mode, the first positional arg (note_type) is actually the title
+    // since --template replaces the type name. Also check args.title for completeness.
+    let title = args.title.clone().or_else(|| args.note_type.clone());
+    if let Some(ref t) = title {
+        provided_vars.entry("title".to_string()).or_insert(t.clone());
     }
 
     // For task templates: show project picker if project not already provided
@@ -118,42 +139,65 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
     // Build minimal context for variable resolution
     let minimal_ctx = build_minimal_context(cfg, &info);
 
-    // Collect variables (prompt for missing ones if interactive)
-    let vars_map = loaded.frontmatter.as_ref().and_then(|fm| fm.vars.as_ref());
+    // Collect variables using Lua schema prompts
     let prompt_options = PromptOptions { batch_mode: args.batch };
 
-    let collected = match collect_variables(
-        vars_map,
-        &loaded.body,
-        &provided_vars,
-        &minimal_ctx,
-        &prompt_options,
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Error: {e}");
-            std::process::exit(1);
+    let collected = if let Some(ref typedef) = lua_typedef {
+        // Use Lua schema for prompting - fields with `prompt` set will be prompted
+        match collect_schema_variables(typedef, &provided_vars, &prompt_options) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        // No Lua script - just use provided vars directly
+        CollectedVars {
+            values: provided_vars.clone(),
+            prompted: Vec::new(),
+            defaulted: Vec::new(),
         }
     };
 
     // Merge collected variables into context
+    debug!("Collected variables: {:?}", collected.values);
     let mut ctx = minimal_ctx;
     for (k, v) in collected.values {
         ctx.insert(k, v);
     }
 
-    // Resolve output path: CLI arg takes precedence, then frontmatter
+    // Resolve output path: CLI arg > template frontmatter > Lua typedef output
     let output_path = if let Some(ref out) = args.output {
         out.clone()
     } else {
-        // Try to get from template frontmatter
+        // Try to get from template frontmatter first
         match resolve_template_output_path(&loaded, cfg, &ctx) {
             Ok(Some(path)) => path,
             Ok(None) => {
-                eprintln!(
-                    "Error: --output is required (template has no output in frontmatter)"
-                );
-                std::process::exit(1);
+                // Fall back to Lua typedef output if available
+                if let Some(ref typedef) = lua_typedef {
+                    if let Some(ref output_template) = typedef.output {
+                        // Render the output template with current context
+                        match render_output_path(output_template, cfg, &ctx) {
+                            Ok(path) => path,
+                            Err(e) => {
+                                eprintln!("Failed to resolve Lua output path: {e}");
+                                std::process::exit(1);
+                            }
+                        }
+                    } else {
+                        eprintln!(
+                            "Error: --output is required (neither template nor Lua script has output)"
+                        );
+                        std::process::exit(1);
+                    }
+                } else {
+                    eprintln!(
+                        "Error: --output is required (template has no output in frontmatter)"
+                    );
+                    std::process::exit(1);
+                }
             }
             Err(e) => {
                 eprintln!("Failed to resolve output path: {e}");
@@ -186,13 +230,44 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         std::process::exit(1);
     }
 
-    let rendered = match render(&loaded, &ctx) {
+    debug!("Render context: {:?}", ctx);
+    let mut rendered = match render(&loaded, &ctx) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to render template: {e}");
             std::process::exit(1);
         }
     };
+
+    // Phase 3: Validate content before writing
+    // Load type registry for validation (only if we have a Lua typedef)
+    if let Some(ref typedef) = lua_typedef {
+        // Try to load type registry, skip validation if it fails
+        if let Ok(typedef_repo) = TypedefRepository::new(&cfg.typedefs_dir) {
+            if let Ok(type_registry) = TypeRegistry::from_repository(&typedef_repo) {
+                // Extract note type from rendered content for validation
+                let note_type =
+                    extract_note_type(&rendered).unwrap_or_else(|| typedef.name.clone());
+
+                match validate_before_write(
+                    &type_registry,
+                    &note_type,
+                    &output_path,
+                    &rendered,
+                ) {
+                    Ok(Some(fixed)) => rendered = fixed,
+                    Ok(None) => {} // Valid
+                    Err(errors) => {
+                        eprintln!("Validation failed:");
+                        for err in &errors {
+                            eprintln!("  - {}", err);
+                        }
+                        std::process::exit(1);
+                    }
+                }
+            }
+        }
+    }
 
     if let Some(parent) = output_path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
@@ -207,11 +282,60 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
     }
 
     // Execute on_create hook if type definition exists
-    match run_on_create_hook_if_exists(cfg, &output_path, &rendered) {
+
+    match run_on_create_hook_if_exists(
+        cfg,
+        &output_path,
+        &rendered,
+        lua_typedef.as_ref(),
+        &ctx,
+    ) {
         Ok(hook_result) => {
             if hook_result.modified {
-                if let Err(e) =
-                    apply_hook_modifications(&output_path, &rendered, &hook_result)
+                // Check if variables were updated by the hook
+
+                let final_content = if let Some(ref new_vars) = hook_result.variables {
+                    // Update context with new variables
+
+                    if let serde_yaml::Value::Mapping(map) = new_vars {
+                        for (k, v) in map {
+                            if let serde_yaml::Value::String(ks) = k {
+                                // Convert value to string for RenderContext
+
+                                let vs = match v {
+                                    serde_yaml::Value::String(s) => s.clone(),
+
+                                    serde_yaml::Value::Number(n) => n.to_string(),
+
+                                    serde_yaml::Value::Bool(b) => b.to_string(),
+
+                                    _ => format!("{:?}", v),
+                                };
+
+                                ctx.insert(ks.clone(), vs);
+                            }
+                        }
+                    }
+
+                    // Re-render template with new context
+
+                    match render(&loaded, &ctx) {
+                        Ok(s) => s,
+
+                        Err(e) => {
+                            eprintln!("Warning: failed to re-render template: {e}");
+
+                            rendered.clone()
+                        }
+                    }
+                } else {
+                    rendered.clone()
+                };
+
+                // Apply other modifications (frontmatter/content)
+
+                if let Err(e) = 
+                    apply_hook_modifications(&output_path, &final_content, &hook_result)
                 {
                     eprintln!(
                         "Warning: failed to apply on_create hook modifications: {e}"
@@ -219,6 +343,7 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
                 }
             }
         }
+
         Err(e) => {
             eprintln!("Warning: on_create hook failed: {e}");
         }
@@ -282,12 +407,9 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     let loaded_template =
         template_repo.as_ref().and_then(|repo| repo.get_by_name(type_name).ok());
 
-    // For non-project/task types with templates, delegate to template mode
-    // For projects and tasks, we ALWAYS use scaffolding mode to ensure proper ID generation
-    if loaded_template.is_some() && type_name != "project" && type_name != "task" {
-        run_template_mode(cfg, type_name, args);
-        return;
-    }
+    // Note: We no longer delegate to template mode for non-project/task types.
+    // Scaffolding mode handles template rendering AND validation with the type registry,
+    // which is required for autofix to work correctly.
 
     // Get title (required for scaffolding)
     let title = match &args.title {
@@ -295,7 +417,7 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         None => {
             if args.batch {
                 eprintln!("Error: title is required in batch mode");
-                eprintln!("Usage: mdv new {type_name} \"Title\"");
+                eprintln!("Usage: mdv new {type_name} \"Title\"", type_name=type_name);
                 std::process::exit(1);
             }
             // Prompt for title
@@ -314,14 +436,52 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
 
     // Handle project creation with ID generation
     let (output_path, note_id) = if type_name == "project" {
-        let project_id = generate_project_id(&title);
+        // Compute default project ID from title
+        let computed_id = generate_project_id(&title);
+
+        // Prompt for project ID with computed value as default (unless batch mode)
+        let project_id = if args.batch {
+            vars.get("project-id").cloned().unwrap_or(computed_id)
+        } else {
+            match prompt_for_field(
+                "project-id",
+                "Project ID (3-letter code)",
+                Some(&computed_id),
+                true,
+            ) {
+                Ok(id) if !id.is_empty() => id.to_uppercase(),
+                Ok(_) => computed_id, // Empty input uses computed default
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        };
+
         vars.insert("project-id".to_string(), project_id.clone());
         vars.insert("task_counter".to_string(), "0".to_string());
+        vars.insert("title".to_string(), title.clone());
 
         let path = if let Some(ref out) = args.output {
             out.clone()
+        } else if let Some(ref td) = typedef {
+            // Use Lua typedef's output template if available
+            if let Some(ref output_template) = td.output {
+                match render_output_path(output_template, cfg, &vars) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("Warning: failed to render Lua output path: {e}");
+                        // Fall back to default
+                        cfg.vault_root
+                            .join(format!("Projects/{}/{}.md", project_id, project_id))
+                    }
+                }
+            } else {
+                // No output template in Lua, use default
+                cfg.vault_root.join(format!("Projects/{}/{}.md", project_id, project_id))
+            }
         } else {
-            // Projects go to Projects/<project-id>/<project-id>.md
+            // No typedef, use default
             cfg.vault_root.join(format!("Projects/{}/{}.md", project_id, project_id))
         };
         (path, project_id)
@@ -341,6 +501,9 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
             "inbox".to_string()
         };
 
+        // Add title to vars for output path rendering
+        vars.insert("title".to_string(), title.clone());
+
         // Get project info and generate task ID
         let (task_id, output_path) = if project_folder == "inbox" {
             // Inbox tasks get a simple incremental ID
@@ -348,6 +511,19 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
             vars.insert("task-id".to_string(), task_id.clone());
             let path = if let Some(ref out) = args.output {
                 out.clone()
+            } else if let Some(ref td) = typedef {
+                // Use Lua typedef's output template if available
+                if let Some(ref output_template) = td.output {
+                    match render_output_path(output_template, cfg, &vars) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("Warning: failed to render Lua output path: {e}");
+                            cfg.vault_root.join(format!("Inbox/{}.md", task_id))
+                        }
+                    }
+                } else {
+                    cfg.vault_root.join(format!("Inbox/{}.md", task_id))
+                }
             } else {
                 cfg.vault_root.join(format!("Inbox/{}.md", task_id))
             };
@@ -358,8 +534,30 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                 Ok((project_id, counter)) => {
                     let task_id = generate_task_id(&project_id, counter);
                     vars.insert("task-id".to_string(), task_id.clone());
+                    vars.insert("project-id".to_string(), project_id.clone());
                     let path = if let Some(ref out) = args.output {
                         out.clone()
+                    } else if let Some(ref td) = typedef {
+                        // Use Lua typedef's output template if available
+                        if let Some(ref output_template) = td.output {
+                            match render_output_path(output_template, cfg, &vars) {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    eprintln!(
+                                        "Warning: failed to render Lua output path: {e}"
+                                    );
+                                    cfg.vault_root.join(format!(
+                                        "Projects/{}/Tasks/{}.md",
+                                        project_folder, task_id
+                                    ))
+                                }
+                            }
+                        } else {
+                            cfg.vault_root.join(format!(
+                                "Projects/{}/Tasks/{}.md",
+                                project_folder, task_id
+                            ))
+                        }
                     } else {
                         cfg.vault_root.join(format!(
                             "Projects/{}/Tasks/{}.md",
@@ -373,19 +571,53 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                     // Fall back to inbox-style ID
                     let task_id = generate_inbox_task_id(cfg);
                     vars.insert("task-id".to_string(), task_id.clone());
-                    let path = cfg.vault_root.join(format!(
-                        "Projects/{}/Tasks/{}.md",
-                        project_folder, task_id
-                    ));
+                    let path = if let Some(ref td) = typedef {
+                        if let Some(ref output_template) = td.output {
+                            match render_output_path(output_template, cfg, &vars) {
+                                Ok(p) => p,
+                                Err(_) => cfg.vault_root.join(format!(
+                                    "Projects/{}/Tasks/{}.md",
+                                    project_folder, task_id
+                                ))
+                            }
+                        } else {
+                            cfg.vault_root.join(format!(
+                                "Projects/{}/Tasks/{}.md",
+                                project_folder, task_id
+                            ))
+                        }
+                    } else {
+                        cfg.vault_root.join(format!(
+                            "Projects/{}/Tasks/{}.md",
+                            project_folder, task_id
+                        ))
+                    };
                     (task_id, path)
                 }
             }
         };
         (output_path, task_id)
     } else {
-        // Other types use default output path
+        // Other types: check CLI arg, then typedef output template, then default
+        vars.insert("title".to_string(), title.clone());
         let path = if let Some(ref out) = args.output {
             out.clone()
+        } else if let Some(ref td) = typedef {
+            // Use Lua typedef's output template if available
+            if let Some(ref output_template) = td.output {
+                match render_output_path(output_template, cfg, &vars) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("Warning: failed to render Lua output path: {e}");
+                        cfg.vault_root.join(format!(
+                            "{}s/{}.md",
+                            type_name, slugify(&title)
+                        ))
+                    }
+                }
+            } else {
+                cfg.vault_root.join(format!("{}s/{}.md", type_name, slugify(&title)))
+            }
         } else {
             cfg.vault_root.join(format!("{}s/{}.md", type_name, slugify(&title)))
         };
@@ -444,10 +676,24 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                     format!("{} ({})", field, type_hint)
                 };
 
-                // For enums, show available values
-                let enum_hint = schema.enum_values.as_ref().map(|v| v.join("/"));
+                // Use picker for enum fields, text input for others
+                let result = if let Some(ref enum_values) = schema.enum_values {
+                    if !enum_values.is_empty() {
+                        // Use picker widget for enum selection
+                        prompt_for_enum(
+                            field,
+                            &prompt,
+                            enum_values,
+                            schema.default.as_ref().and_then(|v| v.as_str()),
+                        )
+                    } else {
+                        prompt_for_field(field, &prompt, None, true)
+                    }
+                } else {
+                    prompt_for_field(field, &prompt, None, true)
+                };
 
-                match prompt_for_field(field, &prompt, enum_hint.as_deref(), true) {
+                match result {
                     Ok(value) => {
                         vars.insert(field.clone(), value);
                     }
@@ -458,12 +704,71 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                 }
             }
         }
+
+        // Prompt for template variables defined in the typedef
+        for (var_name, var_spec) in &td.variables {
+            // Skip if already provided via CLI
+            if vars.contains_key(var_name) {
+                continue;
+            }
+
+            // Get the prompt text (if any)
+            let prompt_text = var_spec.prompt();
+            let default_value = var_spec.default();
+
+            // Only prompt if there's a prompt defined or variable is required
+            if !prompt_text.is_empty() || var_spec.is_required() {
+                if args.batch {
+                    // In batch mode, use default if available
+                    if let Some(default) = default_value {
+                        vars.insert(var_name.clone(), default.to_string());
+                    } else if var_spec.is_required() {
+                        eprintln!("Error: missing required variable: {}", var_name);
+                        std::process::exit(1);
+                    }
+                } else {
+                    // Interactive mode: prompt the user
+                    let prompt_label = if prompt_text.is_empty() {
+                        var_name.to_string()
+                    } else {
+                        prompt_text.to_string()
+                    };
+
+                    match prompt_for_field(
+                        var_name,
+                        &prompt_label,
+                        default_value,
+                        var_spec.is_required(),
+                    ) {
+                        Ok(value) => {
+                            // Use provided value or fall back to default
+                            if value.is_empty() {
+                                if let Some(default) = default_value {
+                                    vars.insert(var_name.clone(), default.to_string());
+                                }
+                            } else {
+                                vars.insert(var_name.clone(), value);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Error: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+            } else if let Some(default) = default_value {
+                // Variable has a default but no prompt - just use the default
+                vars.insert(var_name.clone(), default.to_string());
+            }
+        }
     }
 
     if output_path.exists() {
         eprintln!("Refusing to overwrite existing file: {}", output_path.display());
         std::process::exit(1);
     }
+
+    debug!("Scaffolding vars: {:?}", vars);
 
     // Generate content - use template if available, otherwise scaffolding
     // For projects/tasks, we'll ensure core metadata is preserved either way
@@ -489,7 +794,10 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
 
         // Render template
         match render(loaded, &ctx) {
-            Ok(rendered) => rendered,
+            Ok(rendered) => {
+                inject_vars_into_frontmatter(&rendered, &vars, typedef.as_deref())
+                    .unwrap_or(rendered)
+            }
             Err(e) => {
                 eprintln!("Failed to render template: {e}");
                 eprintln!("Falling back to scaffolding...");
@@ -502,7 +810,7 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
 
     // Apply core metadata immediately after content generation (before writing)
     // This ensures template output has the required fields
-    let content = if type_name == "project" || type_name == "task" {
+    let mut content = if type_name == "project" || type_name == "task" {
         match ensure_core_metadata(&content, &core_metadata) {
             Ok(fixed) => fixed,
             Err(e) => {
@@ -513,6 +821,19 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     } else {
         content
     };
+
+    // Phase 3: Validate content before writing
+    match validate_before_write(&type_registry, type_name, &output_path, &content) {
+        Ok(Some(fixed)) => content = fixed,
+        Ok(None) => {} // Valid
+        Err(errors) => {
+            eprintln!("Validation failed:");
+            for err in &errors {
+                eprintln!("  - {}", err);
+            }
+            std::process::exit(1);
+        }
+    }
 
     // Create parent directories
     if let Some(parent) = output_path.parent() {
@@ -529,11 +850,117 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     }
 
     // Execute on_create hook if defined
-    match run_on_create_hook_if_exists(cfg, &output_path, &content) {
-        Ok(hook_result) => {
+    match run_on_create_hook_if_exists(
+        cfg,
+        &output_path,
+        &content,
+        typedef.as_deref(),
+        &vars,
+    ) {
+        Ok(mut hook_result) => {
             if hook_result.modified {
-                if let Err(e) =
-                    apply_hook_modifications(&output_path, &content, &hook_result)
+                let mut final_content = content.clone();
+
+                if let Some(ref new_vars) = hook_result.variables {
+                    // Sync updated variables with frontmatter if both exist
+                    // Only sync if the variable is already in frontmatter OR is defined in the schema
+                    if let (
+                        Some(serde_yaml::Value::Mapping(ref mut fm)),
+                        serde_yaml::Value::Mapping(ref vars_map),
+                    ) = (&mut hook_result.frontmatter, new_vars)
+                    {
+                        for (k, v) in vars_map {
+                            let key_str = k.as_str().unwrap_or_default();
+                            // Skip core fields
+                            if key_str == "type" || key_str == "title" {
+                                continue;
+                            }
+
+                            // Only sync if variable changed from original input
+                            let new_val_str = yaml_value_to_string(v);
+                            let changed =
+                                vars.get(key_str).is_none_or(|orig| *orig != new_val_str);
+
+                            if changed {
+                                // Check if variable should be in frontmatter
+                                let is_in_fm = fm.contains_key(k);
+                                let is_in_schema = typedef
+                                    .as_deref()
+                                    .map(|td| td.schema.contains_key(key_str))
+                                    .unwrap_or(false);
+
+                                if is_in_fm || is_in_schema {
+                                    fm.insert(k.clone(), v.clone());
+                                }
+                            }
+                        }
+                    }
+
+                    // Update vars
+                    if let serde_yaml::Value::Mapping(map) = new_vars {
+                        for (k, v) in map {
+                            if let serde_yaml::Value::String(ks) = k {
+                                let vs = match v {
+                                    serde_yaml::Value::String(s) => s.clone(),
+                                    serde_yaml::Value::Number(n) => n.to_string(),
+                                    serde_yaml::Value::Bool(b) => b.to_string(),
+                                    _ => format!("{:?}", v),
+                                };
+                                vars.insert(ks.clone(), vs);
+                            }
+                        }
+                    }
+                    // Re-render template or scaffolding with updated vars
+                    let regenerated = if let Some(ref loaded) = loaded_template {
+                        // Re-render template with updated context
+                        let info = TemplateInfo {
+                            logical_name: loaded.logical_name.clone(),
+                            path: loaded.path.clone(),
+                        };
+                        let mut ctx = build_minimal_context(cfg, &info);
+                        ctx.insert("title".to_string(), title.clone());
+                        for (k, v) in &vars {
+                            ctx.insert(k.clone(), v.clone());
+                        }
+                        ctx.insert(
+                            "output_path".to_string(),
+                            output_path.to_string_lossy().to_string(),
+                        );
+                        if let Some(name) =
+                            output_path.file_name().and_then(|s| s.to_str())
+                        {
+                            ctx.insert("output_filename".to_string(), name.to_string());
+                        }
+                        match render(loaded, &ctx) {
+                            Ok(rendered) => inject_vars_into_frontmatter(
+                                &rendered,
+                                &vars,
+                                typedef.as_deref(),
+                            )
+                            .unwrap_or(rendered),
+                            Err(_) => generate_scaffolding(
+                                type_name,
+                                typedef.as_deref(),
+                                &title,
+                                &vars,
+                            ),
+                        }
+                    } else {
+                        generate_scaffolding(type_name, typedef.as_deref(), &title, &vars)
+                    };
+                    // Re-apply core metadata
+                    final_content = if type_name == "project" || type_name == "task" {
+                        match ensure_core_metadata(&regenerated, &core_metadata) {
+                            Ok(c) => c,
+                            Err(_) => regenerated,
+                        }
+                    } else {
+                        regenerated
+                    };
+                }
+
+                if let Err(e) = 
+                    apply_hook_modifications(&output_path, &final_content, &hook_result)
                 {
                     eprintln!(
                         "Warning: failed to apply on_create hook modifications: {e}"
@@ -817,25 +1244,52 @@ fn run_on_create_hook_if_exists(
     cfg: &ResolvedConfig,
     output_path: &Path,
     content: &str,
+    explicit_typedef: Option<&TypeDefinition>,
+    variables: &HashMap<String, String>,
 ) -> Result<HookResult, String> {
-    // Extract note type from frontmatter
-    let note_type = match extract_note_type(content) {
-        Some(t) => t,
-        None => {
-            return Ok(HookResult { modified: false, frontmatter: None, content: None })
-        }
-    };
-
-    // Load type registry
+    // Load type registry first, as we need it for VaultContext anyway
     let typedef_repo =
         TypedefRepository::new(&cfg.typedefs_dir).map_err(|e| e.to_string())?;
     let type_registry =
         TypeRegistry::from_repository(&typedef_repo).map_err(|e| e.to_string())?;
 
-    // Check if type has on_create hook
-    let typedef = match type_registry.get(&note_type) {
-        Some(td) if td.has_on_create_hook => td,
-        _ => return Ok(HookResult { modified: false, frontmatter: None, content: None }),
+    // Determine which typedef to use
+    let typedef = if let Some(td) = explicit_typedef {
+        if !td.has_on_create_hook {
+            return Ok(HookResult {
+                modified: false,
+                frontmatter: None,
+                content: None,
+                variables: None,
+            });
+        }
+        td.clone()
+    } else {
+        // Extract note type from frontmatter
+        let note_type = match extract_note_type(content) {
+            Some(t) => t,
+            None => {
+                return Ok(HookResult {
+                    modified: false,
+                    frontmatter: None,
+                    content: None,
+                    variables: None,
+                })
+            }
+        };
+
+        // Check if type has on_create hook
+        match type_registry.get(&note_type) {
+            Some(td) if td.has_on_create_hook => (*td).clone(),
+            _ => {
+                return Ok(HookResult {
+                    modified: false,
+                    frontmatter: None,
+                    content: None,
+                    variables: None,
+                })
+            }
+        }
     };
 
     // Load all repositories for VaultContext
@@ -845,14 +1299,23 @@ fn run_on_create_hook_if_exists(
         CaptureRepository::new(&cfg.captures_dir).map_err(|e| e.to_string())?;
     let macro_repo = MacroRepository::new(&cfg.macros_dir).map_err(|e| e.to_string())?;
 
+    // Try to open index
+    let index_db = IndexDb::open(&cfg.vault_root.join(".mdvault/index.db"))
+        .ok()
+        .map(std::sync::Arc::new);
+
     // Build VaultContext
-    let vault_ctx = VaultContext::new(
+    let mut vault_ctx = VaultContext::new(
         cfg.clone(),
         template_repo,
         capture_repo,
         macro_repo,
         type_registry,
     );
+
+    if let Some(db) = index_db {
+        vault_ctx = vault_ctx.with_index(db);
+    }
 
     // Parse frontmatter for NoteContext
     let parsed = parse_frontmatter(content).map_err(|e| e.to_string())?;
@@ -869,12 +1332,23 @@ fn run_on_create_hook_if_exists(
         None => serde_yaml::Value::Null,
     };
 
+    // Convert variables to serde_yaml::Value
+    let mut vars_mapping = serde_yaml::Mapping::new();
+    for (k, v) in variables {
+        vars_mapping.insert(
+            serde_yaml::Value::String(k.clone()),
+            serde_yaml::Value::String(v.clone()),
+        );
+    }
+    let vars_value = serde_yaml::Value::Mapping(vars_mapping);
+
     // Build NoteContext
     let note_ctx = NoteContext::new(
         output_path.to_path_buf(),
-        note_type,
+        typedef.name.clone(),
         frontmatter,
         content.to_string(),
+        vars_value,
     );
 
     // Run the hook and return its result
@@ -982,7 +1456,7 @@ fn log_to_daily(
 
     // Format: "- **HH:MM** Created task [MCP-001]: [[MCP-001|Title]]"
     let id_display =
-        if note_id.is_empty() { String::new() } else { format!(" [{}]", note_id) };
+        if note_id.is_empty() { String::new() } else { format!(" {}", note_id) };
 
     let log_entry = format!(
         "- **{}** Created {}{}: [[{}|{}]]\n",
@@ -1066,4 +1540,453 @@ fn prompt_project_selection(cfg: &ResolvedConfig) -> Option<String> {
                 .to_string()
         }
     })
+}
+
+/// Collect variables from Lua schema fields that have `prompt` set.
+/// Prompts for fields that:
+/// - Have `prompt` defined (the prompt text to show)
+/// - Are not already provided in `provided_vars`
+/// - Are not marked as `core` (managed by Rust)
+fn collect_schema_variables(
+    typedef: &TypeDefinition,
+    provided_vars: &HashMap<String, String>,
+    options: &PromptOptions,
+) -> Result<CollectedVars, String> {
+    let mut result = CollectedVars {
+        values: HashMap::new(),
+        prompted: Vec::new(),
+        defaulted: Vec::new(),
+    };
+
+    // Start with provided vars
+    for (k, v) in provided_vars {
+        result.values.insert(k.clone(), v.clone());
+    }
+
+    // Process schema fields in alphabetical order for consistency
+    let mut fields: Vec<_> = typedef.schema.iter().collect();
+    fields.sort_by(|a, b| a.0.cmp(b.0));
+
+    for (field_name, schema) in fields {
+        // Skip if already provided
+        if result.values.contains_key(field_name) {
+            continue;
+        }
+
+        // Skip core fields (managed by Rust)
+        if schema.core {
+            continue;
+        }
+
+        // If field has a prompt, ask the user
+        if let Some(ref prompt_text) = schema.prompt {
+            if options.batch_mode {
+                // In batch mode, use default or fail if required
+                if let Some(ref default) = schema.default {
+                    let value = yaml_value_to_string(default);
+                    result.values.insert(field_name.clone(), value);
+                    result.defaulted.push(field_name.clone());
+                } else if schema.required {
+                    return Err(format!(
+                        "Missing required field '{}' in batch mode",
+                        field_name
+                    ));
+                }
+            } else {
+                // Interactive: prompt for field
+                let enum_values = schema.enum_values.as_deref();
+                let default_str = schema.default.as_ref().map(yaml_value_to_string);
+
+                match prompt_for_schema_field(
+                    field_name,
+                    prompt_text,
+                    enum_values,
+                    default_str.as_deref(),
+                    schema.required,
+                    schema.multiline,
+                ) {
+                    Ok(value) if !value.is_empty() => {
+                        result.values.insert(field_name.clone(), value);
+                        result.prompted.push(field_name.clone());
+                    }
+                    Ok(_) => {
+                        // Empty value - use default if available
+                        if let Some(ref default) = schema.default {
+                            result.values.insert(
+                                field_name.clone(),
+                                yaml_value_to_string(default),
+                            );
+                            result.defaulted.push(field_name.clone());
+                        }
+                        result.prompted.push(field_name.clone());
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        } else if let Some(ref default) = schema.default {
+            // No prompt but has default - use it
+            result.values.insert(field_name.clone(), yaml_value_to_string(default));
+            result.defaulted.push(field_name.clone());
+        }
+    }
+
+    Ok(result)
+}
+
+/// Prompt for a single schema field value.
+///
+/// Uses different widgets based on field type:
+/// - Enum fields: Select widget for choosing from options
+/// - Multiline fields: Editor widget for multi-line text
+/// - Other fields: Input widget for single-line text
+fn prompt_for_schema_field(
+    field_name: &str,
+    prompt_text: &str,
+    enum_values: Option<&[String]>,
+    default: Option<&str>,
+    required: bool,
+    multiline: bool,
+) -> Result<String, String> {
+    let theme = ColorfulTheme::default();
+
+    // If enum values provided, use Select widget
+    if let Some(values) = enum_values {
+        let default_idx =
+            default.and_then(|d| values.iter().position(|v| v == d)).unwrap_or(0);
+
+        let selection = Select::with_theme(&theme)
+            .with_prompt(prompt_text)
+            .items(values)
+            .default(default_idx)
+            .interact_opt()
+            .map_err(|e| {
+                format!("Failed to read selection for '{}': {}", field_name, e)
+            })?;
+
+        return match selection {
+            Some(idx) => Ok(values[idx].clone()),
+            None => {
+                // User cancelled - use default if available, else empty
+                Ok(default.unwrap_or("").to_string())
+            }
+        };
+    }
+
+    // If multiline, use Editor widget
+    if multiline {
+        let initial = default.unwrap_or("");
+        let content = Editor::new()
+            .edit(initial)
+            .map_err(|e| format!("Editor error for '{}': {}", field_name, e))?;
+        return Ok(content.unwrap_or_else(|| initial.to_string()));
+    }
+
+    // Default: use Input widget
+    let mut input = Input::<String>::with_theme(&theme);
+    input = input.with_prompt(prompt_text);
+    input = input.allow_empty(!required);
+
+    if let Some(def) = default {
+        input = input.with_initial_text(def);
+    }
+
+    input
+        .interact_text()
+        .map_err(|e| format!("Failed to read input for '{}': {}", field_name, e))
+}
+
+/// Convert a serde_yaml::Value to a string for template context.
+fn yaml_value_to_string(value: &serde_yaml::Value) -> String {
+    match value {
+        serde_yaml::Value::String(s) => s.clone(),
+        serde_yaml::Value::Number(n) => n.to_string(),
+        serde_yaml::Value::Bool(b) => b.to_string(),
+        serde_yaml::Value::Null => String::new(),
+        other => serde_yaml::to_string(other).unwrap_or_default().trim().to_string(),
+    }
+}
+
+/// Render an output path template with variable substitution.
+/// Uses the template engine to support filters like `{{title | slugify}}`.
+fn render_output_path(
+    template: &str,
+    cfg: &ResolvedConfig,
+    ctx: &HashMap<String, String>,
+) -> Result<PathBuf, String> {
+    // Use the template engine to render with filter support
+    let rendered = render_string(template, ctx).map_err(|e| e.to_string())?;
+
+    // Make path absolute relative to vault root
+    let path = PathBuf::from(&rendered);
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Ok(cfg.vault_root.join(path))
+    }
+}
+
+/// Validate note content before writing.
+///
+/// This runs schema validation and custom Lua validate() function (if defined).
+/// Returns Ok(None) if valid, Ok(Some(content)) if valid after auto-fixing,
+/// or Err with error messages if validation fails.
+fn validate_before_write(
+    registry: &TypeRegistry,
+    note_type: &str,
+    output_path: &Path,
+    content: &str,
+) -> Result<Option<String>, Vec<String>> {
+    // Parse frontmatter from rendered content
+    let parsed = match parse_frontmatter(content) {
+        Ok(p) => p,
+        Err(e) => return Err(vec![format!("Failed to parse frontmatter: {}", e)]),
+    };
+
+    // Convert frontmatter to serde_yaml::Value for validation
+    let frontmatter = match parsed.frontmatter {
+        Some(fm) => {
+            let mut mapping = serde_yaml::Mapping::new();
+            for (k, v) in fm.fields {
+                mapping.insert(serde_yaml::Value::String(k), v);
+            }
+            serde_yaml::Value::Mapping(mapping)
+        }
+        None => serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+    };
+
+    // Run validation (use creation variant to skip inherited fields)
+    let path_str = output_path.to_string_lossy();
+    let result = validate_note_for_creation(
+        registry,
+        note_type,
+        &path_str,
+        &frontmatter,
+        &parsed.body,
+    );
+
+    if result.valid {
+        Ok(None)
+    } else {
+        // Try to auto-fix validation errors
+        let fix_result = try_fix_note(registry, note_type, content, &result.errors);
+        if fix_result.fixed {
+            if let Some(new_content) = fix_result.content {
+                println!("Auto-fixed validation errors:");
+                for fix in fix_result.fixes {
+                    println!("  - {}", fix);
+                }
+                Ok(Some(new_content))
+            } else {
+                // Should not happen if fixed is true
+                let errors: Vec<String> =
+                    result.errors.iter().map(|e| e.to_string()).collect();
+                Err(errors)
+            }
+        } else {
+            // Collect all error messages
+            let errors: Vec<String> =
+                result.errors.iter().map(|e| e.to_string()).collect();
+            Err(errors)
+        }
+    }
+}
+
+/// Helper to convert string to yaml value based on type hint
+fn string_to_yaml_value(s: &str, field_type: Option<FieldType>) -> serde_yaml::Value {
+    match field_type {
+        Some(FieldType::Number) => {
+            if let Ok(n) = s.parse::<i64>() {
+                serde_yaml::Value::Number(n.into())
+            } else if let Ok(n) = s.parse::<f64>() {
+                serde_yaml::Value::Number(serde_yaml::Number::from(n))
+            } else {
+                serde_yaml::Value::String(s.to_string())
+            }
+        }
+        Some(FieldType::Boolean) => {
+            serde_yaml::Value::Bool(s.eq_ignore_ascii_case("true") || s == "1")
+        }
+        Some(FieldType::List) => {
+            let items: Vec<serde_yaml::Value> = s
+                .split(',')
+                .map(|item| serde_yaml::Value::String(item.trim().to_string()))
+                .collect();
+            serde_yaml::Value::Sequence(items)
+        }
+        _ => serde_yaml::Value::String(s.to_string()),
+    }
+}
+
+/// Inject user-provided variables into frontmatter if not already present.
+///
+/// This ensures that variables prompted for (or passed via CLI) appear in the output note
+/// even if the template didn't explicitly include them.
+fn inject_vars_into_frontmatter(
+    content: &str,
+    vars: &HashMap<String, String>,
+    typedef: Option<&TypeDefinition>,
+) -> Result<String, String> {
+    let parsed = parse_frontmatter(content).map_err(|e| e.to_string())?;
+
+    let mut fields: HashMap<String, serde_yaml::Value> =
+        if let Some(fm) = parsed.frontmatter { fm.fields } else { HashMap::new() };
+
+    let mut modified = false;
+
+    for (k, v) in vars {
+        // Skip keys that are usually handled specially or shouldn't be overridden blindly
+        if k == "type" || k == "title" {
+            continue;
+        }
+
+        // If field already exists, don't overwrite
+        if fields.contains_key(k) {
+            continue;
+        }
+
+        // Only inject if the variable is defined in the schema
+        // Variables not in schema are considered ephemeral template inputs
+        if let Some(td) = typedef {
+            if let Some(schema) = td.schema.get(k) {
+                let val = string_to_yaml_value(v, schema.field_type);
+                fields.insert(k.clone(), val);
+                modified = true;
+            }
+        }
+    }
+
+    if !modified {
+        return Ok(content.to_string());
+    }
+
+    // Rebuild
+    let mut mapping = serde_yaml::Mapping::new();
+    for (k, v) in fields {
+        mapping.insert(serde_yaml::Value::String(k), v);
+    }
+    let yaml_str = serde_yaml::to_string(&serde_yaml::Value::Mapping(mapping))
+        .map_err(|e| e.to_string())?;
+
+    Ok(format!("---\n{}---\n{}", yaml_str, parsed.body))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mdvault_core::types::FieldSchema;
+    use serde_yaml::Value;
+
+    #[test]
+    fn test_slugify() {
+        assert_eq!(slugify("Hello World"), "hello-world");
+        assert_eq!(slugify("Foo   Bar"), "foo-bar");
+        assert_eq!(slugify("-Start End-"), "start-end");
+        assert_eq!(slugify("C++ Project"), "c-project"); // simplified behavior
+    }
+
+    #[test]
+    fn test_yaml_value_to_string() {
+        assert_eq!(yaml_value_to_string(&Value::String("foo".into())), "foo");
+        assert_eq!(yaml_value_to_string(&Value::Number(42.into())), "42");
+        assert_eq!(yaml_value_to_string(&Value::Bool(true)), "true");
+        assert_eq!(yaml_value_to_string(&Value::Null), "");
+    }
+
+    #[test]
+    fn test_string_to_yaml_value() {
+        // Number
+        assert_eq!(string_to_yaml_value("123", Some(FieldType::Number)), Value::Number(123.into()));
+        assert_eq!(string_to_yaml_value("12.5", Some(FieldType::Number)), Value::Number(serde_yaml::Number::from(12.5)));
+        
+        // Boolean
+        assert_eq!(string_to_yaml_value("true", Some(FieldType::Boolean)), Value::Bool(true));
+        assert_eq!(string_to_yaml_value("1", Some(FieldType::Boolean)), Value::Bool(true));
+        assert_eq!(string_to_yaml_value("false", Some(FieldType::Boolean)), Value::Bool(false));
+
+        // List
+        match string_to_yaml_value("a, b, c", Some(FieldType::List)) {
+            Value::Sequence(seq) => {
+                assert_eq!(seq.len(), 3);
+                assert_eq!(seq[0], Value::String("a".into()));
+                assert_eq!(seq[1], Value::String("b".into()));
+                assert_eq!(seq[2], Value::String("c".into()));
+            }
+            _ => panic!("Expected sequence"),
+        }
+
+        // Default string
+        assert_eq!(string_to_yaml_value("hello", None), Value::String("hello".into()));
+    }
+
+    #[test]
+    fn test_ensure_core_metadata() {
+        let content = "---\nexisting: val\n---\nbody";
+        let mut core = CoreMetadata::default();
+        core.note_type = Some("task".into());
+        core.task_id = Some("TST-001".into());
+
+        let result = ensure_core_metadata(content, &core).unwrap();
+        
+        let parsed = parse_frontmatter(&result).unwrap();
+        let fm = parsed.frontmatter.unwrap();
+        
+        assert_eq!(fm.fields.get("type").unwrap().as_str(), Some("task"));
+        assert_eq!(fm.fields.get("task-id").unwrap().as_str(), Some("TST-001"));
+        assert_eq!(fm.fields.get("existing").unwrap().as_str(), Some("val"));
+        assert_eq!(parsed.body.trim(), "body");
+    }
+
+    #[test]
+    fn test_extract_note_type() {
+        let content = "---\ntype: project\n---\nbody";
+        assert_eq!(extract_note_type(content), Some("project".into()));
+
+        let content_no_type = "---\ntitle: foo\n---\nbody";
+        assert_eq!(extract_note_type(content_no_type), None);
+    }
+
+    #[test]
+    fn test_collect_schema_variables_batch_missing_required() {
+        let mut schema = HashMap::new();
+        schema.insert("req".to_string(), FieldSchema { 
+            required: true, 
+            prompt: Some("Required field?".to_string()),
+            ..Default::default() 
+        });
+        
+        let typedef = TypeDefinition {
+            schema,
+            ..TypeDefinition::empty("test")
+        };
+        
+        let provided = HashMap::new();
+        let options = PromptOptions { batch_mode: true };
+        
+        let result = collect_schema_variables(&typedef, &provided, &options);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Missing required field"));
+    }
+
+    #[test]
+    fn test_inject_vars_bad_content() {
+        // "::: bad" is usually invalid YAML frontmatter in this context if parser expects ---
+        // But our parser is lenient if --- is missing.
+        // Let's try to make it fail by providing broken YAML inside delimiters.
+        let content = "---\n: broken\n---\nbody";
+        let vars = HashMap::new();
+        let result = inject_vars_into_frontmatter(content, &vars, None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_before_write_bad_yaml() {
+        let registry = TypeRegistry::new();
+        let path = Path::new("foo.md");
+        let content = "---\n: invalid\n---\nbody";
+        let result = validate_before_write(&registry, "task", path, content);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(!errs.is_empty());
+        assert!(errs[0].contains("Failed to parse frontmatter"));
+    }
 }

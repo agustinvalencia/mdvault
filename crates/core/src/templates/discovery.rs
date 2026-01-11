@@ -67,3 +67,64 @@ fn logical_name_from_relative(rel: &Path) -> String {
     }
     s.to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_discover_templates_simple() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        File::create(root.join("daily.md")).unwrap();
+        File::create(root.join("meeting.md")).unwrap();
+        File::create(root.join("readme.txt")).unwrap(); // Should be ignored
+
+        let templates = discover_templates(root).unwrap();
+
+        assert_eq!(templates.len(), 2);
+        assert_eq!(templates[0].logical_name, "daily");
+        assert_eq!(templates[1].logical_name, "meeting");
+    }
+
+    #[test]
+    fn test_discover_templates_ignores_partials() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        File::create(root.join("valid.md")).unwrap();
+        File::create(root.join("partial.tpl.md")).unwrap();
+        File::create(root.join("other.tmpl.md")).unwrap();
+
+        let templates = discover_templates(root).unwrap();
+
+        assert_eq!(templates.len(), 1);
+        assert_eq!(templates[0].logical_name, "valid");
+    }
+
+    #[test]
+    fn test_discover_templates_nested() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::create_dir(root.join("work")).unwrap();
+        File::create(root.join("work/report.md")).unwrap();
+
+        let templates = discover_templates(root).unwrap();
+
+        assert_eq!(templates.len(), 1);
+        assert_eq!(templates[0].logical_name, "work/report");
+    }
+
+    #[test]
+    fn test_discover_templates_missing_dir() {
+        let dir = tempdir().unwrap();
+        let missing = dir.path().join("missing");
+
+        let result = discover_templates(&missing);
+        assert!(matches!(result, Err(TemplateDiscoveryError::MissingDir(_))));
+    }
+}

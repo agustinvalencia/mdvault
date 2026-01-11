@@ -54,3 +54,51 @@ fn logical_name_from_relative(rel: &Path) -> String {
     }
     s.to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_discover_captures_simple() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create some files
+        File::create(root.join("todo.yaml")).unwrap();
+        File::create(root.join("ideas.yml")).unwrap();
+        File::create(root.join("ignored.txt")).unwrap();
+        File::create(root.join("README.md")).unwrap();
+
+        let captures = discover_captures(root).unwrap();
+
+        assert_eq!(captures.len(), 2);
+        assert_eq!(captures[0].logical_name, "ideas");
+        assert_eq!(captures[1].logical_name, "todo");
+    }
+
+    #[test]
+    fn test_discover_captures_nested() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::create_dir(root.join("subdir")).unwrap();
+        File::create(root.join("subdir/nested.yaml")).unwrap();
+
+        let captures = discover_captures(root).unwrap();
+
+        assert_eq!(captures.len(), 1);
+        assert_eq!(captures[0].logical_name, "subdir/nested");
+    }
+
+    #[test]
+    fn test_discover_captures_missing_dir() {
+        let dir = tempdir().unwrap();
+        let missing = dir.path().join("missing");
+
+        let result = discover_captures(&missing);
+        assert!(result.is_err());
+    }
+}

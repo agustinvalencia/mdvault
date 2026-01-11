@@ -1,5 +1,4 @@
 use mdvault_core::config::types::ResolvedConfig;
-use std::fs::File;
 use std::sync::Mutex;
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use tracing_subscriber::fmt;
@@ -32,13 +31,15 @@ pub fn init(cfg: &ResolvedConfig) {
             .with_default_directive(file_level.into())
             .from_env_lossy();
 
-        // Log to file
-
-        let file = File::create(path).unwrap_or_else(|e| {
-            eprintln!("Failed to create log file {}: {}", path.display(), e);
-
-            std::process::exit(1);
-        });
+        // Log to file in append mode
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap_or_else(|e| {
+                eprintln!("Failed to open log file {}: {}", path.display(), e);
+                std::process::exit(1);
+            });
 
         let (non_blocking, guard) = tracing_appender::non_blocking(file);
 

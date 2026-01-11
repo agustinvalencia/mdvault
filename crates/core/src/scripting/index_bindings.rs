@@ -25,6 +25,7 @@ pub fn register_index_bindings(lua: &Lua) -> LuaResult<()> {
     mdv.set("backlinks", create_backlinks_fn(lua)?)?;
     mdv.set("outlinks", create_outlinks_fn(lua)?)?;
     mdv.set("query", create_query_fn(lua)?)?;
+    mdv.set("find_project", create_find_project_fn(lua)?)?;
 
     Ok(())
 }
@@ -319,6 +320,68 @@ fn create_query_fn(lua: &Lua) -> LuaResult<Function> {
         }
 
         Ok(Value::Table(result))
+    })
+}
+
+/// Create the `mdv.find_project(id)` function.
+///
+/// Finds a project note by its 'project-id' field.
+/// Returns the note table or nil if not found.
+#[allow(clippy::collapsible_if)]
+fn create_find_project_fn(lua: &Lua) -> LuaResult<Function> {
+    lua.create_function(|lua, id: String| {
+        let ctx = lua
+            .app_data_ref::<VaultContext>()
+            .ok_or_else(|| mlua::Error::runtime("VaultContext not available"))?;
+
+        let db = match &ctx.index_db {
+            Some(db) => db,
+            None => {
+                return Err(mlua::Error::runtime(
+                    "Index database not available. Run 'mdv reindex' first.",
+                ));
+            }
+        };
+
+        // Query for projects
+        let query = NoteQuery {
+            note_type: Some(crate::index::NoteType::Project),
+            ..Default::default()
+        };
+
+        let notes = db
+            .query_notes(&query)
+            .map_err(|e| mlua::Error::runtime(format!("Query error: {}", e)))?;
+
+        // Find match
+        for note in notes {
+            if let Some(fm_json) = &note.frontmatter_json {
+                if let Ok(fm) = serde_json::from_str::<serde_json::Value>(fm_json) {
+                    if fm.get("project-id").and_then(|v| v.as_str()) == Some(id.as_str())
+                    {
+                        // Found it! Convert to note table.
+                        let note_table = lua.create_table()?;
+                        note_table
+                            .set("path", note.path.to_string_lossy().to_string())?;
+                        note_table.set("type", note.note_type.as_str())?;
+                        note_table.set("title", note.title.clone())?;
+                        note_table.set("modified", note.modified.to_rfc3339())?;
+
+                        if let Some(created) = note.created {
+                            note_table.set("created", created.to_rfc3339())?;
+                        }
+
+                        let fm_yaml = json_to_yaml(&fm);
+                        let fm_lua = yaml_to_lua_table(lua, &fm_yaml)?;
+                        note_table.set("frontmatter", fm_lua)?;
+
+                        return Ok(Value::Table(note_table));
+                    }
+                }
+            }
+        }
+
+        Ok(Value::Nil)
     })
 }
 

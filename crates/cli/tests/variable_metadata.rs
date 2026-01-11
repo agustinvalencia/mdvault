@@ -1,7 +1,10 @@
 //! Integration tests for variable metadata (prompts, defaults, descriptions).
+//!
+//! Note: Template `vars:` DSL was removed in v0.2.0 in favor of Lua-based schemas.
+//! Templates now use `lua:` frontmatter to reference Lua scripts that define schemas.
+//! These tests cover captures and macros which still support `vars:`.
 
 use assert_cmd::prelude::*;
-use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
@@ -27,107 +30,6 @@ captures_dir = "{{{{vault_root}}}}/captures"
 macros_dir = "{{{{vault_root}}}}/macros"
 "#
     )
-}
-
-#[test]
-fn template_with_vars_metadata_uses_default() {
-    let tmp = tempdir().unwrap();
-    let root = tmp.path();
-    let vault = root.join("vault");
-
-    write(root, "config.toml", make_config(&vault.to_string_lossy()));
-
-    write(
-        root,
-        "vault/templates/meeting.md",
-        r#"---
-output: "meetings/{{title}}.md"
-vars:
-  title:
-    prompt: "Meeting title"
-    default: "Untitled Meeting"
-  attendees:
-    prompt: "Who's attending?"
-    default: "TBD"
----
-# {{title}}
-
-## Attendees
-
-{{attendees}}
-"#,
-    );
-
-    fs::create_dir_all(vault.join("captures")).unwrap();
-    fs::create_dir_all(vault.join("macros")).unwrap();
-
-    // Run in batch mode - should use defaults
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
-    cmd.arg("--config")
-        .arg(root.join("config.toml"))
-        .arg("new")
-        .arg("--template")
-        .arg("meeting")
-        .arg("--batch");
-
-    cmd.assert().success();
-
-    let output_file = vault.join("meetings/Untitled Meeting.md");
-    assert!(output_file.exists(), "File with default title should exist");
-
-    let content = fs::read_to_string(&output_file).unwrap();
-    assert!(content.contains("# Untitled Meeting"));
-    assert!(content.contains("TBD"));
-}
-
-#[test]
-fn template_vars_can_be_overridden() {
-    let tmp = tempdir().unwrap();
-    let root = tmp.path();
-    let vault = root.join("vault");
-
-    write(root, "config.toml", make_config(&vault.to_string_lossy()));
-
-    write(
-        root,
-        "vault/templates/note.md",
-        r#"---
-output: "notes/{{title}}.md"
-vars:
-  title:
-    prompt: "Note title"
-    default: "Untitled"
-  author:
-    prompt: "Author name"
-    default: "Anonymous"
----
-# {{title}}
-
-By: {{author}}
-"#,
-    );
-
-    fs::create_dir_all(vault.join("captures")).unwrap();
-    fs::create_dir_all(vault.join("macros")).unwrap();
-
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
-    cmd.arg("--config")
-        .arg(root.join("config.toml"))
-        .arg("new")
-        .arg("--template")
-        .arg("note")
-        .arg("--var")
-        .arg("title=Custom Title")
-        .arg("--batch"); // Use default for author
-
-    cmd.assert().success();
-
-    let output_file = vault.join("notes/Custom Title.md");
-    assert!(output_file.exists());
-
-    let content = fs::read_to_string(&output_file).unwrap();
-    assert!(content.contains("# Custom Title"));
-    assert!(content.contains("By: Anonymous")); // Default for author
 }
 
 #[test]
@@ -189,45 +91,6 @@ content: "- [{{priority}}] {{text}}"
 
     let content = fs::read_to_string(vault.join("notes.md")).unwrap();
     assert!(content.contains("- [normal] Review PR"));
-}
-
-#[test]
-fn batch_mode_fails_on_missing_required_var() {
-    let tmp = tempdir().unwrap();
-    let root = tmp.path();
-    let vault = root.join("vault");
-
-    write(root, "config.toml", make_config(&vault.to_string_lossy()));
-
-    write(
-        root,
-        "vault/templates/required.md",
-        r#"---
-output: "notes/{{title}}.md"
-vars:
-  title:
-    prompt: "Title is required"
-    required: true
----
-# {{title}}
-"#,
-    );
-
-    fs::create_dir_all(vault.join("captures")).unwrap();
-    fs::create_dir_all(vault.join("macros")).unwrap();
-
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
-    cmd.arg("--config")
-        .arg(root.join("config.toml"))
-        .arg("new")
-        .arg("--template")
-        .arg("required")
-        .arg("--batch"); // No --var provided
-
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("missing required variable"))
-        .stderr(predicate::str::contains("title"));
 }
 
 #[test]
@@ -339,55 +202,4 @@ content: "- {{text}}"
 
     let content = fs::read_to_string(vault.join("notes.md")).unwrap();
     assert!(content.contains("- Simple note"));
-}
-
-#[test]
-fn vars_with_date_math_default() {
-    let tmp = tempdir().unwrap();
-    let root = tmp.path();
-    let vault = root.join("vault");
-
-    write(root, "config.toml", make_config(&vault.to_string_lossy()));
-
-    write(
-        root,
-        "vault/templates/deadline.md",
-        r#"---
-output: "tasks/{{task}}.md"
-vars:
-  task:
-    prompt: "Task name"
-  due:
-    prompt: "Due date"
-    default: "{{today + 7d}}"
----
-# {{task}}
-
-Due: {{due}}
-"#,
-    );
-
-    fs::create_dir_all(vault.join("captures")).unwrap();
-    fs::create_dir_all(vault.join("macros")).unwrap();
-
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
-    cmd.arg("--config")
-        .arg(root.join("config.toml"))
-        .arg("new")
-        .arg("--template")
-        .arg("deadline")
-        .arg("--var")
-        .arg("task=Review Code")
-        .arg("--batch");
-
-    cmd.assert().success();
-
-    let output_file = vault.join("tasks/Review Code.md");
-    assert!(output_file.exists());
-
-    let content = fs::read_to_string(&output_file).unwrap();
-    assert!(content.contains("# Review Code"));
-    // The default should have been evaluated as date math
-    assert!(content.contains("Due: 20")); // Should start with year
-    assert!(!content.contains("{{today + 7d}}")); // Should not contain raw expression
 }

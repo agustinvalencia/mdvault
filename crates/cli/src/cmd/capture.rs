@@ -343,6 +343,7 @@ fn run_on_update_hook_if_needed(cfg: &ResolvedConfig, target_file: &Path, conten
         note_type: note_type.to_string(),
         frontmatter,
         content: content.to_string(),
+        variables: serde_yaml::Value::Null,
     };
 
     // Build vault context (with repositories for vault operations)
