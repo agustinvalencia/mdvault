@@ -1,5 +1,7 @@
 # Lua-First Architecture Plan
 
+> **SUPERSEDED**: This document is superseded by [PLAN-v0.2.0.md](./PLAN-v0.2.0.md) for current development priorities. Phases 1-4 are complete; Phase 5 is deferred. Retained for historical reference and detailed Lua integration documentation.
+
 ## Overview
 
 Consolidate the template/type system into a Lua-first architecture where:

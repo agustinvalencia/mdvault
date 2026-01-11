@@ -1,5 +1,7 @@
 # Domain Types Architecture: Rust Core + Lua Extensions
 
+> **Note**: This document provides detailed design for Phase 2 of [PLAN-v0.2.0.md](./PLAN-v0.2.0.md). See that document for the overall roadmap.
+
 ## Overview
 
 This document defines the architectural approach for **first-class note types** (task, project, daily, weekly) in mdvault. It clarifies the boundary between Rust core logic and Lua extensibility.

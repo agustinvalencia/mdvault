@@ -1,5 +1,7 @@
 # mdvault Development Plan
 
+> **SUPERSEDED**: This document is superseded by [PLAN-v0.2.0.md](./PLAN-v0.2.0.md) for current development priorities. Retained for historical reference.
+
 This document tracks the implementation phases for evolving mdvault from a templating tool into a comprehensive vault management system.
 
 ## Current State (v0.1.0)
