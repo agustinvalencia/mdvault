@@ -289,6 +289,24 @@ output: Projects/MCP/Tasks/MCP-042.md
 5. **Extensible**: Users can add custom types easily
 6. **Testable**: Lua scripts can be tested independently
 
+## Architectural Boundary: Rust Core vs Lua Extensions
+
+**See**: [Domain Types Architecture](./ARCHITECTURE-domain-types.md)
+
+The Lua-first migration does **not** mean moving all logic to Lua. First-class types (task, project, daily, weekly) remain Rust-owned for:
+
+- **Stability**: Future features (progress tracking, reporting) need predictable structure
+- **Atomicity**: ID generation, counter management require Rust guarantees
+- **Performance**: Critical paths stay in compiled code
+
+Lua provides the **extension layer**:
+- Schema definitions and prompts
+- Validation hooks
+- Post-creation customization
+- User-defined types
+
+The refactoring of `crates/cli/src/cmd/new.rs` will use trait-based dispatch (`NoteIdentity`, `NoteLifecycle`, `NotePrompts`) rather than moving logic to Lua scripts.
+
 ## Open Questions
 
 1. Should captures become Lua-based too? (Probably yes for consistency)
