@@ -45,7 +45,7 @@ pub use discovery::TypedefRepository;
 pub use errors::{TypedefError, ValidationError, ValidationResult};
 pub use registry::TypeRegistry;
 pub use scaffolding::{
-    default_output_path, generate_scaffolding, get_missing_required_fields,
+    generate_scaffolding, get_missing_required_fields,
 };
 pub use schema::{FieldSchema, FieldType};
 pub use validation::{

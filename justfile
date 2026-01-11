@@ -19,7 +19,7 @@ golden-update:
     INSTA_UPDATE=auto cargo test -p markadd
 
 coverage:
-    cargo tarpaulin --workspace --all-features --out Html --out Xml
+    cargo tarpaulin --workspace --all-features --out Html --out Xml --out Json --out Markdown
 
 coverage-clean:
-    rm -f cobertura.xml tarpaulin-report.html tarpaulin-report.xml tarpaulin-report.json lcov.info coverage.json
+    rm -f cobertura.xml tarpaulin-report.html tarpaulin-report.xml tarpaulin-report.json tarpaulin-report.md lcov.info coverage.json

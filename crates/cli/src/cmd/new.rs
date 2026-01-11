@@ -106,7 +106,7 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
     };
 
     // Check if template links to a Lua script
-    let lua_typedef: Option<TypeDefinition> =
+    let lua_typedef: Option<TypeDefinition> = 
         loaded.frontmatter.as_ref().and_then(|fm| fm.lua.as_ref()).and_then(|lua_path| {
             // Resolve lua path relative to typedefs directory
             let lua_file = cfg.typedefs_dir.join(lua_path);
@@ -256,7 +256,7 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
                     &rendered,
                 ) {
                     Ok(Some(fixed)) => rendered = fixed,
-                    Ok(None) => {}
+                    Ok(None) => {} // Valid
                     Err(errors) => {
                         eprintln!("Validation failed:");
                         for err in &errors {
@@ -334,7 +334,7 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
 
                 // Apply other modifications (frontmatter/content)
 
-                if let Err(e) =
+                if let Err(e) = 
                     apply_hook_modifications(&output_path, &final_content, &hook_result)
                 {
                     eprintln!(
@@ -417,7 +417,7 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         None => {
             if args.batch {
                 eprintln!("Error: title is required in batch mode");
-                eprintln!("Usage: mdv new {type_name} \"Title\"");
+                eprintln!("Usage: mdv new {type_name} \"Title\"", type_name=type_name);
                 std::process::exit(1);
             }
             // Prompt for title
@@ -578,7 +578,7 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                                 Err(_) => cfg.vault_root.join(format!(
                                     "Projects/{}/Tasks/{}.md",
                                     project_folder, task_id
-                                )),
+                                ))
                             }
                         } else {
                             cfg.vault_root.join(format!(
@@ -611,8 +611,7 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                         eprintln!("Warning: failed to render Lua output path: {e}");
                         cfg.vault_root.join(format!(
                             "{}s/{}.md",
-                            type_name,
-                            slugify(&title)
+                            type_name, slugify(&title)
                         ))
                     }
                 }
@@ -826,7 +825,7 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     // Phase 3: Validate content before writing
     match validate_before_write(&type_registry, type_name, &output_path, &content) {
         Ok(Some(fixed)) => content = fixed,
-        Ok(None) => {}
+        Ok(None) => {} // Valid
         Err(errors) => {
             eprintln!("Validation failed:");
             for err in &errors {
@@ -960,7 +959,7 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                     };
                 }
 
-                if let Err(e) =
+                if let Err(e) = 
                     apply_hook_modifications(&output_path, &final_content, &hook_result)
                 {
                     eprintln!(
@@ -1678,9 +1677,8 @@ fn prompt_for_schema_field(
         let initial = default.unwrap_or("");
         let content = Editor::new()
             .edit(initial)
-            .map_err(|e| format!("Editor error for '{}': {}", field_name, e))?
-            .unwrap_or_else(|| initial.to_string());
-        return Ok(content);
+            .map_err(|e| format!("Editor error for '{}': {}", field_name, e))?;
+        return Ok(content.unwrap_or_else(|| initial.to_string()));
     }
 
     // Default: use Input widget
@@ -1870,4 +1868,125 @@ fn inject_vars_into_frontmatter(
         .map_err(|e| e.to_string())?;
 
     Ok(format!("---\n{}---\n{}", yaml_str, parsed.body))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mdvault_core::types::FieldSchema;
+    use serde_yaml::Value;
+
+    #[test]
+    fn test_slugify() {
+        assert_eq!(slugify("Hello World"), "hello-world");
+        assert_eq!(slugify("Foo   Bar"), "foo-bar");
+        assert_eq!(slugify("-Start End-"), "start-end");
+        assert_eq!(slugify("C++ Project"), "c-project"); // simplified behavior
+    }
+
+    #[test]
+    fn test_yaml_value_to_string() {
+        assert_eq!(yaml_value_to_string(&Value::String("foo".into())), "foo");
+        assert_eq!(yaml_value_to_string(&Value::Number(42.into())), "42");
+        assert_eq!(yaml_value_to_string(&Value::Bool(true)), "true");
+        assert_eq!(yaml_value_to_string(&Value::Null), "");
+    }
+
+    #[test]
+    fn test_string_to_yaml_value() {
+        // Number
+        assert_eq!(string_to_yaml_value("123", Some(FieldType::Number)), Value::Number(123.into()));
+        assert_eq!(string_to_yaml_value("12.5", Some(FieldType::Number)), Value::Number(serde_yaml::Number::from(12.5)));
+        
+        // Boolean
+        assert_eq!(string_to_yaml_value("true", Some(FieldType::Boolean)), Value::Bool(true));
+        assert_eq!(string_to_yaml_value("1", Some(FieldType::Boolean)), Value::Bool(true));
+        assert_eq!(string_to_yaml_value("false", Some(FieldType::Boolean)), Value::Bool(false));
+
+        // List
+        match string_to_yaml_value("a, b, c", Some(FieldType::List)) {
+            Value::Sequence(seq) => {
+                assert_eq!(seq.len(), 3);
+                assert_eq!(seq[0], Value::String("a".into()));
+                assert_eq!(seq[1], Value::String("b".into()));
+                assert_eq!(seq[2], Value::String("c".into()));
+            }
+            _ => panic!("Expected sequence"),
+        }
+
+        // Default string
+        assert_eq!(string_to_yaml_value("hello", None), Value::String("hello".into()));
+    }
+
+    #[test]
+    fn test_ensure_core_metadata() {
+        let content = "---\nexisting: val\n---\nbody";
+        let mut core = CoreMetadata::default();
+        core.note_type = Some("task".into());
+        core.task_id = Some("TST-001".into());
+
+        let result = ensure_core_metadata(content, &core).unwrap();
+        
+        let parsed = parse_frontmatter(&result).unwrap();
+        let fm = parsed.frontmatter.unwrap();
+        
+        assert_eq!(fm.fields.get("type").unwrap().as_str(), Some("task"));
+        assert_eq!(fm.fields.get("task-id").unwrap().as_str(), Some("TST-001"));
+        assert_eq!(fm.fields.get("existing").unwrap().as_str(), Some("val"));
+        assert_eq!(parsed.body.trim(), "body");
+    }
+
+    #[test]
+    fn test_extract_note_type() {
+        let content = "---\ntype: project\n---\nbody";
+        assert_eq!(extract_note_type(content), Some("project".into()));
+
+        let content_no_type = "---\ntitle: foo\n---\nbody";
+        assert_eq!(extract_note_type(content_no_type), None);
+    }
+
+    #[test]
+    fn test_collect_schema_variables_batch_missing_required() {
+        let mut schema = HashMap::new();
+        schema.insert("req".to_string(), FieldSchema { 
+            required: true, 
+            prompt: Some("Required field?".to_string()),
+            ..Default::default() 
+        });
+        
+        let typedef = TypeDefinition {
+            schema,
+            ..TypeDefinition::empty("test")
+        };
+        
+        let provided = HashMap::new();
+        let options = PromptOptions { batch_mode: true };
+        
+        let result = collect_schema_variables(&typedef, &provided, &options);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Missing required field"));
+    }
+
+    #[test]
+    fn test_inject_vars_bad_content() {
+        // "::: bad" is usually invalid YAML frontmatter in this context if parser expects ---
+        // But our parser is lenient if --- is missing.
+        // Let's try to make it fail by providing broken YAML inside delimiters.
+        let content = "---\n: broken\n---\nbody";
+        let vars = HashMap::new();
+        let result = inject_vars_into_frontmatter(content, &vars, None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_before_write_bad_yaml() {
+        let registry = TypeRegistry::new();
+        let path = Path::new("foo.md");
+        let content = "---\n: invalid\n---\nbody";
+        let result = validate_before_write(&registry, "task", path, content);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(!errs.is_empty());
+        assert!(errs[0].contains("Failed to parse frontmatter"));
+    }
 }

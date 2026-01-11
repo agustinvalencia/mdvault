@@ -146,6 +146,12 @@ pub fn get_missing_required_fields<'a>(
         .collect()
 }
 
+// DEAD CODE: These functions are not used in the current implementation of `mdv new`.
+// default_output_path implements path generation logic that is duplicated/superseded by
+// resolve_template_output_path and the specialized logic in cmd/new.rs.
+// slugify is only used by default_output_path.
+// They will be removed in a future cleanup or consolidated.
+/*
 /// Generate default output path for a note.
 ///
 /// Pattern: `<type>s/<title-slugified>.md`
@@ -171,6 +177,7 @@ fn slugify(s: &str) -> String {
 
     result.trim_matches('-').to_string()
 }
+*/
 
 #[cfg(test)]
 mod tests {
@@ -198,6 +205,8 @@ mod tests {
         assert!(content.contains("project: myproject"));
     }
 
+    // DEAD CODE TESTS
+    /*
     #[test]
     fn test_default_output_path() {
         assert_eq!(default_output_path("task", "Fix bug"), "tasks/fix-bug.md");
@@ -217,6 +226,7 @@ mod tests {
         assert_eq!(slugify("My Task: Do Something!"), "my-task-do-something");
         assert_eq!(slugify("  spaced  out  "), "spaced-out");
     }
+    */
 
     #[test]
     fn test_string_to_yaml_value_number() {
