@@ -169,6 +169,10 @@ tags:
     );
 }
 
+/// Test that user-defined variables in templates are substituted correctly.
+/// Note: Template vars: DSL was removed in v0.2.0. Variables can still be used
+/// in templates via {{var}} placeholders and provided via --var flags.
+/// For prompts/defaults, templates should use lua: field to reference a Lua typedef.
 #[test]
 fn template_with_user_vars_in_frontmatter() {
     let tmp = tempdir().unwrap();
@@ -183,16 +187,13 @@ fn template_with_user_vars_in_frontmatter() {
         &make_config(&vault.to_string_lossy(), &templates.to_string_lossy()),
     );
 
-    // Template with user-defined variable in frontmatter
+    // Template with user-defined variables (no vars: DSL - that was removed in v0.2.0)
     write(
         &templates.join("meeting.md"),
         r#"---
 output: meetings/{{date}}.md
 title: "{{meeting_title}}"
 attendees: "{{attendees}}"
-vars:
-  meeting_title: "Meeting title"
-  attendees: "Attendees"
 ---
 # {{meeting_title}}
 
@@ -240,9 +241,6 @@ Attendees: {{attendees}}
         content.contains("Attendees: Alice, Bob"),
         "attendees in body should be substituted"
     );
-
-    // The vars field should NOT be in the output (it's metadata)
-    assert!(!content.contains("vars:"), "vars metadata should not be in output");
 }
 
 #[test]

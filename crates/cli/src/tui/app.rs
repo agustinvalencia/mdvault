@@ -559,11 +559,10 @@ impl App {
             .get_by_name(name)
             .map_err(|e| format!("Failed to load template: {e}"))?;
 
-        // Collect variables from frontmatter vars and body content
-        let all_vars = collect_all_variables(
-            loaded.frontmatter.as_ref().and_then(|fm| fm.vars.as_ref()),
-            &loaded.body,
-        );
+        // Collect variables from body content
+        // Note: Template vars DSL was removed in v0.2.0. For variable metadata
+        // (prompts, defaults), templates should use lua: field to reference a Lua typedef.
+        let all_vars = collect_all_variables(None, &loaded.body);
 
         // Convert to VarInfo with metadata
         let var_infos: Vec<VarInfo> = all_vars

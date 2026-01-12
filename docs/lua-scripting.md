@@ -152,15 +152,20 @@ mdv.render("{{text | trim}}", { text = "  hello  " })
 -- "hello"
 ```
 
-Filters are commonly used in template frontmatter for output paths:
+Filters are commonly used in Lua type definitions for output paths:
 
-```yaml
----
-output: "tasks/{{title | slugify}}.md"
-vars:
-  title:
-    prompt: "Task title"
----
+```lua
+-- In types/task.lua
+return {
+    output = "tasks/{{title | slugify}}.md",
+    schema = {
+        title = {
+            type = "string",
+            required = true,
+            prompt = "Task title"
+        }
+    }
+}
 ```
 
 This creates files like `tasks/my-new-task.md` from titles like "My New Task!".
