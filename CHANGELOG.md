@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Lua-based captures**: Captures can now be defined in Lua (`.lua` files) in addition to YAML
+  - Lua captures use the same format as type definitions with `vars`, `target`, `content`, and `frontmatter`
+  - Lua files take precedence over YAML files with the same name
+  - YAML captures are now deprecated and show a warning when loaded
+  - See `docs/lua-scripting.md` for the new capture format
+
+### Deprecated
+
+- **YAML captures**: YAML capture definitions are deprecated in favor of Lua
+  - Migration guide available in `docs/lua-scripting.md`
+  - YAML support will be removed in a future version
+
 ## [0.2.0] - 2025-01-12
 
 ### Changed

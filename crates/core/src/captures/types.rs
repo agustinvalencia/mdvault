@@ -71,13 +71,24 @@ impl From<CapturePosition> for InsertPosition {
     }
 }
 
+/// Source format for a capture definition
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptureFormat {
+    /// YAML format (legacy, deprecated)
+    Yaml,
+    /// Lua format (preferred)
+    Lua,
+}
+
 /// Information about a discovered capture file
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaptureInfo {
-    /// Logical name (filename without .yaml extension)
+    /// Logical name (filename without extension)
     pub logical_name: String,
-    /// Full path to the YAML file
+    /// Full path to the capture file
     pub path: PathBuf,
+    /// Source format (YAML or Lua)
+    pub format: CaptureFormat,
 }
 
 /// A fully loaded capture ready for execution
@@ -118,4 +129,14 @@ pub enum CaptureRepoError {
         #[source]
         source: serde_yaml::Error,
     },
+
+    #[error("failed to parse capture Lua {path}: {source}")]
+    LuaParse {
+        path: PathBuf,
+        #[source]
+        source: crate::scripting::ScriptingError,
+    },
+
+    #[error("invalid capture definition in {path}: {message}")]
+    LuaInvalid { path: PathBuf, message: String },
 }

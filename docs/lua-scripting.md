@@ -657,6 +657,226 @@ tasks/my-task.md  [type: task]
   + Added missing field 'status' with default 'open'
 ```
 
+## Capture Definitions
+
+Captures are quick append workflows that add content to a target file/section. Captures can be defined in Lua (preferred) or YAML (deprecated).
+
+### Lua Capture Format
+
+Create a `.lua` file in your `captures_dir` (default: `~/.config/mdvault/captures/`):
+
+```lua
+-- captures/inbox.lua
+return {
+    name = "inbox",
+    description = "Add a quick note to today's inbox",
+
+    -- Variables with prompts
+    vars = {
+        text = "What to capture?",  -- Simple form: string is the prompt
+        -- OR full form:
+        priority = {
+            prompt = "Priority level?",
+            default = "medium",
+            required = false,
+        },
+    },
+
+    -- Target file and section
+    target = {
+        file = "daily/{{date}}.md",
+        section = "Inbox",
+        position = "begin",  -- "begin" or "end"
+        create_if_missing = true,  -- Create file if it doesn't exist
+    },
+
+    -- Content template (supports {{variable}} placeholders)
+    content = "- [ ] {{text}} ({{priority}})",
+
+    -- Frontmatter operations (optional)
+    frontmatter = {
+        -- Simple form: direct key-value sets
+        last_updated = "{{date}}",
+
+        -- OR explicit operations form:
+        -- { field = "count", op = "increment" },
+        -- { field = "active", op = "toggle" },
+        -- { field = "tags", op = "append", value = "inbox" },
+    },
+}
+```
+
+### Capture Variables
+
+Variables support two formats:
+
+```lua
+vars = {
+    -- Simple: string is used as prompt
+    text = "What to capture?",
+
+    -- Full: object with metadata
+    priority = {
+        prompt = "Priority level?",  -- Interactive prompt
+        default = "medium",          -- Default value
+        required = true,             -- Must provide value
+        description = "Help text",   -- Shown during prompting
+    },
+}
+```
+
+### Target Configuration
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `file` | string | Target file path (supports `{{var}}` placeholders) |
+| `section` | string | Section heading to insert into (optional for frontmatter-only) |
+| `position` | `"begin"` or `"end"` | Where in section to insert (default: `"begin"`) |
+| `create_if_missing` | boolean | Create file if missing (default: `false`) |
+
+### Frontmatter Operations
+
+Captures can modify frontmatter in the target file:
+
+```lua
+-- Simple form: direct key-value sets
+frontmatter = {
+    status = "active",
+    updated = "{{date}}",
+}
+
+-- Operations form: explicit operations
+frontmatter = {
+    { field = "count", op = "increment" },       -- Add 1 to numeric field
+    { field = "active", op = "toggle" },         -- Flip boolean
+    { field = "tags", op = "append", value = "new-tag" },  -- Add to list
+    { field = "status", op = "set", value = "updated" },   -- Set value
+}
+
+-- Mixed form: both simple sets and explicit operations
+frontmatter = {
+    status = "active",  -- Simple set
+    { field = "count", op = "increment" },  -- Explicit operation
+}
+```
+
+| Operation | Description |
+|-----------|-------------|
+| `set` | Set field to value (default if `op` not specified) |
+| `toggle` | Flip boolean field (false→true, true→false) |
+| `increment` | Add 1 to numeric field (creates as 0 if missing) |
+| `append` | Add value to list field (creates list if missing) |
+
+### Using Captures
+
+```bash
+# Run a capture interactively
+mdv capture inbox
+
+# Provide variables via --var
+mdv capture inbox --var text="Buy groceries" --var priority=high
+
+# List available captures
+mdv capture --list
+```
+
+### Migration from YAML
+
+YAML captures are deprecated and will show a warning. To migrate:
+
+**Before (YAML)**:
+```yaml
+name: inbox
+description: Add to inbox
+target:
+  file: "daily/{{date}}.md"
+  section: "Inbox"
+  position: begin
+content: "- [ ] {{text}}"
+```
+
+**After (Lua)**:
+```lua
+return {
+    name = "inbox",
+    description = "Add to inbox",
+    vars = {
+        text = "What to capture?",
+    },
+    target = {
+        file = "daily/{{date}}.md",
+        section = "Inbox",
+        position = "begin",
+    },
+    content = "- [ ] {{text}}",
+}
+```
+
+### Capture Examples
+
+**Quick todo to daily note**:
+```lua
+-- captures/todo.lua
+return {
+    name = "todo",
+    description = "Quick task to daily note",
+    vars = {
+        task = "What needs to be done?",
+    },
+    target = {
+        file = "daily/{{date}}.md",
+        section = "Tasks",
+        position = "end",
+        create_if_missing = true,
+    },
+    content = "- [ ] {{task}}",
+}
+```
+
+**Meeting note with frontmatter**:
+```lua
+-- captures/meeting-note.lua
+return {
+    name = "meeting-note",
+    description = "Add meeting note and update project",
+    vars = {
+        note = {
+            prompt = "Meeting note?",
+            multiline = true,
+        },
+    },
+    target = {
+        file = "projects/{{project}}.md",
+        section = "Meeting Notes",
+        position = "begin",
+    },
+    content = "### {{date}}\n\n{{note}}",
+    frontmatter = {
+        { field = "meeting_count", op = "increment" },
+        last_meeting = "{{date}}",
+    },
+}
+```
+
+**Log entry with timestamp**:
+```lua
+-- captures/log.lua
+return {
+    name = "log",
+    description = "Timestamped log entry",
+    vars = {
+        entry = "Log entry?",
+    },
+    target = {
+        file = "logs/{{date}}.md",
+        section = "Log",
+        position = "end",
+        create_if_missing = true,
+    },
+    content = "- **{{time}}** {{entry}}",
+}
+```
+
 ## Vault Operations
 
 When running inside lifecycle hooks, the `mdv` table provides access to vault operations. These functions allow hooks to render templates, execute captures, and run macros.
