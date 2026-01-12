@@ -439,9 +439,7 @@ return {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.arg("--config").arg(root.join("config.toml")).arg("macro").arg("--list");
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Lua version")); // Lua should win
+    cmd.assert().success().stdout(predicate::str::contains("Lua version")); // Lua should win
 }
 
 #[test]

@@ -35,12 +35,13 @@ pub fn discover_captures(root: &Path) -> Result<Vec<CaptureInfo>, CaptureDiscove
         };
 
         let rel = path.strip_prefix(&root).unwrap_or(path);
-        let full_logical = if rel.parent().map(|p| p.as_os_str().is_empty()).unwrap_or(true) {
-            logical.clone()
-        } else {
-            let parent = rel.parent().unwrap().to_string_lossy();
-            format!("{}/{}", parent, logical)
-        };
+        let full_logical =
+            if rel.parent().map(|p| p.as_os_str().is_empty()).unwrap_or(true) {
+                logical.clone()
+            } else {
+                let parent = rel.parent().unwrap().to_string_lossy();
+                format!("{}/{}", parent, logical)
+            };
 
         // Lua takes precedence over YAML
         match captures.get(&full_logical) {

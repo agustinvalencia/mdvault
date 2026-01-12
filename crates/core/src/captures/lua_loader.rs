@@ -16,11 +16,7 @@ pub fn load_capture_from_lua(path: &Path) -> Result<CaptureSpec, CaptureRepoErro
     let source = std::fs::read_to_string(path)
         .map_err(|e| CaptureRepoError::Io { path: path.to_path_buf(), source: e })?;
 
-    let name = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown")
-        .to_string();
+    let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
 
     parse_capture_lua(&name, &source, path)
 }
@@ -130,17 +126,21 @@ fn extract_vars(table: &mlua::Table, path: &Path) -> Result<VarsMap, CaptureRepo
 }
 
 /// Extract target configuration from Lua table.
-fn extract_target(table: &mlua::Table, path: &Path) -> Result<CaptureTarget, CaptureRepoError> {
+fn extract_target(
+    table: &mlua::Table,
+    path: &Path,
+) -> Result<CaptureTarget, CaptureRepoError> {
     let target_table: mlua::Table =
         table.get("target").map_err(|_| CaptureRepoError::LuaInvalid {
             path: path.to_path_buf(),
             message: "Capture must have a 'target' field".to_string(),
         })?;
 
-    let file: String = target_table.get("file").map_err(|_| CaptureRepoError::LuaInvalid {
-        path: path.to_path_buf(),
-        message: "target.file is required".to_string(),
-    })?;
+    let file: String =
+        target_table.get("file").map_err(|_| CaptureRepoError::LuaInvalid {
+            path: path.to_path_buf(),
+            message: "target.file is required".to_string(),
+        })?;
 
     let section: Option<String> = target_table.get("section").ok();
 
@@ -188,17 +188,15 @@ fn extract_frontmatter(
     // In Lua, arrays use integer keys: { [1] = ..., [2] = ... }
     // Maps use string keys: { foo = ..., bar = ... }
     let first_entry: Option<mlua::Value> = fm_table.get(1i64).ok();
-    let is_sequence = first_entry.is_some()
-        && !matches!(first_entry, Some(mlua::Value::Nil));
+    let is_sequence =
+        first_entry.is_some() && !matches!(first_entry, Some(mlua::Value::Nil));
 
     // Also check for any string keys (for map or mixed forms)
     let mut has_string_keys = false;
-    for pair in fm_table.pairs::<mlua::Value, mlua::Value>() {
-        if let Ok((k, _)) = pair {
-            if matches!(k, mlua::Value::String(_)) {
-                has_string_keys = true;
-                break;
-            }
+    for (k, _) in fm_table.pairs::<mlua::Value, mlua::Value>().flatten() {
+        if matches!(k, mlua::Value::String(_)) {
+            has_string_keys = true;
+            break;
         }
     }
 
@@ -223,10 +221,11 @@ fn extract_frontmatter(
 
             // Only process string keys (skip numeric keys which are operations)
             if let mlua::Value::String(key_str) = key {
-                let key_name = key_str.to_str().map_err(|e| CaptureRepoError::LuaParse {
-                    path: path.to_path_buf(),
-                    source: ScriptingError::Lua(e),
-                })?;
+                let key_name =
+                    key_str.to_str().map_err(|e| CaptureRepoError::LuaParse {
+                        path: path.to_path_buf(),
+                        source: ScriptingError::Lua(e),
+                    })?;
                 if let Some(yaml_value) = lua_to_yaml_value(&value) {
                     ops.push(FrontmatterOp {
                         field: key_name.to_string(),
@@ -238,11 +237,9 @@ fn extract_frontmatter(
         }
 
         // Then extract explicit operations from numeric keys
-        for pair in fm_table.pairs::<i64, mlua::Table>() {
-            if let Ok((_, op_table)) = pair {
-                if let Some(op) = parse_operation(&op_table, path)? {
-                    ops.push(op);
-                }
+        for (_, op_table) in fm_table.pairs::<i64, mlua::Table>().flatten() {
+            if let Some(op) = parse_operation(&op_table, path)? {
+                ops.push(op);
             }
         }
 
@@ -348,21 +345,17 @@ fn lua_to_yaml_value(value: &mlua::Value) -> Option<serde_yaml::Value> {
 
             if is_sequence {
                 let mut seq = Vec::new();
-                for pair in t.pairs::<i64, mlua::Value>() {
-                    if let Ok((_, v)) = pair {
-                        if let Some(yaml_v) = lua_to_yaml_value(&v) {
-                            seq.push(yaml_v);
-                        }
+                for (_, v) in t.pairs::<i64, mlua::Value>().flatten() {
+                    if let Some(yaml_v) = lua_to_yaml_value(&v) {
+                        seq.push(yaml_v);
                     }
                 }
                 Some(serde_yaml::Value::Sequence(seq))
             } else {
                 let mut map = serde_yaml::Mapping::new();
-                for pair in t.pairs::<String, mlua::Value>() {
-                    if let Ok((k, v)) = pair {
-                        if let Some(yaml_v) = lua_to_yaml_value(&v) {
-                            map.insert(serde_yaml::Value::String(k), yaml_v);
-                        }
+                for (k, v) in t.pairs::<String, mlua::Value>().flatten() {
+                    if let Some(yaml_v) = lua_to_yaml_value(&v) {
+                        map.insert(serde_yaml::Value::String(k), yaml_v);
                     }
                 }
                 Some(serde_yaml::Value::Mapping(map))
@@ -485,7 +478,10 @@ return {
         match &spec.frontmatter {
             Some(FrontmatterOps::Simple(map)) => {
                 assert_eq!(map.len(), 2);
-                assert_eq!(map.get("status"), Some(&serde_yaml::Value::String("active".to_string())));
+                assert_eq!(
+                    map.get("status"),
+                    Some(&serde_yaml::Value::String("active".to_string()))
+                );
             }
             _ => panic!("Expected simple frontmatter"),
         }

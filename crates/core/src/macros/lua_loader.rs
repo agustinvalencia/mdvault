@@ -10,28 +10,28 @@ use crate::scripting::{LuaEngine, ScriptingError};
 use crate::vars::{VarMetadata, VarSpec, VarsMap};
 
 use super::discovery::MacroRepoError;
-use super::types::{CaptureStep, ErrorPolicy, MacroSpec, MacroStep, ShellStep, TemplateStep};
+use super::types::{
+    CaptureStep, ErrorPolicy, MacroSpec, MacroStep, ShellStep, TemplateStep,
+};
 
 /// Load and parse a macro specification from a Lua file.
 pub fn load_macro_from_lua(path: &Path) -> Result<MacroSpec, MacroRepoError> {
     let source = std::fs::read_to_string(path)
         .map_err(|e| MacroRepoError::Io { path: path.to_path_buf(), source: e })?;
 
-    let name = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown")
-        .to_string();
+    let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
 
     parse_macro_lua(&name, &source, path)
 }
 
 /// Parse a macro specification from Lua source.
-fn parse_macro_lua(name: &str, source: &str, path: &Path) -> Result<MacroSpec, MacroRepoError> {
-    let engine = LuaEngine::sandboxed().map_err(|e| MacroRepoError::LuaParse {
-        path: path.to_path_buf(),
-        source: e,
-    })?;
+fn parse_macro_lua(
+    name: &str,
+    source: &str,
+    path: &Path,
+) -> Result<MacroSpec, MacroRepoError> {
+    let engine = LuaEngine::sandboxed()
+        .map_err(|e| MacroRepoError::LuaParse { path: path.to_path_buf(), source: e })?;
 
     let lua = engine.lua();
 
@@ -119,7 +119,10 @@ fn extract_vars(table: &mlua::Table, path: &Path) -> Result<VarsMap, MacroRepoEr
 }
 
 /// Extract steps from Lua table.
-fn extract_steps(table: &mlua::Table, path: &Path) -> Result<Vec<MacroStep>, MacroRepoError> {
+fn extract_steps(
+    table: &mlua::Table,
+    path: &Path,
+) -> Result<Vec<MacroStep>, MacroRepoError> {
     let steps_table: mlua::Table =
         table.get("steps").map_err(|_| MacroRepoError::LuaInvalid {
             path: path.to_path_buf(),
@@ -172,16 +175,21 @@ fn parse_step(table: &mlua::Table, path: &Path) -> Result<MacroStep, MacroRepoEr
 
     Err(MacroRepoError::LuaInvalid {
         path: path.to_path_buf(),
-        message: "Step must have 'type' field or 'template'/'capture'/'shell' field".to_string(),
+        message: "Step must have 'type' field or 'template'/'capture'/'shell' field"
+            .to_string(),
     })
 }
 
 /// Parse a template step.
-fn parse_template_step(table: &mlua::Table, path: &Path) -> Result<MacroStep, MacroRepoError> {
-    let template: String = table.get("template").map_err(|_| MacroRepoError::LuaInvalid {
-        path: path.to_path_buf(),
-        message: "Template step must have 'template' field".to_string(),
-    })?;
+fn parse_template_step(
+    table: &mlua::Table,
+    path: &Path,
+) -> Result<MacroStep, MacroRepoError> {
+    let template: String =
+        table.get("template").map_err(|_| MacroRepoError::LuaInvalid {
+            path: path.to_path_buf(),
+            message: "Template step must have 'template' field".to_string(),
+        })?;
 
     let output: Option<String> = table.get("output").ok();
 
@@ -191,11 +199,15 @@ fn parse_template_step(table: &mlua::Table, path: &Path) -> Result<MacroStep, Ma
 }
 
 /// Parse a capture step.
-fn parse_capture_step(table: &mlua::Table, path: &Path) -> Result<MacroStep, MacroRepoError> {
-    let capture: String = table.get("capture").map_err(|_| MacroRepoError::LuaInvalid {
-        path: path.to_path_buf(),
-        message: "Capture step must have 'capture' field".to_string(),
-    })?;
+fn parse_capture_step(
+    table: &mlua::Table,
+    path: &Path,
+) -> Result<MacroStep, MacroRepoError> {
+    let capture: String =
+        table.get("capture").map_err(|_| MacroRepoError::LuaInvalid {
+            path: path.to_path_buf(),
+            message: "Capture step must have 'capture' field".to_string(),
+        })?;
 
     let vars_with = extract_with_vars(table, path)?;
 
@@ -203,7 +215,10 @@ fn parse_capture_step(table: &mlua::Table, path: &Path) -> Result<MacroStep, Mac
 }
 
 /// Parse a shell step.
-fn parse_shell_step(table: &mlua::Table, path: &Path) -> Result<MacroStep, MacroRepoError> {
+fn parse_shell_step(
+    table: &mlua::Table,
+    path: &Path,
+) -> Result<MacroStep, MacroRepoError> {
     let shell: String = table.get("shell").map_err(|_| MacroRepoError::LuaInvalid {
         path: path.to_path_buf(),
         message: "Shell step must have 'shell' field".to_string(),
@@ -295,7 +310,9 @@ return {
         assert_eq!(spec.name, "test");
         assert_eq!(spec.description, "A test macro");
         assert_eq!(spec.steps.len(), 1);
-        assert!(matches!(&spec.steps[0], MacroStep::Template(t) if t.template == "meeting"));
+        assert!(
+            matches!(&spec.steps[0], MacroStep::Template(t) if t.template == "meeting")
+        );
     }
 
     #[test]

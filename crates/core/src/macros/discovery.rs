@@ -85,12 +85,13 @@ pub fn discover_macros(root: &Path) -> Result<Vec<MacroInfo>, MacroDiscoveryErro
         };
 
         let rel = path.strip_prefix(&root).unwrap_or(path);
-        let full_logical = if rel.parent().map(|p| p.as_os_str().is_empty()).unwrap_or(true) {
-            logical.clone()
-        } else {
-            let parent = rel.parent().unwrap().to_string_lossy();
-            format!("{}/{}", parent, logical)
-        };
+        let full_logical =
+            if rel.parent().map(|p| p.as_os_str().is_empty()).unwrap_or(true) {
+                logical.clone()
+            } else {
+                let parent = rel.parent().unwrap().to_string_lossy();
+                format!("{}/{}", parent, logical)
+            };
 
         // Lua takes precedence over YAML
         match macros.get(&full_logical) {
@@ -170,11 +171,13 @@ impl MacroRepository {
                     info.path.display()
                 );
 
-                let content = fs::read_to_string(&info.path)
-                    .map_err(|e| MacroRepoError::Io { path: info.path.clone(), source: e })?;
+                let content = fs::read_to_string(&info.path).map_err(|e| {
+                    MacroRepoError::Io { path: info.path.clone(), source: e }
+                })?;
 
-                serde_yaml::from_str::<MacroSpec>(&content)
-                    .map_err(|e| MacroRepoError::Parse { path: info.path.clone(), source: e })?
+                serde_yaml::from_str::<MacroSpec>(&content).map_err(|e| {
+                    MacroRepoError::Parse { path: info.path.clone(), source: e }
+                })?
             }
         };
 
@@ -218,9 +221,23 @@ mod tests {
         let macros = discover_macros(&macros_dir).unwrap();
 
         assert_eq!(macros.len(), 3);
-        assert!(macros.iter().any(|m| m.logical_name == "daily-note" && m.format == MacroFormat::Yaml));
-        assert!(macros.iter().any(|m| m.logical_name == "weekly-review" && m.format == MacroFormat::Yaml));
-        assert!(macros.iter().any(|m| m.logical_name == "project/setup" && m.format == MacroFormat::Yaml));
+        assert!(
+            macros
+                .iter()
+                .any(|m| m.logical_name == "daily-note" && m.format == MacroFormat::Yaml)
+        );
+        assert!(
+            macros
+                .iter()
+                .any(|m| m.logical_name == "weekly-review"
+                    && m.format == MacroFormat::Yaml)
+        );
+        assert!(
+            macros
+                .iter()
+                .any(|m| m.logical_name == "project/setup"
+                    && m.format == MacroFormat::Yaml)
+        );
     }
 
     #[test]
@@ -235,8 +252,16 @@ mod tests {
         let macros = discover_macros(&macros_dir).unwrap();
 
         assert_eq!(macros.len(), 2);
-        assert!(macros.iter().any(|m| m.logical_name == "daily-note" && m.format == MacroFormat::Lua));
-        assert!(macros.iter().any(|m| m.logical_name == "weekly-review" && m.format == MacroFormat::Lua));
+        assert!(
+            macros
+                .iter()
+                .any(|m| m.logical_name == "daily-note" && m.format == MacroFormat::Lua)
+        );
+        assert!(
+            macros.iter().any(
+                |m| m.logical_name == "weekly-review" && m.format == MacroFormat::Lua
+            )
+        );
     }
 
     #[test]
@@ -248,7 +273,8 @@ mod tests {
         // Both Lua and YAML with same name - Lua should win
         fs::write(macros_dir.join("test.lua"), "return {}").unwrap();
         fs::write(macros_dir.join("test.yaml"), "name: test\nsteps: []").unwrap();
-        fs::write(macros_dir.join("yaml-only.yaml"), "name: yaml-only\nsteps: []").unwrap();
+        fs::write(macros_dir.join("yaml-only.yaml"), "name: yaml-only\nsteps: []")
+            .unwrap();
 
         let macros = discover_macros(&macros_dir).unwrap();
 

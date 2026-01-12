@@ -275,10 +275,7 @@ Content here
     );
 
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
-    cmd.arg("--config")
-        .arg(root.join("config.toml"))
-        .arg("capture")
-        .arg("status");
+    cmd.arg("--config").arg(root.join("config.toml")).arg("capture").arg("status");
 
     cmd.assert().success();
 
@@ -327,10 +324,7 @@ Content
     );
 
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
-    cmd.arg("--config")
-        .arg(root.join("config.toml"))
-        .arg("capture")
-        .arg("increment");
+    cmd.arg("--config").arg(root.join("config.toml")).arg("capture").arg("increment");
 
     cmd.assert().success();
 
@@ -392,14 +386,9 @@ Lua section
     );
 
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
-    cmd.arg("--config")
-        .arg(root.join("config.toml"))
-        .arg("capture")
-        .arg("test");
+    cmd.arg("--config").arg(root.join("config.toml")).arg("capture").arg("test");
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("section: Lua")); // Lua wins
+    cmd.assert().success().stdout(predicate::str::contains("section: Lua")); // Lua wins
 
     let content = fs::read_to_string(root.join("vault/notes.md")).unwrap();
     assert!(content.contains("Lua content"));
@@ -510,10 +499,8 @@ return {
     let daily_dir = vault.join("daily");
     assert!(daily_dir.exists(), "daily directory should be created");
 
-    let files: Vec<_> = fs::read_dir(&daily_dir)
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .collect();
+    let files: Vec<_> =
+        fs::read_dir(&daily_dir).unwrap().filter_map(|e| e.ok()).collect();
     assert_eq!(files.len(), 1, "should create one daily file");
 
     let content = fs::read_to_string(files[0].path()).unwrap();

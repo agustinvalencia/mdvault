@@ -43,8 +43,9 @@ impl CaptureRepository {
                     info.path.display()
                 );
 
-                let content = fs::read_to_string(&info.path)
-                    .map_err(|e| CaptureRepoError::Io { path: info.path.clone(), source: e })?;
+                let content = fs::read_to_string(&info.path).map_err(|e| {
+                    CaptureRepoError::Io { path: info.path.clone(), source: e }
+                })?;
 
                 serde_yaml::from_str::<CaptureSpec>(&content).map_err(|e| {
                     CaptureRepoError::Parse { path: info.path.clone(), source: e }

@@ -17,6 +17,6 @@ pub use runner::{
     requires_trust, run_macro,
 };
 pub use types::{
-    CaptureStep, ErrorPolicy, LoadedMacro, MacroFormat, MacroInfo, MacroResult, MacroSpec,
-    MacroStep, ShellStep, StepResult, TemplateStep,
+    CaptureStep, ErrorPolicy, LoadedMacro, MacroFormat, MacroInfo, MacroResult,
+    MacroSpec, MacroStep, ShellStep, StepResult, TemplateStep,
 };
