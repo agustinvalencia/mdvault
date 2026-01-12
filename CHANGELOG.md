@@ -15,9 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - YAML captures are now deprecated and show a warning when loaded
   - See `docs/lua-scripting.md` for the new capture format
 
+- **Lua-based macros**: Macros can now be defined in Lua (`.lua` files) in addition to YAML
+  - Supports all step types: template, capture, shell
+  - Simplified syntax allows omitting `type` field for common cases
+  - Supports `on_error` policy (abort/continue)
+  - Lua files take precedence over YAML files with the same name
+  - YAML macros are now deprecated and show a warning when loaded
+  - See `docs/lua-scripting.md` for the new macro format
+
 ### Deprecated
 
 - **YAML captures**: YAML capture definitions are deprecated in favor of Lua
+  - Migration guide available in `docs/lua-scripting.md`
+  - YAML support will be removed in a future version
+
+- **YAML macros**: YAML macro definitions are deprecated in favor of Lua
   - Migration guide available in `docs/lua-scripting.md`
   - YAML support will be removed in a future version
 

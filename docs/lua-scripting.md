@@ -877,6 +877,255 @@ return {
 }
 ```
 
+## Macro Definitions
+
+Macros are multi-step workflows that execute sequences of templates, captures, and shell commands. Macros can be defined in Lua (preferred) or YAML (deprecated).
+
+### Lua Macro Format
+
+Create a `.lua` file in your `macros_dir` (default: `~/.config/mdvault/macros/`):
+
+```lua
+-- macros/weekly-review.lua
+return {
+    name = "weekly-review",
+    description = "Set up weekly review documents",
+
+    -- Variables with prompts
+    vars = {
+        focus = "What's your focus this week?",
+        week_of = {
+            prompt = "Week date?",
+            default = "{{today}}",
+        },
+    },
+
+    -- Steps to execute in order
+    steps = {
+        {
+            type = "template",
+            template = "weekly-summary",
+            output = "summaries/{{week_of}}.md",
+            with = {
+                title = "Week of {{week_of}}",
+            },
+        },
+        {
+            type = "capture",
+            capture = "archive-tasks",
+        },
+        {
+            type = "shell",
+            shell = "git add .",
+            description = "Stage changes",  -- Requires --trust
+        },
+    },
+
+    on_error = "abort",  -- "abort" (default) or "continue"
+}
+```
+
+### Step Types
+
+Macros support three step types:
+
+**Template Step**: Create a new file from a template
+```lua
+{
+    type = "template",
+    template = "meeting",           -- Template name (required)
+    output = "meetings/{{date}}.md", -- Override output path (optional)
+    with = {                        -- Variable overrides (optional)
+        title = "Weekly sync",
+    },
+}
+```
+
+**Capture Step**: Insert content into an existing file
+```lua
+{
+    type = "capture",
+    capture = "inbox",   -- Capture name (required)
+    with = {             -- Variable overrides (optional)
+        text = "Review task",
+    },
+}
+```
+
+**Shell Step**: Execute a shell command (requires `--trust`)
+```lua
+{
+    type = "shell",
+    shell = "git add .",         -- Command (required)
+    description = "Stage changes", -- Human-readable description
+}
+```
+
+### Simplified Step Syntax
+
+For simpler macros, you can omit the `type` field:
+
+```lua
+steps = {
+    { template = "daily" },              -- Detected as template step
+    { capture = "inbox" },               -- Detected as capture step
+    { shell = "echo done", description = "Print done" },  -- Detected as shell step
+}
+```
+
+### Error Handling
+
+| Policy | Behavior |
+|--------|----------|
+| `abort` | Stop on first error (default) |
+| `continue` | Execute all steps, report failures at end |
+
+```lua
+return {
+    name = "resilient",
+    on_error = "continue",  -- Will run all steps even if some fail
+    steps = { ... },
+}
+```
+
+### Using Macros
+
+```bash
+# Run a macro interactively
+mdv macro weekly-review
+
+# Provide variables via --var
+mdv macro weekly-review --var focus="Ship v2.0" --var week_of="2025-01-12"
+
+# List available macros
+mdv macro --list
+
+# Run macro with shell steps (requires trust)
+mdv macro deploy --trust
+```
+
+### Migration from YAML
+
+YAML macros are deprecated and will show a warning. To migrate:
+
+**Before (YAML)**:
+```yaml
+name: weekly-review
+description: Set up weekly review
+vars:
+  focus:
+    prompt: "Focus?"
+steps:
+  - template: weekly-summary
+    with:
+      title: "{{focus}}"
+  - capture: archive-tasks
+```
+
+**After (Lua)**:
+```lua
+return {
+    name = "weekly-review",
+    description = "Set up weekly review",
+    vars = {
+        focus = "Focus?",
+    },
+    steps = {
+        {
+            template = "weekly-summary",
+            with = {
+                title = "{{focus}}",
+            },
+        },
+        { capture = "archive-tasks" },
+    },
+}
+```
+
+### Macro Examples
+
+**Daily setup workflow**:
+```lua
+-- macros/daily-setup.lua
+return {
+    name = "daily-setup",
+    description = "Create today's daily note with inbox items",
+    vars = {
+        focus = {
+            prompt = "Today's focus?",
+            default = "",
+        },
+    },
+    steps = {
+        {
+            template = "daily",
+            output = "daily/{{date}}.md",
+            with = { focus = "{{focus}}" },
+        },
+        {
+            capture = "inbox",
+            with = { text = "Review focus: {{focus}}" },
+        },
+    },
+}
+```
+
+**Meeting workflow with multiple steps**:
+```lua
+-- macros/new-meeting.lua
+return {
+    name = "new-meeting",
+    description = "Create meeting note and log it",
+    vars = {
+        topic = "Meeting topic?",
+        attendees = {
+            prompt = "Attendees?",
+            default = "Team",
+        },
+    },
+    steps = {
+        {
+            template = "meeting",
+            output = "meetings/{{topic | slugify}}.md",
+            with = {
+                title = "{{topic}}",
+                attendees = "{{attendees}}",
+            },
+        },
+        {
+            capture = "log-meeting",
+            with = {
+                topic = "{{topic}}",
+            },
+        },
+    },
+}
+```
+
+**Git commit workflow (requires --trust)**:
+```lua
+-- macros/commit.lua
+return {
+    name = "commit",
+    description = "Stage and commit changes",
+    vars = {
+        message = "Commit message?",
+    },
+    steps = {
+        {
+            type = "shell",
+            shell = "git add -A",
+            description = "Stage all changes",
+        },
+        {
+            type = "shell",
+            shell = "git commit -m '{{message}}'",
+            description = "Commit changes",
+        },
+    },
+}
+```
+
 ## Vault Operations
 
 When running inside lifecycle hooks, the `mdv` table provides access to vault operations. These functions allow hooks to render templates, execute captures, and run macros.
