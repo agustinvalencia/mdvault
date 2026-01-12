@@ -1,10 +1,13 @@
 # Macros → Lua Migration Plan
 
+> **Status**: Complete
 > **Parent**: [PLAN-v0.2.0.md](./PLAN-v0.2.0.md) Phase 4.2
 
 ## Overview
 
 Migrate macros from YAML DSL to Lua-based definitions, following the same pattern established for captures in Phase 4.1.
+
+**Implementation complete** - Lua macros are fully supported. YAML macros are deprecated and show a warning when loaded.
 
 ## Current State
 
@@ -192,20 +195,20 @@ Lua step.type    → Rust MacroStep
 ## Implementation Order
 
 1. ~~Create plan document~~ (this file)
-2. Add MacroFormat enum and update types
-3. Create lua_loader module
-4. Update discovery for both formats
-5. Update repository loading
-6. Add unit tests
-7. Add integration tests
-8. Migrate examples
-9. Update documentation
-10. Add deprecation warning for YAML
+2. ~~Add MacroFormat enum and update types~~ (`crates/core/src/macros/types.rs`)
+3. ~~Create lua_loader module~~ (`crates/core/src/macros/lua_loader.rs`)
+4. ~~Update discovery for both formats~~ (`crates/core/src/macros/discovery.rs`)
+5. ~~Update repository loading~~
+6. ~~Add unit tests~~
+7. ~~Add integration tests~~ (`crates/cli/tests/macro_lua.rs`)
+8. ~~Migrate examples~~ (`examples/.markadd/macros/*.lua`)
+9. ~~Update documentation~~ (`docs/lua-scripting.md`)
+10. ~~Add deprecation warning for YAML~~
 
 ## Success Criteria
 
-- [ ] All existing macro tests pass
-- [ ] New Lua macro tests pass
-- [ ] Example macros work in both formats
-- [ ] Documentation updated
-- [ ] Deprecation warning shows for YAML macros
+- [x] All existing macro tests pass
+- [x] New Lua macro tests pass (`crates/cli/tests/macro_lua.rs`)
+- [x] Example macros work in both formats
+- [x] Documentation updated (`docs/lua-scripting.md`)
+- [x] Deprecation warning shows for YAML macros

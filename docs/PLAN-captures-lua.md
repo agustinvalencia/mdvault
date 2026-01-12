@@ -1,10 +1,13 @@
 # Captures → Lua Migration Plan
 
+> **Status**: Complete
 > **Parent**: [PLAN-v0.2.0.md](./PLAN-v0.2.0.md) Phase 4.1
 
 ## Overview
 
 Migrate captures from YAML DSL to Lua-based definitions, aligning with the Lua-first architecture completed for templates in v0.2.0.
+
+**Implementation complete** - Lua captures are fully supported. YAML captures are deprecated and show a warning when loaded.
 
 ## Current State
 
@@ -234,17 +237,17 @@ pub struct CaptureHookContext {
 ## Implementation Order
 
 1. ~~Create plan document~~ (this file)
-2. Add Lua loading to CaptureSpec
-3. Update CaptureRepository discovery
-4. Add lifecycle hook support
-5. Migrate examples
-6. Update documentation
-7. Add deprecation warning for YAML
+2. ~~Add Lua loading to CaptureSpec~~ (`crates/core/src/captures/lua_loader.rs`)
+3. ~~Update CaptureRepository discovery~~ (`crates/core/src/captures/discovery.rs`)
+4. ~~Add lifecycle hook support~~ (deferred to future iteration)
+5. ~~Migrate examples~~ (`examples/.markadd/captures/*.lua`)
+6. ~~Update documentation~~ (`docs/lua-scripting.md`)
+7. ~~Add deprecation warning for YAML~~
 
 ## Success Criteria
 
-- [ ] All existing capture tests pass
-- [ ] New Lua capture tests pass
-- [ ] Example captures work in both formats
-- [ ] Documentation updated
-- [ ] Deprecation warning shows for YAML captures
+- [x] All existing capture tests pass
+- [x] New Lua capture tests pass (`crates/cli/tests/capture_lua.rs`)
+- [x] Example captures work in both formats
+- [x] Documentation updated (`docs/lua-scripting.md`)
+- [x] Deprecation warning shows for YAML captures
