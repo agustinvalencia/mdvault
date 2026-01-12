@@ -34,12 +34,15 @@ fn setup_config(tmp: &tempfile::TempDir, vault: &Path) -> PathBuf {
     let mut toml = String::new();
     writeln!(&mut toml, "version = 1").unwrap();
     writeln!(&mut toml, "profile = \"default\"",).unwrap();
-    writeln!(&mut toml, "").unwrap();
+    writeln!(&mut toml).unwrap();
     writeln!(&mut toml, "[profiles.default]").unwrap();
     writeln!(&mut toml, "vault_root = \"{}\"", vault.display()).unwrap();
-    writeln!(&mut toml, "typedefs_dir = \"{}/.mdvault/typedefs\"", vault.display()).unwrap();
-    writeln!(&mut toml, "templates_dir = \"{}/.mdvault/templates\"", vault.display()).unwrap();
-    writeln!(&mut toml, "captures_dir = \"{}/.mdvault/captures\"", vault.display()).unwrap();
+    writeln!(&mut toml, "typedefs_dir = \"{}/.mdvault/typedefs\"", vault.display())
+        .unwrap();
+    writeln!(&mut toml, "templates_dir = \"{}/.mdvault/templates\"", vault.display())
+        .unwrap();
+    writeln!(&mut toml, "captures_dir = \"{}/.mdvault/captures\"", vault.display())
+        .unwrap();
     writeln!(&mut toml, "macros_dir = \"{}/.mdvault/macros\"", vault.display()).unwrap();
 
     fs::write(&cfg_path, toml).unwrap();
@@ -50,9 +53,10 @@ fn run_mdv(cfg_path: &Path, args: &[&str]) -> std::process::Output {
     let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.env("NO_COLOR", "1");
     // Ensure we run in the vault root so relative paths work
-    let vault_root = cfg_path.parent().unwrap().parent().unwrap().parent().unwrap().join("vault");
+    let vault_root =
+        cfg_path.parent().unwrap().parent().unwrap().parent().unwrap().join("vault");
     cmd.current_dir(&vault_root);
-    
+
     cmd.args(["--config", cfg_path.to_str().unwrap()]);
     cmd.args(args);
     cmd.output().expect("Failed to run mdv")
@@ -157,8 +161,11 @@ fn project_creation_handles_collision_by_failing() {
 
     // Setup: Create existing project
     let proj_path = vault.join("Projects/MCP/MCP.md");
-    write(&proj_path, "---\ntype: project
----\n");
+    write(
+        &proj_path,
+        "---\ntype: project
+---\n",
+    );
 
     // Action: mdv new project "My Cool Project" --batch
     // Should fail or warn because file exists. Current code says "Refusing to overwrite" and exits 1.
@@ -236,7 +243,17 @@ fn core_metadata_survives_template_rendering() {
     // Action
     let output = run_mdv(
         &cfg_path,
-        &["new", "--template", "task", "Template Task", "--var", "project=inbox", "--output", "task.md", "--batch"],
+        &[
+            "new",
+            "--template",
+            "task",
+            "Template Task",
+            "--var",
+            "project=inbox",
+            "--output",
+            "task.md",
+            "--batch",
+        ],
     );
     assert!(output.status.success());
 }
@@ -307,10 +324,7 @@ fn on_create_hook_can_add_fields_and_modify_content() {
     );
 
     // Action: mdv new custom ...
-    let output = run_mdv(
-        &cfg_path,
-        &["new", "custom", "Hook Test", "--batch"],
-    );
+    let output = run_mdv(&cfg_path, &["new", "custom", "Hook Test", "--batch"]);
     assert!(output.status.success());
 
     // Output path default: customs/hook-test.md
@@ -349,7 +363,15 @@ fn template_mode_uses_lua_schema_defaults() {
     // Action: mdv new --template meeting "My Meeting" --batch
     let output = run_mdv(
         &cfg_path,
-        &["new", "--template", "meeting", "My Meeting", "--output", "meeting.md", "--batch"],
+        &[
+            "new",
+            "--template",
+            "meeting",
+            "My Meeting",
+            "--output",
+            "meeting.md",
+            "--batch",
+        ],
     );
     assert!(output.status.success());
 
@@ -377,10 +399,7 @@ fn generic_scaffolding_mode() {
     );
 
     // Action: mdv new generic "My Note" --batch
-    let output = run_mdv(
-        &cfg_path,
-        &["new", "generic", "My Note", "--batch"],
-    );
+    let output = run_mdv(&cfg_path, &["new", "generic", "My Note", "--batch"]);
     assert!(output.status.success());
 
     // Assertions
