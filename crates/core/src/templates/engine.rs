@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
-use serde_yaml::Value;
 use thiserror::Error;
+use tracing::debug;
 
 use crate::config::types::ResolvedConfig;
 use crate::vars::datemath::{evaluate_date_expr, is_date_expr, parse_date_expr};
@@ -84,63 +84,87 @@ pub fn render(
     template: &LoadedTemplate,
     ctx: &RenderContext,
 ) -> Result<String, TemplateRenderError> {
+    debug!("Rendering template '{}' with vars: {:?}", template.logical_name, ctx.keys());
     let rendered_body = render_string(&template.body, ctx)?;
 
-    // Check if template has extra frontmatter fields to include in output
-    // Note: can't use let chains (Rust 2024) so we nest the if statements
-    #[allow(clippy::collapsible_if)]
-    if let Some(ref fm) = template.frontmatter {
-        if !fm.extra.is_empty() {
-            // Render variable placeholders in frontmatter values
-            let rendered_fm = render_frontmatter_values(&fm.extra, ctx)?;
-            // Serialize as YAML frontmatter
-            let yaml = serde_yaml::to_string(&rendered_fm).unwrap_or_default();
-            return Ok(format!("---\n{}---\n\n{}", yaml, rendered_body));
+    // Check if template has frontmatter to include in output.
+    // We render from the RAW frontmatter text to avoid YAML parsing issues
+    // with template variables like {{title}} being interpreted as YAML mappings.
+    if template.frontmatter.is_some()
+        && let Some(raw_fm) = extract_raw_frontmatter(&template.content)
+    {
+        // Filter out template-specific fields (output, lua, vars)
+        let filtered_fm = filter_template_fields(&raw_fm);
+        if !filtered_fm.trim().is_empty() {
+            // Render variables in the filtered frontmatter text
+            let rendered_fm = render_string(&filtered_fm, ctx)?;
+            return Ok(format!("---\n{}---\n\n{}", rendered_fm, rendered_body));
         }
     }
 
     Ok(rendered_body)
 }
 
-/// Render variable placeholders in frontmatter values.
-fn render_frontmatter_values(
-    fields: &HashMap<String, Value>,
-    ctx: &RenderContext,
-) -> Result<HashMap<String, Value>, TemplateRenderError> {
-    let mut rendered = HashMap::new();
-    for (key, value) in fields {
-        let rendered_value = render_yaml_value(value, ctx)?;
-        rendered.insert(key.clone(), rendered_value);
+/// Extract raw frontmatter text from content (without the --- delimiters).
+fn extract_raw_frontmatter(content: &str) -> Option<String> {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return None;
     }
-    Ok(rendered)
+
+    let after_first = &trimmed[3..];
+    let after_newline = after_first
+        .strip_prefix('\n')
+        .or_else(|| after_first.strip_prefix("\r\n"))
+        .unwrap_or(after_first);
+
+    // Find closing ---
+    for (i, line) in after_newline.lines().enumerate() {
+        if line.trim() == "---" {
+            let pos: usize = after_newline.lines().take(i).map(|l| l.len() + 1).sum();
+            return Some(after_newline[..pos].to_string());
+        }
+    }
+    None
 }
 
-/// Recursively render variable placeholders in a YAML value.
-fn render_yaml_value(
-    value: &Value,
-    ctx: &RenderContext,
-) -> Result<Value, TemplateRenderError> {
-    match value {
-        Value::String(s) => {
-            let rendered = render_string(s, ctx)?;
-            Ok(Value::String(rendered))
+/// Filter out template-specific fields (output, lua, vars) from raw frontmatter.
+/// These fields are used by the template system and should not appear in output.
+fn filter_template_fields(raw_fm: &str) -> String {
+    let template_fields = ["output:", "lua:", "vars:"];
+    let mut result = Vec::new();
+    let mut skip_until_next_field = false;
+
+    for line in raw_fm.lines() {
+        // Check if this line starts a template-specific field
+        let trimmed = line.trim_start();
+        let starts_field = template_fields.iter().any(|f| trimmed.starts_with(f));
+
+        if starts_field {
+            // Start skipping this field and any continuation lines
+            skip_until_next_field = true;
+            continue;
         }
-        Value::Sequence(seq) => {
-            let rendered: Result<Vec<Value>, _> =
-                seq.iter().map(|v| render_yaml_value(v, ctx)).collect();
-            Ok(Value::Sequence(rendered?))
-        }
-        Value::Mapping(map) => {
-            let mut rendered_map = serde_yaml::Mapping::new();
-            for (k, v) in map {
-                let rendered_v = render_yaml_value(v, ctx)?;
-                rendered_map.insert(k.clone(), rendered_v);
+
+        // Check if this is a continuation line (indented) or a new field
+        if skip_until_next_field {
+            // If line is indented (starts with whitespace) or empty, it's a continuation
+            if line.starts_with(' ') || line.starts_with('\t') || line.trim().is_empty() {
+                continue;
             }
-            Ok(Value::Mapping(rendered_map))
+            // New top-level field, stop skipping
+            skip_until_next_field = false;
         }
-        // Other types (numbers, bools, null) pass through unchanged
-        _ => Ok(value.clone()),
+
+        result.push(line);
     }
+
+    let mut filtered = result.join("\n");
+    // Ensure trailing newline if original had one
+    if raw_fm.ends_with('\n') && !filtered.ends_with('\n') {
+        filtered.push('\n');
+    }
+    filtered
 }
 
 /// Render a string template with variable substitution.
@@ -173,12 +197,18 @@ pub fn render_string(
             if let Some(value) = ctx.get(var_name) {
                 return apply_filter(value, filter);
             }
+            debug!("Template variable not found for filter: {}", var_name);
             // Variable not found, return original
             return caps[0].to_string();
         }
 
         // Otherwise, try simple variable lookup
-        ctx.get(expr).cloned().unwrap_or_else(|| caps[0].to_string())
+        if let Some(val) = ctx.get(expr) {
+            val.clone()
+        } else {
+            debug!("Template variable not found: {}", expr);
+            caps[0].to_string()
+        }
     });
 
     Ok(result.into_owned())

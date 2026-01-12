@@ -4,8 +4,6 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use std::collections::HashMap;
 
-use crate::vars::VarsMap;
-
 /// Represents parsed YAML frontmatter from a markdown document.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Frontmatter {
@@ -26,12 +24,13 @@ pub struct ParsedDocument {
 /// Template-specific frontmatter fields.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct TemplateFrontmatter {
-    /// Output path template (supports {{var}} placeholders).
-    pub output: Option<String>,
+    /// Path to Lua script that defines this template's behavior.
+    /// When present, schema, prompts, output path, and hooks come from Lua.
+    pub lua: Option<String>,
 
-    /// Variable specifications with prompts and defaults.
-    #[serde(default)]
-    pub vars: Option<VarsMap>,
+    /// Output path template (supports {{var}} placeholders).
+    /// DEPRECATED: Use Lua script's `output` field instead.
+    pub output: Option<String>,
 
     /// Other fields are passed through to output.
     #[serde(flatten)]

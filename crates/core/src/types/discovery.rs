@@ -10,6 +10,7 @@ use super::definition::{TypeDefinition, TypedefInfo};
 use super::errors::TypedefError;
 use super::schema::{FieldSchema, FieldType};
 use crate::scripting::LuaEngine;
+use crate::vars::{VarMetadata, VarSpec, VarsMap};
 
 /// Built-in type names that can be overridden by Lua definitions.
 const BUILTIN_TYPES: &[&str] = &["daily", "weekly", "task", "project", "zettel"];
@@ -147,8 +148,14 @@ fn parse_typedef(
     // Extract optional description
     let description: Option<String> = table.get("description").ok();
 
+    // Extract output path template
+    let output: Option<String> = table.get("output").ok();
+
     // Extract schema
     let schema = extract_schema(&table, path)?;
+
+    // Extract variables (for template body substitution)
+    let variables = extract_variables(&table, path)?;
 
     // Check for hook functions
     let has_validate_fn = table.get::<mlua::Function>("validate").is_ok();
@@ -163,6 +170,8 @@ fn parse_typedef(
         description,
         source_path: path.to_path_buf(),
         schema,
+        output,
+        variables,
         has_validate_fn,
         has_on_create_hook,
         has_on_update_hook,
@@ -194,6 +203,62 @@ fn extract_schema(
     }
 
     Ok(schema)
+}
+
+/// Extract variables from Lua table.
+///
+/// Variables support two formats in Lua:
+/// - Simple: `foo = "bar"` (direct value assignment)
+/// - Full: `foo = { default = "bar", prompt = "Enter foo" }` (with metadata)
+fn extract_variables(table: &mlua::Table, path: &Path) -> Result<VarsMap, TypedefError> {
+    let mut variables = VarsMap::new();
+
+    let vars_table: mlua::Table = match table.get("variables") {
+        Ok(t) => t,
+        Err(_) => return Ok(variables), // No variables defined is valid
+    };
+
+    for pair in vars_table.pairs::<String, mlua::Value>() {
+        let (var_name, var_value) = pair.map_err(|e| TypedefError::LuaParse {
+            path: path.to_path_buf(),
+            source: crate::scripting::ScriptingError::Lua(e),
+        })?;
+
+        let var_spec = match var_value {
+            // Simple form: variable = "value"
+            mlua::Value::String(s) => {
+                let value = s.to_str().map_err(|e| TypedefError::LuaParse {
+                    path: path.to_path_buf(),
+                    source: crate::scripting::ScriptingError::Lua(e),
+                })?;
+                // A simple string is treated as either a prompt or a default value
+                // If it looks like a prompt (ends with ?), treat it as a prompt
+                // Otherwise, treat it as a default value
+                if value.ends_with('?') {
+                    VarSpec::Simple(value.to_string())
+                } else {
+                    VarSpec::Full(VarMetadata {
+                        default: Some(value.to_string()),
+                        ..Default::default()
+                    })
+                }
+            }
+            // Full form: variable = { default = "value", prompt = "Enter value" }
+            mlua::Value::Table(t) => {
+                let default: Option<String> = t.get("default").ok();
+                let prompt: Option<String> = t.get("prompt").ok();
+                let required: Option<bool> = t.get("required").ok();
+                let description: Option<String> = t.get("description").ok();
+
+                VarSpec::Full(VarMetadata { prompt, description, required, default })
+            }
+            _ => continue, // Skip invalid values
+        };
+
+        variables.insert(var_name, var_spec);
+    }
+
+    Ok(variables)
 }
 
 /// Parse a field schema from a Lua table.
@@ -249,6 +314,18 @@ fn parse_field_schema(
     // Get reference constraint
     let note_type: Option<String> = table.get("note_type").ok();
 
+    // Get prompt text for interactive input
+    let prompt: Option<String> = table.get("prompt").ok();
+
+    // Get core flag (whether this is a Rust-managed field)
+    let core: bool = table.get("core").unwrap_or(false);
+
+    // Get multiline flag for string fields
+    let multiline: bool = table.get("multiline").unwrap_or(false);
+
+    // Get inherited flag (field value will be set by on_create hook)
+    let inherited: bool = table.get("inherited").unwrap_or(false);
+
     Ok(FieldSchema {
         field_type,
         required,
@@ -265,13 +342,18 @@ fn parse_field_schema(
         min_items,
         max_items,
         note_type,
+        prompt,
+        core,
+        multiline,
+        inherited,
     })
 }
 
 /// Convert a Lua value to a serde_yaml::Value.
+/// Returns None for Nil (missing values in Lua).
 fn lua_to_yaml_value(value: &mlua::Value) -> Option<serde_yaml::Value> {
     match value {
-        mlua::Value::Nil => Some(serde_yaml::Value::Null),
+        mlua::Value::Nil => None, // Nil means "no value" in Lua
         mlua::Value::Boolean(b) => Some(serde_yaml::Value::Bool(*b)),
         mlua::Value::Integer(i) => Some(serde_yaml::Value::Number((*i).into())),
         mlua::Value::Number(n) => {

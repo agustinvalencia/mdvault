@@ -1,5 +1,7 @@
 # Lua-First Architecture Plan
 
+> **SUPERSEDED**: This document is superseded by [PLAN-v0.2.0.md](./PLAN-v0.2.0.md) for current development priorities. Phases 1-4 are complete; Phase 5 is deferred. Retained for historical reference and detailed Lua integration documentation.
+
 ## Overview
 
 Consolidate the template/type system into a Lua-first architecture where:
@@ -191,28 +193,32 @@ output: Projects/MCP/Tasks/MCP-042.md
 
 ### 7. Migration Path
 
-#### Phase 1: Add Lua-template linking
-- [ ] Support `lua:` frontmatter field in templates
-- [ ] Load Lua script when processing template
-- [ ] Use Lua schema for prompting (alongside existing vars)
-- [ ] Keep backward compatibility with old templates
+#### Phase 1: Lua-template linking (Completed)
+- [x] Support `lua:` frontmatter field in templates
+- [x] Load Lua script when processing template
+- [x] Use Lua schema for prompting (fields with `prompt` attribute)
+- [x] Use Lua script's `output` path when template doesn't specify one
+- [x] Support filters in output paths (e.g., `{{title | slugify}}`)
+- [x] Remove deprecated `vars:` DSL (breaking change for v0.2.0)
+- [x] Fix title handling in template mode (first positional arg)
+- [x] Fix Lua Nil → None conversion for required field validation
 
-#### Phase 2: Schema-driven prompts
-- [ ] Replace template `vars:` with Lua schema prompts
-- [ ] Add prompt UI based on schema field types
-- [ ] Support enum selectors, multiline input, date pickers
+#### Phase 2: Enhanced prompts (Completed)
+- [x] Add enum selectors (Select widget for enum fields)
+- [x] Support multiline input (Editor widget for multiline fields)
+- [x] Make project-id promptable with computed default
+- [ ] Add date picker UI (deferred - text input with validation works for now)
 
-#### Phase 3: Validation integration
-- [ ] Validate frontmatter against Lua schema before writing
-- [ ] Run Lua `validate()` function
-- [ ] Show clear error messages for validation failures
+#### Phase 3: Validation integration (Completed)
+- [x] Validate frontmatter against Lua schema before writing
+- [x] Run Lua `validate()` function during creation
+- [x] Show clear error messages for validation failures
 
-#### Phase 4: Deprecate old DSL
-- [ ] Warn when using template frontmatter DSL (output, vars)
-- [ ] Migrate built-in templates to Lua-first
-- [ ] Update documentation
+#### Phase 4: Built-in templates (Completed)
+- [x] Migrate built-in task/project templates to Lua-first
+- [x] Add example templates in documentation (lua-scripting.md)
 
-#### Phase 5: Captures and Macros
+#### Phase 5: Captures and Macros (Future)
 - [ ] Consider if captures should also be Lua-based
 - [ ] Evaluate macro system overlap
 
@@ -285,6 +291,24 @@ output: Projects/MCP/Tasks/MCP-042.md
 5. **Extensible**: Users can add custom types easily
 6. **Testable**: Lua scripts can be tested independently
 
+## Architectural Boundary: Rust Core vs Lua Extensions
+
+**See**: [Domain Types Architecture](./ARCHITECTURE-domain-types.md)
+
+The Lua-first migration does **not** mean moving all logic to Lua. First-class types (task, project, daily, weekly) remain Rust-owned for:
+
+- **Stability**: Future features (progress tracking, reporting) need predictable structure
+- **Atomicity**: ID generation, counter management require Rust guarantees
+- **Performance**: Critical paths stay in compiled code
+
+Lua provides the **extension layer**:
+- Schema definitions and prompts
+- Validation hooks
+- Post-creation customization
+- User-defined types
+
+The refactoring of `crates/cli/src/cmd/new.rs` will use trait-based dispatch (`NoteIdentity`, `NoteLifecycle`, `NotePrompts`) rather than moving logic to Lua scripts.
+
 ## Open Questions
 
 1. Should captures become Lua-based too? (Probably yes for consistency)
@@ -292,8 +316,109 @@ output: Projects/MCP/Tasks/MCP-042.md
 3. Should we support inline Lua in templates? (Probably no - keep it simple)
 4. How to version/migrate existing user configs?
 
+## Quick Start: Using Lua-Template Integration
+
+Phase 1 is now implemented! Here's how to use it:
+
+### 1. Create a Lua type definition
+
+**`~/.config/mdvault/types/meeting.lua`**:
+```lua
+return {
+    description = "Meeting notes template",
+
+    schema = {
+        -- Fields with 'prompt' will be asked interactively
+        attendees = {
+            type = "string",
+            prompt = "Who's attending?",
+            required = true,
+        },
+        agenda = {
+            type = "string",
+            prompt = "Meeting agenda?",
+            multiline = true,
+        },
+        priority = {
+            type = "string",
+            enum = { "low", "normal", "high" },
+            default = "normal",
+            prompt = "Priority level?",
+        },
+    },
+
+    -- Output path (template can override this)
+    output = "Meetings/{{title | slugify}}.md",
+}
+```
+
+### 2. Create a template that references it
+
+**`~/.config/mdvault/templates/meeting.md`**:
+```markdown
+---
+lua: meeting.lua
+---
+
+# {{title}}
+
+**Date**: {{today}}
+**Attendees**: {{attendees}}
+**Priority**: {{priority}}
+
+## Agenda
+
+{{agenda}}
+
+## Notes
+
+(Add meeting notes here)
+
+## Action Items
+
+- [ ]
+```
+
+### 3. Use it
+
+```bash
+# Interactive mode - prompts for schema fields with 'prompt' attribute
+mdv new --template meeting "Weekly Standup"
+
+# With vars - skip prompts by providing values
+mdv new --template meeting "Design Review" \
+    --var attendees="Alice, Bob, Carol" \
+    --var agenda="Review Q2 roadmap" \
+    --var priority=high
+
+# Batch mode - uses defaults, fails if required fields missing
+mdv new --template meeting "Quick Sync" --batch \
+    --var attendees="Team"
+```
+
+### How it works
+
+1. Template's `lua:` field points to the Lua script
+2. Rust loads the Lua script and extracts the schema
+3. For each schema field with `prompt` set:
+   - Skip if already provided via `--var`
+   - In batch mode: use default or fail if required
+   - In interactive mode: prompt the user
+4. Variables are passed to template rendering
+5. Output path comes from: CLI `--output` > template frontmatter > Lua `output`
+
+### Breaking Change (v0.2.0)
+
+The deprecated `vars:` DSL in template frontmatter is no longer supported.
+Templates must now use `lua:` to reference a Lua script for prompts and schema.
+
+Templates without `lua:` will only have access to CLI-provided variables (`--var`).
+
 ## Next Steps
 
-1. Review and approve this plan
-2. Start with Phase 1: Lua-template linking
-3. Iterate based on usage feedback
+1. ~~Phase 1: Lua-template linking~~ Complete (v0.2.0)
+2. ~~Phase 2: Enhanced prompts~~ Complete (enum selectors, multiline, project-id prompt)
+3. ~~Phase 3: Validation integration~~ Complete (schema + Lua validate() on create)
+4. ~~Phase 4: Built-in templates~~ Complete (task, project, daily examples in docs)
+5. Phase 5: Captures and Macros (future consideration)
+6. Iterate based on usage feedback

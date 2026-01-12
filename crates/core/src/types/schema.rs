@@ -79,6 +79,27 @@ pub struct FieldSchema {
     #[serde(default)]
     pub default: Option<serde_yaml::Value>,
 
+    /// Prompt text for interactive input.
+    /// If set, user will be prompted for this field during note creation.
+    #[serde(default)]
+    pub prompt: Option<String>,
+
+    /// Whether this is a core field managed by Rust (not user-modifiable).
+    #[serde(default)]
+    pub core: bool,
+
+    /// Whether to allow multiline input for string fields.
+    #[serde(default)]
+    pub multiline: bool,
+
+    /// Whether this field's value will be inherited/set by an on_create hook.
+    /// When true:
+    /// - The field will NOT be prompted for during note creation
+    /// - Validation will skip required checks during creation (pre-hook)
+    /// - The on_create hook is responsible for setting the value
+    #[serde(default)]
+    pub inherited: bool,
+
     // String constraints
     /// Allowed values for enum fields.
     #[serde(default, rename = "enum")]

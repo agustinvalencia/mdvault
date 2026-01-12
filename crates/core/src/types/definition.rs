@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use super::schema::FieldSchema;
+use crate::vars::VarsMap;
 
 /// A loaded type definition from a Lua file.
 #[derive(Debug, Clone)]
@@ -19,6 +20,13 @@ pub struct TypeDefinition {
 
     /// Field schemas for frontmatter validation.
     pub schema: HashMap<String, FieldSchema>,
+
+    /// Output path template (supports {{var}} placeholders).
+    pub output: Option<String>,
+
+    /// Template variables with optional prompts and defaults.
+    /// These are used for template body substitution, not frontmatter fields.
+    pub variables: VarsMap,
 
     /// Whether this type has a custom validate() function.
     pub has_validate_fn: bool,
@@ -44,6 +52,8 @@ impl TypeDefinition {
             description: None,
             source_path: PathBuf::new(),
             schema: HashMap::new(),
+            output: None,
+            variables: VarsMap::new(),
             has_validate_fn: false,
             has_on_create_hook: false,
             has_on_update_hook: false,

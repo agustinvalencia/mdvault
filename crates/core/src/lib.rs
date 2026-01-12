@@ -17,6 +17,7 @@ pub fn doctor_stub() -> String {
 
 pub mod captures;
 pub mod config;
+pub mod domain;
 pub mod frontmatter;
 pub mod ids;
 pub mod index;

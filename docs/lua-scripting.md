@@ -152,15 +152,20 @@ mdv.render("{{text | trim}}", { text = "  hello  " })
 -- "hello"
 ```
 
-Filters are commonly used in template frontmatter for output paths:
+Filters are commonly used in Lua type definitions for output paths:
 
-```yaml
----
-output: "tasks/{{title | slugify}}.md"
-vars:
-  title:
-    prompt: "Task title"
----
+```lua
+-- In types/task.lua
+return {
+    output = "tasks/{{title | slugify}}.md",
+    schema = {
+        title = {
+            type = "string",
+            required = true,
+            prompt = "Task title"
+        }
+    }
+}
 ```
 
 This creates files like `tasks/my-new-task.md` from titles like "My New Task!".
@@ -251,7 +256,29 @@ match engine.eval_string(r#"mdv.date("invalid_expr")"#) {
 
 ## Type Definitions
 
-Type definitions allow you to define custom note types with schema validation and lifecycle hooks. Type definitions are Lua files stored in `~/.config/mdvault/types/`.
+Type definitions allow you to define custom note types with schema validation, interactive prompts, and lifecycle hooks. Type definitions are Lua files stored in `~/.config/mdvault/types/`.
+
+### Lua-Template Integration
+
+Templates can link to Lua type definitions using the `lua:` frontmatter field:
+
+```markdown
+---
+lua: meeting.lua
+---
+
+# {{title}}
+
+**Attendees**: {{attendees}}
+**Priority**: {{priority}}
+```
+
+The `lua:` path is resolved relative to your `types_dir` (e.g., `~/.config/mdvault/types/`). This enables:
+
+1. **Schema-driven prompts**: Fields with `prompt` attribute are asked interactively
+2. **Default values**: Fields with `default` use that value when not provided
+3. **Output paths**: Lua's `output` field is used when template doesn't specify one
+4. **Validation**: Schema and `validate()` function are applied before writing
 
 ### Creating a Type Definition
 
@@ -260,33 +287,48 @@ Create a `.lua` file in `~/.config/mdvault/types/`. The filename becomes the typ
 ```lua
 -- ~/.config/mdvault/types/meeting.lua
 return {
-    name = "meeting",
     description = "Meeting notes with attendees and action items",
+
+    -- Output path template (used when template doesn't specify one)
+    -- Supports filters like {{title | slugify}}
+    output = "Meetings/{{title | slugify}}.md",
+
+    -- Template variables (ephemeral inputs for the template body)
+    -- These are NOT saved to frontmatter unless you explicitly add them
+    variables = {
+        context = {
+            prompt = "Meeting context?",
+            default = "General"
+        }
+    },
 
     -- Schema defines the expected frontmatter fields
     schema = {
         title = {
             type = "string",
-            required = true
+            required = true,
+            core = true  -- Managed by Rust, passed from CLI
         },
         date = {
             type = "date",
-            required = true
+            default = "today"  -- Uses date math expressions
         },
         attendees = {
-            type = "list",
+            type = "string",
             required = true,
-            min_items = 1
+            prompt = "Who's attending?"  -- Prompts user interactively
         },
         status = {
             type = "string",
             enum = { "scheduled", "in-progress", "completed", "cancelled" },
-            default = "scheduled"
+            default = "scheduled",
+            prompt = "Meeting status?"  -- Shows as selector
         },
         duration_minutes = {
             type = "number",
             min = 1,
-            max = 480
+            max = 480,
+            prompt = "Duration in minutes?"
         }
     },
 
@@ -330,10 +372,16 @@ field_name = {
     type = "string",           -- Field type (required)
     required = true,           -- Is the field mandatory?
     description = "...",       -- Human-readable description
-    default = "value",         -- Default value
+    default = "value",         -- Default value when not provided
+
+    -- Interactive prompting (for Lua-template integration)
+    prompt = "Enter value?",   -- If set, prompts user interactively
+    multiline = false,         -- Allow multiline input (for strings)
+    core = false,              -- If true, managed by Rust (not user-editable)
+    inherited = false,         -- If true, value will be set by on_create hook
 
     -- String constraints
-    enum = { "a", "b", "c" },  -- Allowed values
+    enum = { "a", "b", "c" },  -- Allowed values (shown as selector)
     pattern = "^[A-Z]+$",      -- Regex pattern
     min_length = 1,            -- Minimum length
     max_length = 100,          -- Maximum length
@@ -352,6 +400,76 @@ field_name = {
     note_type = "project"      -- Restrict to specific type
 }
 ```
+
+### Inherited Fields
+
+Fields marked with `inherited = true` indicate that their value will be set by the `on_create` hook rather than being prompted or required upfront. This is useful for fields that should be derived from other data (like a parent note):
+
+```lua
+schema = {
+    context = {
+        type = "string",
+        required = true,
+        enum = { "work", "personal", "uni" },
+        inherited = true  -- Value will be set by on_create hook
+    }
+}
+```
+
+When a field has `inherited = true`:
+1. **No prompting**: The user is not prompted for this field during note creation
+2. **Validation skipped**: Required-field validation is skipped before hooks run
+3. **Hook responsibility**: The `on_create` hook must set the value
+
+Example: A task inherits its `context` from its parent project:
+
+```lua
+on_create = function(note)
+    local project_id = note.variables["project-id"]
+    if project_id then
+        local project = mdv.find_project(project_id)
+        if project and project.frontmatter then
+            if not note.frontmatter.context and project.frontmatter.context then
+                note.frontmatter.context = project.frontmatter.context
+            end
+        end
+    end
+    return note
+end
+```
+
+> **Important**: Use `note.variables` (not `note.frontmatter`) to access template variables like `project-id` in hooks.
+
+### Template Variables
+
+The `variables` block defines ephemeral inputs that are used for template rendering but are **not** automatically added to the note's frontmatter (unlike `schema` fields). This is useful for helper variables or context that you don't want to persist.
+
+```lua
+variables = {
+    context = {
+        prompt = "What is the context?",  -- Prompts user interactively
+        default = "General",              -- Default value
+        required = true,                  -- Must provide value
+        description = "Context for the note"
+    },
+    -- Simple form (string is treated as prompt if it ends with ?, or default otherwise)
+    mood = "How are you feeling?",
+    tags = "default,tags"
+}
+```
+
+Values collected from `variables` are available in the template as `{{context}}`, `{{mood}}`, etc., and are passed to lifecycle hooks in `note.variables`.
+
+#### Interactive Prompt Behavior
+
+When a template with `lua:` is used:
+
+| Field Config | Interactive Mode | Batch Mode (`--batch`) |
+|-------------|------------------|------------------------|
+| `prompt` set, no `--var` | Prompts user | Uses `default` or fails if `required` |
+| `prompt` set, `--var` provided | Uses `--var` value | Uses `--var` value |
+| No `prompt`, has `default` | Uses default silently | Uses default |
+| No `prompt`, no `default`, `required` | Error | Error |
 
 ### Custom Validation Function
 
@@ -734,6 +852,41 @@ mdv new task "Implement feature" --var project=projects/api-redesign
 
 The task will automatically inherit the `context` field from `projects/api-redesign.md` if that project has one defined.
 
+### Dynamic Variables in Hooks
+
+The `on_create` hook can access and modify template variables via `note.variables`. This allows you to compute variables dynamically in Lua and have them injected into the template rendering context.
+
+**Template (`templates/report.md`):**
+```markdown
+---
+type: report
+lua: report.lua
+---
+# Weekly Report
+
+**Week**: {{week_number}}
+**Generated**: {{generated_at}}
+
+{{content}}
+```
+
+**Type Definition (`types/report.lua`):**
+```lua
+return {
+    on_create = function(note)
+        note.variables = note.variables or {}
+        
+        -- Compute dynamic variables
+        note.variables.week_number = mdv.date("week", "%Y-W%V")
+        note.variables.generated_at = mdv.date("now", "%Y-%m-%d %H:%M")
+        
+        return note
+    end
+}
+```
+
+When you create a note with `mdv new --template report`, the hook calculates `week_number` and `generated_at`, and the template is rendered with these values.
+
 ## Index Query Functions
 
 These functions require the vault index (run `mdv reindex` first):
@@ -750,6 +903,9 @@ local outlinks = mdv.outlinks(note.path)
 
 -- Query the vault index
 local tasks = mdv.query({ type = "task", limit = 10 })
+
+-- Find a project by its project-id
+local project = mdv.find_project("MCP")
 ```
 
 > **Note**: These functions require running `mdv reindex` first to build the vault index.
@@ -855,4 +1011,288 @@ impl SandboxConfig {
     pub fn restricted() -> Self;   // Safe defaults
     pub fn unrestricted() -> Self; // No limits (dangerous!)
 }
+```
+
+## Built-in Type Examples
+
+These examples show how to create Lua-first type definitions for the built-in types (task, project). Place these files in your `types_dir` (default: `~/.config/mdvault/types/`).
+
+### Task Type Definition
+
+**`types/task.lua`**:
+```lua
+return {
+    name = "task",
+    description = "Actionable task with project association",
+
+    -- Output path template
+    output = "Projects/{{project}}/Tasks/{{title | slugify}}.md",
+
+    -- Schema defines all fields
+    schema = {
+        -- Core fields (managed by Rust)
+        ["type"] = { type = "string", core = true },
+        ["title"] = { type = "string", core = true, required = true },
+        ["task-id"] = { type = "string", core = true },
+        ["project"] = { type = "string", core = true },
+
+        -- User fields
+        ["status"] = {
+            type = "string",
+            enum = { "todo", "in-progress", "blocked", "done" },
+            default = "todo",
+            prompt = "Status?",
+        },
+        ["priority"] = {
+            type = "string",
+            enum = { "low", "medium", "high" },
+            default = "medium",
+            prompt = "Priority?",
+        },
+        ["due"] = {
+            type = "date",
+            required = false,
+            prompt = "Due date (optional)?",
+        },
+        ["tags"] = {
+            type = "list",
+            required = false,
+        },
+    },
+
+    -- Custom validation
+    validate = function(note)
+        local fm = note.frontmatter
+
+        -- Completed tasks should have completed_at
+        if fm.status == "done" and not fm.completed_at then
+            -- This is a warning, not a hard failure
+            -- The on_create hook will set completed_at
+        end
+
+        return true
+    end,
+
+    -- Lifecycle hook: called when task is created
+    on_create = function(note)
+        local fm = note.frontmatter
+
+        -- Auto-set completed_at when status is done
+        if fm.status == "done" and not fm.completed_at then
+            fm.completed_at = mdv.date("now", "%Y-%m-%dT%H:%M:%S")
+        end
+
+        -- Ensure created timestamp exists
+        if not fm.created then
+            fm.created = mdv.date("today")
+        end
+
+        note.frontmatter = fm
+        return note
+    end,
+}
+```
+
+**`templates/task.md`**:
+```markdown
+---
+lua: task.lua
+---
+
+# {{title}}
+
+**Status**: {{status}}
+**Priority**: {{priority}}
+{{#if due}}**Due**: {{due}}{{/if}}
+
+## Description
+
+{{description}}
+
+## Checklist
+
+- [ ]
+
+## Notes
+
+```
+
+### Project Type Definition
+
+**`types/project.lua`**:
+```lua
+return {
+    name = "project",
+    description = "Project with associated tasks",
+
+    -- Output path template
+    output = "Projects/{{project-id}}/{{project-id}}.md",
+
+    schema = {
+        -- Core fields
+        ["type"] = { type = "string", core = true },
+        ["title"] = { type = "string", core = true, required = true },
+        ["project-id"] = {
+            type = "string",
+            core = true,
+            prompt = "Project ID (3-letter code)?",
+        },
+        ["task_counter"] = { type = "number", core = true, default = 0 },
+
+        -- User fields
+        ["status"] = {
+            type = "string",
+            enum = { "planning", "active", "on-hold", "completed", "archived" },
+            default = "active",
+            prompt = "Project status?",
+        },
+        ["description"] = {
+            type = "string",
+            prompt = "Project description?",
+            multiline = true,
+        },
+        ["start_date"] = {
+            type = "date",
+            default = "today",
+        },
+        ["target_date"] = {
+            type = "date",
+            required = false,
+            prompt = "Target completion date (optional)?",
+        },
+        ["tags"] = {
+            type = "list",
+            required = false,
+        },
+    },
+
+    validate = function(note)
+        local fm = note.frontmatter
+
+        -- Project ID should be uppercase letters
+        if fm["project-id"] then
+            local id = fm["project-id"]
+            if not id:match("^%u+$") then
+                return false, "project-id must be uppercase letters only"
+            end
+        end
+
+        return true
+    end,
+
+    on_create = function(note)
+        local fm = note.frontmatter
+
+        -- Ensure project-id is uppercase
+        if fm["project-id"] then
+            fm["project-id"] = string.upper(fm["project-id"])
+        end
+
+        -- Set created timestamp
+        if not fm.created then
+            fm.created = mdv.date("today")
+        end
+
+        note.frontmatter = fm
+        return note
+    end,
+}
+```
+
+**`templates/project.md`**:
+```markdown
+---
+lua: project.lua
+---
+
+# {{title}}
+
+**ID**: {{project-id}}
+**Status**: {{status}}
+**Started**: {{start_date}}
+{{#if target_date}}**Target**: {{target_date}}{{/if}}
+
+## Overview
+
+{{description}}
+
+## Tasks
+
+<!-- Tasks will be linked here -->
+
+## Notes
+
+```
+
+### Daily Note Type Definition
+
+**`types/daily.lua`**:
+```lua
+return {
+    name = "daily",
+    description = "Daily journal entry",
+
+    output = "Journal/Daily/{{today}}.md",
+
+    schema = {
+        ["type"] = { type = "string", core = true },
+        ["date"] = { type = "date", core = true },
+        ["mood"] = {
+            type = "string",
+            enum = { "great", "good", "okay", "rough" },
+            required = false,
+            prompt = "How are you feeling?",
+        },
+    },
+
+    on_create = function(note)
+        -- Set date to today
+        note.frontmatter.date = mdv.date("today")
+
+        -- Add dynamic variables for template
+        note.variables = note.variables or {}
+        note.variables.day_name = mdv.date("today", "%A")
+        note.variables.week_number = mdv.date("week", "%V")
+
+        return note
+    end,
+}
+```
+
+**`templates/daily.md`**:
+```markdown
+---
+lua: daily.lua
+---
+
+# {{day_name}}, {{today}}
+
+Week {{week_number}}
+
+## Morning
+
+- [ ]
+
+## Tasks
+
+## Notes
+
+## Evening Reflection
+
+```
+
+### Using the Built-in Types
+
+```bash
+# Create a new project (prompts for ID and status)
+mdv new project "My New Project"
+
+# Create a task in a project
+mdv new task "Implement feature X" --var project=MNP
+
+# Create today's daily note
+mdv new --template daily
+
+# Batch mode (uses defaults, no prompts)
+mdv new project "Quick Project" --batch --var project-id=QKP
 ```
