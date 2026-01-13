@@ -556,25 +556,20 @@ See [PLAN-captures-lua.md](./PLAN-captures-lua.md) and [PLAN-macros-lua.md](./PL
 
 ---
 
-## Future Work (Post v0.2.0)
+## Future Work
 
-These are deferred to future versions:
+### v0.2.x Features (see [PLAN-v0.2.x-features.md](./PLAN-v0.2.x-features.md))
 
-### New First-Class Types
+- **v0.2.1**: Lua-based captures and macros (current branch)
+- **v0.2.2**: Progress tracking (`mdv project progress`)
+- **v0.2.3**: Monthly/weekly reporting (`mdv report`)
+- **v0.2.4**: Daily planning helpers (`mdv today`, `mdv plan`, `mdv review`)
 
-With the trait architecture, adding new types is straightforward:
+### v0.3.0+ (Deferred)
 
-1. Create `domain/meeting.rs` implementing traits
-2. Add `NoteType::Meeting` variant
-3. Update `from_name()` match
-
-### Advanced Features
-
-- Progress tracking for tasks/projects
-- Monthly reporting
-- Activity analytics
+- Remove YAML support for captures/macros
+- New first-class note types (e.g., `meeting`)
 - Lifecycle hooks for captures (`before_insert`, `after_insert`)
-- Remove YAML support for captures/macros (v0.3.0)
 
 ---
 
