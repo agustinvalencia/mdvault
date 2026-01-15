@@ -16,7 +16,7 @@ name = "mdvault_core"
 path = "src/lib.rs"
 
 [dependencies]
-chrono = { version = "0.4.42", features = ["clock", "serde"] }
+chrono = { version = "0.4.43", features = ["clock", "serde"] }
 comrak = "0.35"
 dirs = "6.0.0"
 mlua = { version = "0.10", features = ["lua54", "vendored", "serialize"] }
@@ -27,11 +27,11 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 shellexpand = "3.1.1"
 thiserror = "2.0.17"
-toml = "0.9.8"
+toml = "0.9.11"
 tracing = "0.1"
 walkdir = "2.5.0"
 
 [dev-dependencies]
-insta = "1.43"
+insta = "1.46"
 rstest = "0.26.1"
-tempfile = "3.23.0"
+tempfile = "3.24.0"
