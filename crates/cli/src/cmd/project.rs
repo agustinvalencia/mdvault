@@ -345,14 +345,13 @@ fn get_completed_at(task: &IndexedNote) -> Option<DateTime<Utc>> {
     let date_str = fm.get("completed_at")?.as_str()?;
 
     // Try parsing as RFC3339 first, then as date
-    DateTime::parse_from_rfc3339(date_str)
-        .map(|dt| dt.with_timezone(&Utc))
-        .ok()
-        .or_else(|| {
+    DateTime::parse_from_rfc3339(date_str).map(|dt| dt.with_timezone(&Utc)).ok().or_else(
+        || {
             NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
                 .ok()
                 .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc())
-        })
+        },
+    )
 }
 
 /// Row for progress table.
@@ -504,7 +503,10 @@ pub fn progress(
 }
 
 /// Calculate progress data for a single project.
-fn calculate_project_progress(project: &IndexedNote, all_tasks: &[IndexedNote]) -> ProjectProgress {
+fn calculate_project_progress(
+    project: &IndexedNote,
+    all_tasks: &[IndexedNote],
+) -> ProjectProgress {
     let project_folder = project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     let (project_id, project_status) = extract_project_info(project);
     let project_title = if project.title.is_empty() {
@@ -541,11 +543,8 @@ fn calculate_project_progress(project: &IndexedNote, all_tasks: &[IndexedNote]) 
     }
 
     let total = project_tasks.len();
-    let progress_percent = if total > 0 {
-        (done as f64 / total as f64) * 100.0
-    } else {
-        0.0
-    };
+    let progress_percent =
+        if total > 0 { (done as f64 / total as f64) * 100.0 } else { 0.0 };
 
     // Recent completions (last 7 days)
     let now = Utc::now();
@@ -584,11 +583,7 @@ fn calculate_project_progress(project: &IndexedNote, all_tasks: &[IndexedNote]) 
     let four_weeks_ago = now - Duration::weeks(4);
     let completed_in_4_weeks: usize = project_tasks
         .iter()
-        .filter(|t| {
-            get_completed_at(t)
-                .map(|ca| ca >= four_weeks_ago)
-                .unwrap_or(false)
-        })
+        .filter(|t| get_completed_at(t).map(|ca| ca >= four_weeks_ago).unwrap_or(false))
         .count();
     let velocity = completed_in_4_weeks as f64 / 4.0;
 
