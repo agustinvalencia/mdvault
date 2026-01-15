@@ -41,19 +41,19 @@ impl NoteIdentity for ProjectBehavior {
     }
 
     fn output_path(&self, ctx: &CreationContext) -> DomainResult<PathBuf> {
+        // Check Lua typedef for output template first
+        if let Some(ref td) = self.typedef
+            && let Some(ref output) = td.output
+        {
+            return super::render_output_template(output, ctx);
+        }
+
+        // Default: Projects/{id}/{id}.md
         let project_id =
             ctx.core_metadata.project_id.as_ref().ok_or_else(|| {
                 DomainError::PathResolution("project-id not set".into())
             })?;
 
-        // Check Lua typedef for output template first
-        if let Some(ref td) = self.typedef
-            && let Some(ref _output) = td.output
-        {
-            // TODO: render_output_path(output, ctx)
-        }
-
-        // Default: Projects/{id}/{id}.md
         Ok(ctx
             .config
             .vault_root

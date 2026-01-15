@@ -37,20 +37,20 @@ impl NoteIdentity for DailyBehavior {
     }
 
     fn output_path(&self, ctx: &CreationContext) -> DomainResult<PathBuf> {
+        // Check Lua typedef for output template first
+        if let Some(ref td) = self.typedef
+            && let Some(ref output) = td.output
+        {
+            return super::render_output_template(output, ctx);
+        }
+
+        // Default: Journal/Daily/YYYY-MM-DD.md
         let date = ctx
             .core_metadata
             .date
             .as_ref()
             .ok_or_else(|| DomainError::PathResolution("date not set".into()))?;
 
-        // Check Lua typedef for output template
-        if let Some(ref td) = self.typedef
-            && let Some(ref _output) = td.output
-        {
-            // TODO: render_output_path(output, ctx)
-        }
-
-        // Default: Journal/Daily/YYYY-MM-DD.md
         Ok(ctx.config.vault_root.join(format!("Journal/Daily/{}.md", date)))
     }
 

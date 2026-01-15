@@ -39,6 +39,14 @@ impl NoteIdentity for TaskBehavior {
     }
 
     fn output_path(&self, ctx: &CreationContext) -> DomainResult<PathBuf> {
+        // Check Lua typedef for output template first
+        if let Some(ref td) = self.typedef
+            && let Some(ref output) = td.output
+        {
+            return super::render_output_template(output, ctx);
+        }
+
+        // Default path
         let task_id = ctx
             .core_metadata
             .task_id
@@ -47,14 +55,6 @@ impl NoteIdentity for TaskBehavior {
 
         let project = ctx.get_var("project").unwrap_or("inbox");
 
-        // Check Lua typedef for output template first
-        if let Some(ref td) = self.typedef
-            && let Some(ref _output) = td.output
-        {
-            // TODO: render_output_path(output, ctx)
-        }
-
-        // Default path
         if project == "inbox" {
             Ok(ctx.config.vault_root.join(format!("Inbox/{}.md", task_id)))
         } else {
