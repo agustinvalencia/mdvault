@@ -1,7 +1,9 @@
 //! Project management commands.
 
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery, NoteType};
+use serde::Serialize;
 use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
 
@@ -334,4 +336,329 @@ fn get_task_id(task: &IndexedNote) -> Option<String> {
         .as_ref()
         .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok())
         .and_then(|fm| fm.get("task-id").and_then(|v| v.as_str()).map(String::from))
+}
+
+/// Get completed_at timestamp from task frontmatter.
+fn get_completed_at(task: &IndexedNote) -> Option<DateTime<Utc>> {
+    let fm_json = task.frontmatter_json.as_ref()?;
+    let fm: serde_json::Value = serde_json::from_str(fm_json).ok()?;
+    let date_str = fm.get("completed_at")?.as_str()?;
+
+    // Try parsing as RFC3339 first, then as date
+    DateTime::parse_from_rfc3339(date_str).map(|dt| dt.with_timezone(&Utc)).ok().or_else(
+        || {
+            NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+                .ok()
+                .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc())
+        },
+    )
+}
+
+/// Row for progress table.
+#[derive(Tabled)]
+struct ProgressRow {
+    #[tabled(rename = "ID")]
+    id: String,
+    #[tabled(rename = "Title")]
+    title: String,
+    #[tabled(rename = "Progress")]
+    progress: String,
+    #[tabled(rename = "Bar")]
+    bar: String,
+}
+
+/// Progress data for JSON output.
+#[derive(Serialize)]
+struct ProjectProgress {
+    id: String,
+    title: String,
+    status: String,
+    tasks: TaskCounts,
+    progress_percent: f64,
+    recent_completions: Vec<RecentCompletion>,
+    velocity: f64,
+}
+
+#[derive(Serialize)]
+struct TaskCounts {
+    total: usize,
+    done: usize,
+    in_progress: usize,
+    todo: usize,
+    blocked: usize,
+}
+
+#[derive(Serialize)]
+struct RecentCompletion {
+    id: String,
+    title: String,
+    completed_at: String,
+    days_ago: i64,
+}
+
+/// Generate a progress bar string.
+fn progress_bar(percent: f64, width: usize) -> String {
+    let filled = ((percent / 100.0) * width as f64).round() as usize;
+    let empty = width.saturating_sub(filled);
+    format!("{}{}", "█".repeat(filled), "░".repeat(empty))
+}
+
+/// Show project progress with completion metrics and velocity.
+pub fn progress(
+    config: Option<&Path>,
+    profile: Option<&str>,
+    project_name: Option<&str>,
+    json_output: bool,
+    include_archived: bool,
+) {
+    let cfg = match ConfigLoader::load(config, profile) {
+        Ok(rc) => rc,
+        Err(e) => {
+            eprintln!("Failed to load config: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let db = match IndexDb::open(&index_path) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("Failed to open index: {e}");
+            eprintln!("Run 'mdv reindex' first.");
+            std::process::exit(1);
+        }
+    };
+
+    // Query all projects
+    let project_query =
+        NoteQuery { note_type: Some(NoteType::Project), ..Default::default() };
+    let projects = match db.query_notes(&project_query) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to query projects: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    if projects.is_empty() {
+        println!("No projects found.");
+        println!("Create one with: mdv new project");
+        return;
+    }
+
+    // Query all tasks
+    let task_query = NoteQuery { note_type: Some(NoteType::Task), ..Default::default() };
+    let all_tasks = db.query_notes(&task_query).unwrap_or_default();
+
+    // If specific project requested, show detailed view
+    if let Some(name) = project_name {
+        let project = projects.iter().find(|p| {
+            let folder = p.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            let (id, _) = extract_project_info(p);
+            folder.eq_ignore_ascii_case(name) || id.eq_ignore_ascii_case(name)
+        });
+
+        let project = match project {
+            Some(p) => p,
+            None => {
+                eprintln!("Project not found: {}", name);
+                eprintln!("Run 'mdv project list' to see available projects.");
+                std::process::exit(1);
+            }
+        };
+
+        let progress_data = calculate_project_progress(project, &all_tasks);
+
+        if json_output {
+            println!("{}", serde_json::to_string_pretty(&progress_data).unwrap());
+        } else {
+            print_single_project_progress(&progress_data);
+        }
+    } else {
+        // Show all projects in table format
+        let mut progress_list: Vec<ProjectProgress> = Vec::new();
+
+        for project in &projects {
+            let (_, project_status) = extract_project_info(project);
+
+            // Filter archived unless requested
+            if !include_archived && project_status == "archived" {
+                continue;
+            }
+
+            progress_list.push(calculate_project_progress(project, &all_tasks));
+        }
+
+        if progress_list.is_empty() {
+            println!("No projects match the filter.");
+            return;
+        }
+
+        if json_output {
+            println!("{}", serde_json::to_string_pretty(&progress_list).unwrap());
+        } else {
+            print_all_projects_progress(&progress_list);
+        }
+    }
+}
+
+/// Calculate progress data for a single project.
+fn calculate_project_progress(
+    project: &IndexedNote,
+    all_tasks: &[IndexedNote],
+) -> ProjectProgress {
+    let project_folder = project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let (project_id, project_status) = extract_project_info(project);
+    let project_title = if project.title.is_empty() {
+        project_folder.to_string()
+    } else {
+        project.title.clone()
+    };
+
+    // Filter tasks for this project
+    let project_tasks: Vec<&IndexedNote> = all_tasks
+        .iter()
+        .filter(|t| {
+            let path_str = t.path.to_string_lossy();
+            path_str.contains(&format!("Projects/{}/", project_folder))
+                || path_str.contains(&format!("projects/{}/", project_folder))
+        })
+        .collect();
+
+    // Count by status
+    let mut todo = 0;
+    let mut in_progress = 0;
+    let mut blocked = 0;
+    let mut done = 0;
+
+    for task in &project_tasks {
+        let status = get_task_status(task).unwrap_or_else(|| "todo".to_string());
+        match status.as_str() {
+            "todo" | "open" => todo += 1,
+            "in-progress" | "in_progress" | "doing" => in_progress += 1,
+            "blocked" | "waiting" => blocked += 1,
+            "done" | "completed" => done += 1,
+            _ => todo += 1,
+        }
+    }
+
+    let total = project_tasks.len();
+    let progress_percent =
+        if total > 0 { (done as f64 / total as f64) * 100.0 } else { 0.0 };
+
+    // Recent completions (last 7 days)
+    let now = Utc::now();
+    let seven_days_ago = now - Duration::days(7);
+    let mut recent_completions: Vec<RecentCompletion> = Vec::new();
+
+    for task in &project_tasks {
+        if let Some(completed_at) = get_completed_at(task) {
+            if completed_at >= seven_days_ago {
+                let days_ago = (now - completed_at).num_days();
+                let task_id = get_task_id(task).unwrap_or_else(|| "-".to_string());
+                let title = if task.title.is_empty() {
+                    task.path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("Untitled")
+                        .to_string()
+                } else {
+                    task.title.clone()
+                };
+
+                recent_completions.push(RecentCompletion {
+                    id: task_id,
+                    title,
+                    completed_at: completed_at.format("%Y-%m-%d").to_string(),
+                    days_ago,
+                });
+            }
+        }
+    }
+
+    // Sort by most recent first
+    recent_completions.sort_by(|a, b| a.days_ago.cmp(&b.days_ago));
+
+    // Calculate velocity (tasks per week over last 4 weeks)
+    let four_weeks_ago = now - Duration::weeks(4);
+    let completed_in_4_weeks: usize = project_tasks
+        .iter()
+        .filter(|t| get_completed_at(t).map(|ca| ca >= four_weeks_ago).unwrap_or(false))
+        .count();
+    let velocity = completed_in_4_weeks as f64 / 4.0;
+
+    ProjectProgress {
+        id: project_id,
+        title: project_title,
+        status: project_status,
+        tasks: TaskCounts { total, done, in_progress, todo, blocked },
+        progress_percent,
+        recent_completions,
+        velocity,
+    }
+}
+
+/// Print detailed progress for a single project.
+fn print_single_project_progress(data: &ProjectProgress) {
+    println!("Project: {} [{}]", data.title, data.id);
+    println!();
+
+    // Progress bar
+    let bar = progress_bar(data.progress_percent, 20);
+    println!(
+        "Progress: {} {:.0}% ({}/{} tasks done)",
+        bar, data.progress_percent, data.tasks.done, data.tasks.total
+    );
+    println!();
+
+    // By status
+    println!("By Status:");
+    println!("  ✓ Done:        {}", data.tasks.done);
+    println!("  → In Progress: {}", data.tasks.in_progress);
+    println!("  ○ Todo:        {}", data.tasks.todo);
+    println!("  ⊘ Blocked:     {}", data.tasks.blocked);
+    println!();
+
+    // Recent activity
+    if !data.recent_completions.is_empty() {
+        println!("Recent Activity (7 days):");
+        for completion in &data.recent_completions {
+            let ago_text = if completion.days_ago == 0 {
+                "today".to_string()
+            } else if completion.days_ago == 1 {
+                "yesterday".to_string()
+            } else {
+                format!("{} days ago", completion.days_ago)
+            };
+            println!("  - {} completed ({})", completion.id, ago_text);
+        }
+        println!();
+    }
+
+    // Velocity
+    println!("Velocity: {:.1} tasks/week (last 4 weeks)", data.velocity);
+}
+
+/// Print progress table for all projects.
+fn print_all_projects_progress(data: &[ProjectProgress]) {
+    let rows: Vec<ProgressRow> = data
+        .iter()
+        .map(|p| {
+            let bar = progress_bar(p.progress_percent, 20);
+            ProgressRow {
+                id: p.id.clone(),
+                title: if p.title.len() > 25 {
+                    format!("{}...", &p.title[..22])
+                } else {
+                    p.title.clone()
+                },
+                progress: format!("{:.0}%", p.progress_percent),
+                bar,
+            }
+        })
+        .collect();
+
+    let table = Table::new(&rows).with(Style::rounded()).to_string();
+    println!("{}", table);
+    println!("\nTotal: {} projects", data.len());
 }

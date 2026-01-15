@@ -141,6 +141,9 @@ enum ProjectCommands {
 
     /// Show project status with tasks in kanban-style view
     Status(ProjectStatusArgs),
+
+    /// Show project progress with completion metrics and velocity
+    Progress(ProjectProgressArgs),
 }
 
 #[derive(Debug, Args)]
@@ -177,6 +180,21 @@ pub struct ProjectStatusArgs {
     /// Project ID or folder name (e.g., "MCP" or "my-cool-project")
     #[arg(add = ArgValueCompleter::new(completions::complete_projects))]
     pub project: String,
+}
+
+#[derive(Debug, Args)]
+pub struct ProjectProgressArgs {
+    /// Project ID or folder name (optional - shows all projects if omitted)
+    #[arg(add = ArgValueCompleter::new(completions::complete_projects))]
+    pub project: Option<String>,
+
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+
+    /// Include archived projects
+    #[arg(long)]
+    pub include_archived: bool,
 }
 
 #[derive(Debug, Args)]
@@ -702,6 +720,15 @@ fn main() {
                     cli.config.as_deref(),
                     cli.profile.as_deref(),
                     &args.project,
+                );
+            }
+            ProjectCommands::Progress(args) => {
+                cmd::project::progress(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    args.project.as_deref(),
+                    args.json,
+                    args.include_archived,
                 );
             }
         },
