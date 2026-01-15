@@ -386,6 +386,7 @@ mod tests {
             source_path: PathBuf::new(),
             schema: HashMap::new(),
             output: None,
+            frontmatter_order: None,
             variables: crate::vars::VarsMap::new(),
             has_validate_fn: false,
             has_on_create_hook: true,
@@ -413,6 +414,7 @@ mod tests {
             source_path: PathBuf::new(),
             schema: HashMap::new(),
             output: None,
+            frontmatter_order: None,
             variables: crate::vars::VarsMap::new(),
             has_validate_fn: false,
             has_on_create_hook: false, // No hook

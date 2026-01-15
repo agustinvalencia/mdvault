@@ -151,6 +151,9 @@ fn parse_typedef(
     // Extract output path template
     let output: Option<String> = table.get("output").ok();
 
+    // Extract frontmatter order
+    let frontmatter_order: Option<Vec<String>> = table.get("frontmatter_order").ok();
+
     // Extract schema
     let schema = extract_schema(&table, path)?;
 
@@ -171,6 +174,7 @@ fn parse_typedef(
         source_path: path.to_path_buf(),
         schema,
         output,
+        frontmatter_order,
         variables,
         has_validate_fn,
         has_on_create_hook,

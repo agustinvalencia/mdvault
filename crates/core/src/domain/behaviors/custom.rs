@@ -8,11 +8,14 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use chrono::Local;
+
+use crate::templates::engine::render_string;
 use crate::types::TypeDefinition;
 
 use super::super::context::{CreationContext, FieldPrompt, PromptContext};
 use super::super::traits::{
-    DomainResult, NoteBehavior, NoteIdentity, NoteLifecycle, NotePrompts,
+    DomainError, DomainResult, NoteBehavior, NoteIdentity, NoteLifecycle, NotePrompts,
 };
 
 /// Behavior implementation for custom (Lua-defined) note types.
@@ -42,14 +45,41 @@ impl NoteIdentity for CustomBehavior {
     }
 
     fn output_path(&self, ctx: &CreationContext) -> DomainResult<PathBuf> {
-        // Use Lua typedef output template if available
-        if let Some(ref _output) = self.typedef.output {
-            // TODO: render_output_path(output, ctx)
-        }
+        // Build render context
+        let mut render_ctx = ctx.vars.clone();
 
-        // Default: {type}s/{slug}.md
-        let slug = slugify(&ctx.title);
-        Ok(ctx.config.vault_root.join(format!("{}s/{}.md", self.type_name, slug)))
+        // Add standard context variables
+        let now = Local::now();
+        render_ctx.insert("date".into(), now.format("%Y-%m-%d").to_string());
+        render_ctx.insert("time".into(), now.format("%H:%M").to_string());
+        render_ctx.insert("datetime".into(), now.to_rfc3339());
+        render_ctx.insert("today".into(), now.format("%Y-%m-%d").to_string());
+        render_ctx.insert("now".into(), now.to_rfc3339());
+
+        render_ctx.insert(
+            "vault_root".into(),
+            ctx.config.vault_root.to_string_lossy().to_string(),
+        );
+        render_ctx.insert("type".into(), self.type_name.clone());
+        render_ctx.insert("title".into(), ctx.title.clone());
+
+        // Use Lua typedef output template if available
+        if let Some(ref output_template) = self.typedef.output {
+            let rendered = render_string(output_template, &render_ctx).map_err(|e| {
+                DomainError::Other(format!("Failed to render output path: {}", e))
+            })?;
+
+            let path = PathBuf::from(&rendered);
+            if path.is_absolute() {
+                Ok(path)
+            } else {
+                Ok(ctx.config.vault_root.join(path))
+            }
+        } else {
+            // Default: {type}s/{slug}.md
+            let slug = slugify(&ctx.title);
+            Ok(ctx.config.vault_root.join(format!("{}s/{}.md", self.type_name, slug)))
+        }
     }
 
     fn core_fields(&self) -> Vec<&'static str> {

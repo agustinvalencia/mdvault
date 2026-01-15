@@ -338,7 +338,7 @@ fn run_validate_hook(
         .set("path", note_path)
         .map_err(|e| ValidationError::LuaError(e.to_string()))?;
     note_table
-        .set("content", content)
+        .set("body", content)
         .map_err(|e| ValidationError::LuaError(e.to_string()))?;
 
     // Convert frontmatter to Lua table
@@ -371,6 +371,10 @@ fn run_validate_hook(
         }
         [mlua::Value::Boolean(false)] => Ok((false, None)),
         [mlua::Value::Boolean(false), mlua::Value::String(msg)] => {
+            let msg_str = msg.to_str().map(|s| s.to_string()).unwrap_or_default();
+            Ok((false, Some(msg_str)))
+        }
+        [mlua::Value::String(msg)] => {
             let msg_str = msg.to_str().map(|s| s.to_string()).unwrap_or_default();
             Ok((false, Some(msg_str)))
         }
@@ -543,6 +547,7 @@ mod tests {
             source_path: std::path::PathBuf::new(),
             schema,
             output: None,
+            frontmatter_order: None,
             variables: crate::vars::VarsMap::new(),
             has_validate_fn: false,
             has_on_create_hook: false,

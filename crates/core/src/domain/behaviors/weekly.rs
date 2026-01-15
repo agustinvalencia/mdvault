@@ -11,6 +11,7 @@ use std::sync::Arc;
 use chrono::Local;
 
 use crate::types::TypeDefinition;
+use crate::vars::datemath::{is_date_expr, try_evaluate_date_expr};
 
 use super::super::context::{CreationContext, FieldPrompt, PromptContext};
 use super::super::traits::{
@@ -64,7 +65,18 @@ impl NoteLifecycle for WeeklyBehavior {
         let week = if looks_like_week(&ctx.title) {
             ctx.title.clone()
         } else {
-            Local::now().format("%Y-W%W").to_string()
+            // Try to evaluate as date expr, forcing ISO week format if not specified
+            let expr_to_eval = if is_date_expr(&ctx.title) && !ctx.title.contains('|') {
+                format!("{} | %Y-W%V", ctx.title)
+            } else {
+                ctx.title.clone()
+            };
+
+            if let Some(evaluated) = try_evaluate_date_expr(&expr_to_eval) {
+                evaluated
+            } else {
+                Local::now().format("%Y-W%W").to_string()
+            }
         };
 
         ctx.core_metadata.week = Some(week.clone());

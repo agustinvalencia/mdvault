@@ -24,6 +24,9 @@ pub struct TypeDefinition {
     /// Output path template (supports {{var}} placeholders).
     pub output: Option<String>,
 
+    /// Preferred order of frontmatter fields.
+    pub frontmatter_order: Option<Vec<String>>,
+
     /// Template variables with optional prompts and defaults.
     /// These are used for template body substitution, not frontmatter fields.
     pub variables: VarsMap,
@@ -53,6 +56,7 @@ impl TypeDefinition {
             source_path: PathBuf::new(),
             schema: HashMap::new(),
             output: None,
+            frontmatter_order: None,
             variables: VarsMap::new(),
             has_validate_fn: false,
             has_on_create_hook: false,
