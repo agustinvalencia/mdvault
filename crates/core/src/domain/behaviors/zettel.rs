@@ -33,11 +33,11 @@ impl NoteIdentity for ZettelBehavior {
     }
 
     fn output_path(&self, ctx: &CreationContext) -> DomainResult<PathBuf> {
-        // Check Lua typedef for output template
+        // Check Lua typedef for output template first
         if let Some(ref td) = self.typedef
-            && let Some(ref _output) = td.output
+            && let Some(ref output) = td.output
         {
-            // TODO: render_output_path(output, ctx)
+            return super::render_output_template(output, ctx);
         }
 
         // Default: zettels/{slug}.md

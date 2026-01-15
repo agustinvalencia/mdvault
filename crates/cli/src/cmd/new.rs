@@ -520,6 +520,26 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         }
     }
 
+    // Collect schema-based prompts from Lua typedef (if available)
+    // This handles fields with `prompt` attribute that aren't type-specific
+    if let Some(ref typedef) = ctx.typedef {
+        let provided_vars: HashMap<String, String> = ctx.vars.clone();
+        let prompt_options = PromptOptions { batch_mode: args.batch };
+
+        match collect_schema_variables(typedef, &provided_vars, &prompt_options) {
+            Ok(collected) => {
+                // Merge collected variables into context
+                for (k, v) in collected.values {
+                    ctx.set_var(&k, v);
+                }
+            }
+            Err(e) => {
+                eprintln!("Error collecting schema variables: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     // Create the note - use template if available, otherwise scaffolding via NoteCreator
     if let Some(ref loaded) = loaded_template {
         // Template path: manual creation with template rendering
