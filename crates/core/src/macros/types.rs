@@ -91,13 +91,24 @@ pub enum ErrorPolicy {
     Continue,
 }
 
+/// Source format for a macro definition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MacroFormat {
+    /// YAML format (legacy, deprecated).
+    Yaml,
+    /// Lua format (preferred).
+    Lua,
+}
+
 /// Information about a discovered macro file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MacroInfo {
-    /// Logical name (filename without .yaml extension).
+    /// Logical name (filename without extension).
     pub logical_name: String,
-    /// Full path to the YAML file.
+    /// Full path to the macro file.
     pub path: PathBuf,
+    /// Source format (YAML or Lua).
+    pub format: MacroFormat,
 }
 
 /// A fully loaded macro ready for execution.

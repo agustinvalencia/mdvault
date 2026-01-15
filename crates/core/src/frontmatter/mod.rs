@@ -10,9 +10,9 @@ pub mod parser;
 pub mod serializer;
 pub mod types;
 
-pub use modifier::{FrontmatterModifyError, apply_ops};
+pub use modifier::apply_ops;
 pub use parser::{FrontmatterParseError, parse, parse_template_frontmatter};
-pub use serializer::serialize;
+pub use serializer::{serialize, serialize_with_order};
 pub use types::{
     Frontmatter, FrontmatterOp, FrontmatterOpType, FrontmatterOps, ParsedDocument,
     TemplateFrontmatter,

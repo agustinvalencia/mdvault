@@ -1,60 +1,58 @@
 # Towards Version 0.2.0
 
-> **This document supersedes all previous planning documents.**
-> - `PLAN.md` - Original development plan
-> - `PLAN-lua-first.md` - Lua-first migration plan (phases 1-4 complete)
-> - `ARCHITECTURE-domain-types.md` - Domain types rearchitecture proposal
+> **STATUS: COMPLETE**
 >
-> Those documents remain as historical reference but this is the authoritative plan.
+> All phases of the v0.2.0 plan have been implemented. This document is retained for historical reference.
+>
+> This document supersedes all previous planning documents:
+> - `PLAN.md` - Original development plan
+> - `PLAN-lua-first.md` - Lua-first migration plan (all phases complete)
+> - `ARCHITECTURE-domain-types.md` - Domain types rearchitecture proposal
 
 ## Executive Summary
 
-Version 0.2.0 focuses on **architectural cleanup** before adding new features. The goals are:
+Version 0.2.0 focused on **architectural cleanup** and **Lua-first completion**. All goals have been achieved:
 
-1. **Test Coverage**: Add regression tests for critical code paths before refactoring
-2. **Domain Types Rearchitecture**: Replace string-matching dispatch with trait-based polymorphism
-3. **Lua-First Completion**: Clean up deprecated code, prepare for Phase 5 (Captures/Macros)
+1. **Test Coverage**: Added regression tests for critical code paths
+2. **Domain Types Rearchitecture**: Replaced string-matching dispatch with trait-based polymorphism
+3. **Lua-First Completion**: Cleaned up deprecated code, implemented Lua-based captures and macros
 
-## Current State
+## Implementation Status
 
-### What's Complete (v0.1.x)
+### What's Complete (v0.2.0)
 
 | Component | Status |
 |-----------|--------|
-| Lua-First Phases 1-4 | Complete |
+| Lua-First Phases 1-5 | **Complete** |
 | Template-Lua linking (`lua:` field) | Complete |
 | Schema-driven prompts | Complete |
 | Validation integration | Complete |
 | Hook execution (on_create) | Complete |
 | `inherited` flag for deferred validation | Complete |
+| Domain types rearchitecture | **Complete** |
+| Trait-based polymorphic dispatch | **Complete** |
+| `vars:` DSL removed | **Complete** |
+| Lua-based captures | **Complete** |
+| Lua-based macros | **Complete** |
+| YAML deprecation warnings | **Complete** |
 
-### What's Broken
+### Issues Resolved
 
-| Problem | Location | Impact |
-|---------|----------|--------|
-| Scattered `if type_name == "task"` checks | `new.rs` (6+ locations) | Hard to maintain |
-| Triple `ensure_core_metadata()` calls | `new.rs:815, 954, 982` | Code smell, fragile |
-| Template mode vs Scaffolding mode duplication | `new.rs` | ~300 lines duplicated |
-| Low test coverage on critical paths | `new.rs` at 31.3% | High regression risk |
-| Deprecated `vars:` DSL still in code | `TemplateFrontmatter` | Technical debt |
-
-### Coverage Analysis (as of 2025-01-11)
-
-**Overall**: 42.8% (3157/7372 lines)
-
-| Critical File | Coverage | Risk Level |
-|---------------|----------|------------|
-| `crates/cli/src/cmd/new.rs` | 31.3% | **HIGH** |
-| `crates/core/src/scripting/hook_runner.rs` | 41.1% | **MEDIUM** |
-| `crates/core/src/types/validation.rs` | 50.4% | LOW |
-| `crates/core/src/types/scaffolding.rs` | 72.6% | LOW |
-| `crates/core/src/types/registry.rs` | 96.6% | LOW |
+| Problem | Resolution |
+|---------|------------|
+| Scattered `if type_name == "task"` checks | Replaced with `NoteType` enum and trait dispatch |
+| Triple `ensure_core_metadata()` calls | Replaced with proper trait lifecycle |
+| Template mode vs Scaffolding mode duplication | Unified code path via `NoteCreator` |
+| Deprecated `vars:` DSL | Removed from `TemplateFrontmatter` |
+| YAML-only captures/macros | Now support Lua format (YAML deprecated) |
 
 ---
 
-## Phase 1: Test Coverage (Before Refactoring)
+## Phase 1: Test Coverage (Complete)
 
 **Goal**: Add integration tests for all first-class type behaviors before moving code.
+
+**Status**: Complete - Added comprehensive test coverage for the `new` command and type behaviors.
 
 ### 1.1 Test File Structure
 
@@ -341,9 +339,11 @@ just coverage
 
 ---
 
-## Phase 2: Domain Types Rearchitecture
+## Phase 2: Domain Types Rearchitecture (Complete)
 
 **Goal**: Replace string-matching with trait-based dispatch.
+
+**Status**: Complete - Implemented `NoteType` enum with trait-based polymorphic dispatch. Created `domain` module with `NoteBehavior` traits.
 
 ### 2.1 Design Principle
 
@@ -498,7 +498,9 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) -
 
 ---
 
-## Phase 3: Cleanup and Polish
+## Phase 3: Cleanup and Polish (Complete)
+
+**Status**: Complete - Removed deprecated `vars:` DSL and updated documentation.
 
 ### 3.1 Remove Deprecated `vars:` DSL
 
@@ -538,43 +540,50 @@ Update any code that references `frontmatter.vars` to use Lua schema instead.
 
 ---
 
-## Phase 4: Future (Post v0.2.0)
+## Phase 4: Lua-Based Captures and Macros (Complete)
 
-These are deferred to future versions:
+**Status**: Complete - Implemented Lua-based captures and macros. YAML format is deprecated.
 
 ### 4.1 Lua-First Phase 5: Captures and Macros
 
-- Consider converting captures from YAML to Lua
-- Evaluate macro system for Lua migration
-- Requires separate planning
+- [x] Captures support Lua format (`crates/core/src/captures/lua_loader.rs`)
+- [x] Macros support Lua format (`crates/core/src/macros/lua_loader.rs`)
+- [x] YAML format deprecated with warning messages
+- [x] Examples migrated to Lua (`examples/.markadd/captures/*.lua`, `examples/.markadd/macros/*.lua`)
+- [x] Documentation updated (`docs/lua-scripting.md`)
 
-### 4.2 New First-Class Types
-
-With the trait architecture, adding new types is straightforward:
-
-1. Create `domain/meeting.rs` implementing traits
-2. Add `NoteType::Meeting` variant
-3. Update `from_name()` match
-
-### 4.3 Advanced Features
-
-- Progress tracking for tasks/projects
-- Monthly reporting
-- Activity analytics
-
-These features depend on stable first-class types, which is why the rearchitecture must come first.
+See [PLAN-captures-lua.md](./PLAN-captures-lua.md) and [PLAN-macros-lua.md](./PLAN-macros-lua.md) for implementation details.
 
 ---
 
-## Success Criteria for v0.2.0
+## Future Work
 
-| Criterion | Measure |
-|-----------|---------|
-| Test coverage on `new.rs` | >= 60% |
-| No scattered type checks | Zero `if type_name == "task"` in new.rs |
-| Single code path | Template and scaffolding modes unified |
-| All existing tests pass | `just ci` green |
-| Breaking changes documented | CHANGELOG.md updated |
+### v0.2.x Features (see [PLAN-v0.2.x-features.md](./PLAN-v0.2.x-features.md))
+
+- **v0.2.1**: Lua-based captures and macros (current branch)
+- **v0.2.2**: Progress tracking (`mdv project progress`)
+- **v0.2.3**: Monthly/weekly reporting (`mdv report`)
+- **v0.2.4**: Daily planning helpers (`mdv today`, `mdv plan`, `mdv review`)
+
+### v0.3.0+ (Deferred)
+
+- Remove YAML support for captures/macros
+- New first-class note types (e.g., `meeting`)
+- Lifecycle hooks for captures (`before_insert`, `after_insert`)
+
+---
+
+## Success Criteria for v0.2.0 (All Met)
+
+| Criterion | Status |
+|-----------|--------|
+| Test coverage on `new.rs` | **Met** |
+| No scattered type checks | **Met** - Zero `if type_name == "task"` in new.rs |
+| Single code path | **Met** - Template and scaffolding modes unified |
+| All existing tests pass | **Met** - `just ci` green |
+| Breaking changes documented | **Met** - CHANGELOG.md updated |
+| Lua-based captures | **Met** |
+| Lua-based macros | **Met** |
 
 ---
 
@@ -631,3 +640,4 @@ These are safe to refactor:
 | Date | Change |
 |------|--------|
 | 2025-01-11 | Initial version, consolidating all plans |
+| 2025-01-12 | Updated to reflect completion of all phases including Lua captures/macros |

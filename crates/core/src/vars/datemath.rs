@@ -53,6 +53,14 @@ pub enum DateBase {
     WeekEnd,
     /// ISO week notation (e.g., 2025-W01) - resolves to Monday of that week
     IsoWeek { year: i32, week: u32 },
+    /// Tomorrow (Today + 1 day)
+    Tomorrow,
+    /// Yesterday (Today - 1 day)
+    Yesterday,
+    /// Next week (Week + 1 week)
+    NextWeek,
+    /// Last week (Week - 1 week)
+    LastWeek,
 }
 
 /// A duration offset to apply.
@@ -101,6 +109,10 @@ pub struct DateExpr {
 /// - `today - monday` -> DateExpr { base: Today, offset: Weekday { weekday: Monday, direction: Previous }, format: None }
 pub fn parse_date_expr(input: &str) -> Result<DateExpr, DateMathError> {
     let input = input.trim();
+    // Normalize "next week" -> "next_week", "last week" -> "last_week"
+    let normalized =
+        input.replace("next week", "next_week").replace("last week", "last_week");
+    let input = normalized.as_str();
 
     // Split by format specifier first
     let (expr_part, format) = if let Some(idx) = input.find('|') {
@@ -143,6 +155,10 @@ fn parse_base(s: &str) -> Result<DateBase, DateMathError> {
         "year" => Ok(DateBase::Year),
         "week_start" => Ok(DateBase::WeekStart),
         "week_end" => Ok(DateBase::WeekEnd),
+        "tomorrow" => Ok(DateBase::Tomorrow),
+        "yesterday" => Ok(DateBase::Yesterday),
+        "next_week" => Ok(DateBase::NextWeek),
+        "last_week" => Ok(DateBase::LastWeek),
         _ => {
             // Try parsing as ISO week notation (YYYY-Www or YYYY-Ww)
             if let Some(iso_week) = parse_iso_week_notation(s) {
@@ -275,6 +291,26 @@ pub fn evaluate_date_expr(expr: &DateExpr) -> String {
                 NaiveDate::from_isoywd_opt(year, week, Weekday::Mon).unwrap_or(today);
             let date = apply_date_offset(monday, &expr.offset);
             format_date(date, expr.format.as_deref())
+        }
+        DateBase::Tomorrow => {
+            let tomorrow = today + Duration::days(1);
+            let date = apply_date_offset(tomorrow, &expr.offset);
+            format_date(date, expr.format.as_deref())
+        }
+        DateBase::Yesterday => {
+            let yesterday = today - Duration::days(1);
+            let date = apply_date_offset(yesterday, &expr.offset);
+            format_date(date, expr.format.as_deref())
+        }
+        DateBase::NextWeek => {
+            let next_week_iso = today + Duration::weeks(1);
+            let date = apply_date_offset(next_week_iso, &expr.offset);
+            format_week(date.iso_week(), expr.format.as_deref())
+        }
+        DateBase::LastWeek => {
+            let last_week_iso = today - Duration::weeks(1);
+            let date = apply_date_offset(last_week_iso, &expr.offset);
+            format_week(date.iso_week(), expr.format.as_deref())
         }
     }
 }
@@ -503,6 +539,12 @@ pub fn is_date_expr(s: &str) -> bool {
         || lower.starts_with("date")
         || lower.starts_with("week")
         || lower.starts_with("year")
+        || lower.starts_with("tomorrow")
+        || lower.starts_with("yesterday")
+        || lower.starts_with("next_week")
+        || lower.starts_with("last_week")
+        || lower.starts_with("next week")
+        || lower.starts_with("last week")
     {
         return true;
     }

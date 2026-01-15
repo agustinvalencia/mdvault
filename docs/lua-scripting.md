@@ -657,6 +657,475 @@ tasks/my-task.md  [type: task]
   + Added missing field 'status' with default 'open'
 ```
 
+## Capture Definitions
+
+Captures are quick append workflows that add content to a target file/section. Captures can be defined in Lua (preferred) or YAML (deprecated).
+
+### Lua Capture Format
+
+Create a `.lua` file in your `captures_dir` (default: `~/.config/mdvault/captures/`):
+
+```lua
+-- captures/inbox.lua
+return {
+    name = "inbox",
+    description = "Add a quick note to today's inbox",
+
+    -- Variables with prompts
+    vars = {
+        text = "What to capture?",  -- Simple form: string is the prompt
+        -- OR full form:
+        priority = {
+            prompt = "Priority level?",
+            default = "medium",
+            required = false,
+        },
+    },
+
+    -- Target file and section
+    target = {
+        file = "daily/{{date}}.md",
+        section = "Inbox",
+        position = "begin",  -- "begin" or "end"
+        create_if_missing = true,  -- Create file if it doesn't exist
+    },
+
+    -- Content template (supports {{variable}} placeholders)
+    content = "- [ ] {{text}} ({{priority}})",
+
+    -- Frontmatter operations (optional)
+    frontmatter = {
+        -- Simple form: direct key-value sets
+        last_updated = "{{date}}",
+
+        -- OR explicit operations form:
+        -- { field = "count", op = "increment" },
+        -- { field = "active", op = "toggle" },
+        -- { field = "tags", op = "append", value = "inbox" },
+    },
+}
+```
+
+### Capture Variables
+
+Variables support two formats:
+
+```lua
+vars = {
+    -- Simple: string is used as prompt
+    text = "What to capture?",
+
+    -- Full: object with metadata
+    priority = {
+        prompt = "Priority level?",  -- Interactive prompt
+        default = "medium",          -- Default value
+        required = true,             -- Must provide value
+        description = "Help text",   -- Shown during prompting
+    },
+}
+```
+
+### Target Configuration
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `file` | string | Target file path (supports `{{var}}` placeholders) |
+| `section` | string | Section heading to insert into (optional for frontmatter-only) |
+| `position` | `"begin"` or `"end"` | Where in section to insert (default: `"begin"`) |
+| `create_if_missing` | boolean | Create file if missing (default: `false`) |
+
+### Frontmatter Operations
+
+Captures can modify frontmatter in the target file:
+
+```lua
+-- Simple form: direct key-value sets
+frontmatter = {
+    status = "active",
+    updated = "{{date}}",
+}
+
+-- Operations form: explicit operations
+frontmatter = {
+    { field = "count", op = "increment" },       -- Add 1 to numeric field
+    { field = "active", op = "toggle" },         -- Flip boolean
+    { field = "tags", op = "append", value = "new-tag" },  -- Add to list
+    { field = "status", op = "set", value = "updated" },   -- Set value
+}
+
+-- Mixed form: both simple sets and explicit operations
+frontmatter = {
+    status = "active",  -- Simple set
+    { field = "count", op = "increment" },  -- Explicit operation
+}
+```
+
+| Operation | Description |
+|-----------|-------------|
+| `set` | Set field to value (default if `op` not specified) |
+| `toggle` | Flip boolean field (false→true, true→false) |
+| `increment` | Add 1 to numeric field (creates as 0 if missing) |
+| `append` | Add value to list field (creates list if missing) |
+
+### Using Captures
+
+```bash
+# Run a capture interactively
+mdv capture inbox
+
+# Provide variables via --var
+mdv capture inbox --var text="Buy groceries" --var priority=high
+
+# List available captures
+mdv capture --list
+```
+
+### Migration from YAML
+
+YAML captures are deprecated and will show a warning. To migrate:
+
+**Before (YAML)**:
+```yaml
+name: inbox
+description: Add to inbox
+target:
+  file: "daily/{{date}}.md"
+  section: "Inbox"
+  position: begin
+content: "- [ ] {{text}}"
+```
+
+**After (Lua)**:
+```lua
+return {
+    name = "inbox",
+    description = "Add to inbox",
+    vars = {
+        text = "What to capture?",
+    },
+    target = {
+        file = "daily/{{date}}.md",
+        section = "Inbox",
+        position = "begin",
+    },
+    content = "- [ ] {{text}}",
+}
+```
+
+### Capture Examples
+
+**Quick todo to daily note**:
+```lua
+-- captures/todo.lua
+return {
+    name = "todo",
+    description = "Quick task to daily note",
+    vars = {
+        task = "What needs to be done?",
+    },
+    target = {
+        file = "daily/{{date}}.md",
+        section = "Tasks",
+        position = "end",
+        create_if_missing = true,
+    },
+    content = "- [ ] {{task}}",
+}
+```
+
+**Meeting note with frontmatter**:
+```lua
+-- captures/meeting-note.lua
+return {
+    name = "meeting-note",
+    description = "Add meeting note and update project",
+    vars = {
+        note = {
+            prompt = "Meeting note?",
+            multiline = true,
+        },
+    },
+    target = {
+        file = "projects/{{project}}.md",
+        section = "Meeting Notes",
+        position = "begin",
+    },
+    content = "### {{date}}\n\n{{note}}",
+    frontmatter = {
+        { field = "meeting_count", op = "increment" },
+        last_meeting = "{{date}}",
+    },
+}
+```
+
+**Log entry with timestamp**:
+```lua
+-- captures/log.lua
+return {
+    name = "log",
+    description = "Timestamped log entry",
+    vars = {
+        entry = "Log entry?",
+    },
+    target = {
+        file = "logs/{{date}}.md",
+        section = "Log",
+        position = "end",
+        create_if_missing = true,
+    },
+    content = "- **{{time}}** {{entry}}",
+}
+```
+
+## Macro Definitions
+
+Macros are multi-step workflows that execute sequences of templates, captures, and shell commands. Macros can be defined in Lua (preferred) or YAML (deprecated).
+
+### Lua Macro Format
+
+Create a `.lua` file in your `macros_dir` (default: `~/.config/mdvault/macros/`):
+
+```lua
+-- macros/weekly-review.lua
+return {
+    name = "weekly-review",
+    description = "Set up weekly review documents",
+
+    -- Variables with prompts
+    vars = {
+        focus = "What's your focus this week?",
+        week_of = {
+            prompt = "Week date?",
+            default = "{{today}}",
+        },
+    },
+
+    -- Steps to execute in order
+    steps = {
+        {
+            type = "template",
+            template = "weekly-summary",
+            output = "summaries/{{week_of}}.md",
+            with = {
+                title = "Week of {{week_of}}",
+            },
+        },
+        {
+            type = "capture",
+            capture = "archive-tasks",
+        },
+        {
+            type = "shell",
+            shell = "git add .",
+            description = "Stage changes",  -- Requires --trust
+        },
+    },
+
+    on_error = "abort",  -- "abort" (default) or "continue"
+}
+```
+
+### Step Types
+
+Macros support three step types:
+
+**Template Step**: Create a new file from a template
+```lua
+{
+    type = "template",
+    template = "meeting",           -- Template name (required)
+    output = "meetings/{{date}}.md", -- Override output path (optional)
+    with = {                        -- Variable overrides (optional)
+        title = "Weekly sync",
+    },
+}
+```
+
+**Capture Step**: Insert content into an existing file
+```lua
+{
+    type = "capture",
+    capture = "inbox",   -- Capture name (required)
+    with = {             -- Variable overrides (optional)
+        text = "Review task",
+    },
+}
+```
+
+**Shell Step**: Execute a shell command (requires `--trust`)
+```lua
+{
+    type = "shell",
+    shell = "git add .",         -- Command (required)
+    description = "Stage changes", -- Human-readable description
+}
+```
+
+### Simplified Step Syntax
+
+For simpler macros, you can omit the `type` field:
+
+```lua
+steps = {
+    { template = "daily" },              -- Detected as template step
+    { capture = "inbox" },               -- Detected as capture step
+    { shell = "echo done", description = "Print done" },  -- Detected as shell step
+}
+```
+
+### Error Handling
+
+| Policy | Behavior |
+|--------|----------|
+| `abort` | Stop on first error (default) |
+| `continue` | Execute all steps, report failures at end |
+
+```lua
+return {
+    name = "resilient",
+    on_error = "continue",  -- Will run all steps even if some fail
+    steps = { ... },
+}
+```
+
+### Using Macros
+
+```bash
+# Run a macro interactively
+mdv macro weekly-review
+
+# Provide variables via --var
+mdv macro weekly-review --var focus="Ship v2.0" --var week_of="2025-01-12"
+
+# List available macros
+mdv macro --list
+
+# Run macro with shell steps (requires trust)
+mdv macro deploy --trust
+```
+
+### Migration from YAML
+
+YAML macros are deprecated and will show a warning. To migrate:
+
+**Before (YAML)**:
+```yaml
+name: weekly-review
+description: Set up weekly review
+vars:
+  focus:
+    prompt: "Focus?"
+steps:
+  - template: weekly-summary
+    with:
+      title: "{{focus}}"
+  - capture: archive-tasks
+```
+
+**After (Lua)**:
+```lua
+return {
+    name = "weekly-review",
+    description = "Set up weekly review",
+    vars = {
+        focus = "Focus?",
+    },
+    steps = {
+        {
+            template = "weekly-summary",
+            with = {
+                title = "{{focus}}",
+            },
+        },
+        { capture = "archive-tasks" },
+    },
+}
+```
+
+### Macro Examples
+
+**Daily setup workflow**:
+```lua
+-- macros/daily-setup.lua
+return {
+    name = "daily-setup",
+    description = "Create today's daily note with inbox items",
+    vars = {
+        focus = {
+            prompt = "Today's focus?",
+            default = "",
+        },
+    },
+    steps = {
+        {
+            template = "daily",
+            output = "daily/{{date}}.md",
+            with = { focus = "{{focus}}" },
+        },
+        {
+            capture = "inbox",
+            with = { text = "Review focus: {{focus}}" },
+        },
+    },
+}
+```
+
+**Meeting workflow with multiple steps**:
+```lua
+-- macros/new-meeting.lua
+return {
+    name = "new-meeting",
+    description = "Create meeting note and log it",
+    vars = {
+        topic = "Meeting topic?",
+        attendees = {
+            prompt = "Attendees?",
+            default = "Team",
+        },
+    },
+    steps = {
+        {
+            template = "meeting",
+            output = "meetings/{{topic | slugify}}.md",
+            with = {
+                title = "{{topic}}",
+                attendees = "{{attendees}}",
+            },
+        },
+        {
+            capture = "log-meeting",
+            with = {
+                topic = "{{topic}}",
+            },
+        },
+    },
+}
+```
+
+**Git commit workflow (requires --trust)**:
+```lua
+-- macros/commit.lua
+return {
+    name = "commit",
+    description = "Stage and commit changes",
+    vars = {
+        message = "Commit message?",
+    },
+    steps = {
+        {
+            type = "shell",
+            shell = "git add -A",
+            description = "Stage all changes",
+        },
+        {
+            type = "shell",
+            shell = "git commit -m '{{message}}'",
+            description = "Commit changes",
+        },
+    },
+}
+```
+
 ## Vault Operations
 
 When running inside lifecycle hooks, the `mdv` table provides access to vault operations. These functions allow hooks to render templates, execute captures, and run macros.

@@ -11,6 +11,7 @@ use std::sync::Arc;
 use chrono::Local;
 
 use crate::types::TypeDefinition;
+use crate::vars::datemath::try_evaluate_date_expr;
 
 use super::super::context::{CreationContext, FieldPrompt, PromptContext};
 use super::super::traits::{
@@ -63,6 +64,8 @@ impl NoteLifecycle for DailyBehavior {
         // Use title as date if it looks like a date, otherwise use today
         let date = if looks_like_date(&ctx.title) {
             ctx.title.clone()
+        } else if let Some(evaluated) = try_evaluate_date_expr(&ctx.title) {
+            evaluated
         } else {
             Local::now().format("%Y-%m-%d").to_string()
         };

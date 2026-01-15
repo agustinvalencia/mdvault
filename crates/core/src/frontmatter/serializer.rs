@@ -6,23 +6,57 @@ use std::collections::HashMap;
 
 /// Serialize a parsed document back to markdown string.
 pub fn serialize(doc: &ParsedDocument) -> String {
+    serialize_with_order(doc, None)
+}
+
+/// Serialize a parsed document with optional field ordering.
+pub fn serialize_with_order(doc: &ParsedDocument, order: Option<&[String]>) -> String {
     if let Some(fm) = &doc.frontmatter
         && !fm.fields.is_empty()
     {
-        let yaml = serialize_frontmatter(&fm.fields);
+        let yaml = serialize_frontmatter(&fm.fields, order);
         return format!("---\n{}---\n\n{}", yaml, doc.body);
     }
     doc.body.clone()
 }
 
 /// Serialize frontmatter fields to YAML string.
-fn serialize_frontmatter(fields: &HashMap<String, Value>) -> String {
-    serde_yaml::to_string(fields).unwrap_or_default()
+fn serialize_frontmatter(
+    fields: &HashMap<String, Value>,
+    order: Option<&[String]>,
+) -> String {
+    let mut mapping = serde_yaml::Mapping::new();
+
+    // Track which keys we've already added
+    let mut added_keys = Vec::new();
+
+    // 1. Add fields in specified order
+    if let Some(order_list) = order {
+        for key in order_list {
+            if let Some(value) = fields.get(key) {
+                mapping.insert(Value::String(key.clone()), value.clone());
+                added_keys.push(key.clone());
+            }
+        }
+    }
+
+    // 2. Add remaining fields (sorted alphabetically)
+    let mut remaining: Vec<_> =
+        fields.keys().filter(|k| !added_keys.contains(k)).collect();
+    remaining.sort();
+
+    for key in remaining {
+        if let Some(value) = fields.get(key) {
+            mapping.insert(Value::String(key.clone()), value.clone());
+        }
+    }
+
+    serde_yaml::to_string(&mapping).unwrap_or_default()
 }
 
 /// Serialize a Frontmatter struct to YAML string (without delimiters).
 pub fn frontmatter_to_yaml(fm: &Frontmatter) -> String {
-    serialize_frontmatter(&fm.fields)
+    serialize_frontmatter(&fm.fields, None)
 }
 
 #[cfg(test)]

@@ -6,6 +6,7 @@ use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::domain::{CreationContext, NoteCreator, NoteType as DomainNoteType};
 use mdvault_core::frontmatter::parse as parse_frontmatter;
+use mdvault_core::frontmatter::{serialize_with_order, Frontmatter, ParsedDocument};
 use mdvault_core::index::{IndexBuilder, IndexDb, NoteQuery, NoteType};
 use mdvault_core::macros::MacroRepository;
 use mdvault_core::scripting::{
@@ -333,9 +334,15 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
 
                 // Apply other modifications (frontmatter/content)
 
-                if let Err(e) =
-                    apply_hook_modifications(&output_path, &final_content, &hook_result)
-                {
+                let order =
+                    lua_typedef.as_ref().and_then(|td| td.frontmatter_order.as_deref());
+
+                if let Err(e) = apply_hook_modifications(
+                    &output_path,
+                    &final_content,
+                    &hook_result,
+                    order,
+                ) {
                     eprintln!(
                         "Warning: failed to apply on_create hook modifications: {e}"
                     );
@@ -579,13 +586,16 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
             project: ctx.core_metadata.project.clone(),
         };
 
-        let mut content = match ensure_core_metadata(&content, &local_core) {
-            Ok(fixed) => fixed,
-            Err(e) => {
-                eprintln!("Warning: failed to apply core metadata: {e}");
-                content
-            }
-        };
+        let order = ctx.typedef.as_deref().and_then(|td| td.frontmatter_order.clone());
+
+        let mut content =
+            match ensure_core_metadata(&content, &local_core, order.as_deref()) {
+                Ok(fixed) => fixed,
+                Err(e) => {
+                    eprintln!("Warning: failed to apply core metadata: {e}");
+                    content
+                }
+            };
 
         // Validate and autofix before writing
         match validate_before_write(&type_registry, type_name, &output_path, &content) {
@@ -670,26 +680,34 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                     };
 
                     // Re-apply core metadata and write
-                    let final_content =
-                        match ensure_core_metadata(&regenerated, &local_core) {
-                            Ok(fixed) => fixed,
-                            Err(_) => regenerated,
-                        };
+                    let final_content = match ensure_core_metadata(
+                        &regenerated,
+                        &local_core,
+                        order.as_deref(),
+                    ) {
+                        Ok(fixed) => fixed,
+                        Err(_) => regenerated,
+                    };
 
                     if let Err(e) = fs::write(&output_path, &final_content) {
                         eprintln!("Warning: failed to write re-rendered content: {e}");
                     }
                 } else {
                     // No variable changes, just apply hook modifications
-                    if let Err(e) =
-                        apply_hook_modifications(&output_path, &content, &hook_result)
-                    {
+                    if let Err(e) = apply_hook_modifications(
+                        &output_path,
+                        &content,
+                        &hook_result,
+                        order.as_deref(),
+                    ) {
                         eprintln!("Warning: failed to apply hook modifications: {e}");
                     }
 
                     // Re-apply core metadata to protect against hook tampering
                     if let Ok(current) = std::fs::read_to_string(&output_path) {
-                        if let Ok(fixed) = ensure_core_metadata(&current, &local_core) {
+                        if let Ok(fixed) =
+                            ensure_core_metadata(&current, &local_core, order.as_deref())
+                        {
                             if let Err(e) = std::fs::write(&output_path, fixed) {
                                 eprintln!(
                                     "Warning: failed to re-apply core metadata: {e}"
@@ -760,16 +778,27 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                     &ctx.vars,
                 ) {
                     Ok(hook_result) if hook_result.modified => {
-                        if let Err(e) =
-                            apply_hook_modifications(&result.path, &content, &hook_result)
-                        {
+                        let order = ctx
+                            .typedef
+                            .as_deref()
+                            .and_then(|td| td.frontmatter_order.clone());
+
+                        if let Err(e) = apply_hook_modifications(
+                            &result.path,
+                            &content,
+                            &hook_result,
+                            order.as_deref(),
+                        ) {
                             eprintln!("Warning: failed to apply hook modifications: {e}");
                         }
 
                         // Re-apply core metadata to protect against hook tampering
                         if let Ok(current) = std::fs::read_to_string(&result.path) {
-                            if let Ok(fixed) = ensure_core_metadata(&current, &local_core)
-                            {
+                            if let Ok(fixed) = ensure_core_metadata(
+                                &current,
+                                &local_core,
+                                order.as_deref(),
+                            ) {
                                 if let Err(e) = std::fs::write(&result.path, fixed) {
                                     eprintln!(
                                         "Warning: failed to re-apply core metadata: {e}"
@@ -809,7 +838,11 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
 /// This function is called after template rendering and hook execution to guarantee
 /// that required fields managed by mdvault are not removed or corrupted by user code.
 /// Templates and hooks can ADD fields but cannot REMOVE core fields.
-fn ensure_core_metadata(content: &str, core: &CoreMetadata) -> Result<String, String> {
+fn ensure_core_metadata(
+    content: &str,
+    core: &CoreMetadata,
+    order: Option<&[String]>,
+) -> Result<String, String> {
     let parsed = parse_frontmatter(content).map_err(|e| e.to_string())?;
 
     // Start with existing frontmatter or create new
@@ -845,15 +878,10 @@ fn ensure_core_metadata(content: &str, core: &CoreMetadata) -> Result<String, St
     }
 
     // Rebuild the document
-    let mut mapping = serde_yaml::Mapping::new();
-    for (k, v) in fields {
-        mapping.insert(serde_yaml::Value::String(k), v);
-    }
+    let doc =
+        ParsedDocument { frontmatter: Some(Frontmatter { fields }), body: parsed.body };
 
-    let yaml_str = serde_yaml::to_string(&serde_yaml::Value::Mapping(mapping))
-        .map_err(|e| e.to_string())?;
-
-    Ok(format!("---\n{}---\n{}", yaml_str, parsed.body))
+    Ok(serialize_with_order(&doc, order))
 }
 
 /// Force a vault reindex to include newly created notes.
@@ -1012,6 +1040,7 @@ fn apply_hook_modifications(
     output_path: &Path,
     original_content: &str,
     hook_result: &HookResult,
+    order: Option<&[String]>,
 ) -> Result<(), String> {
     if !hook_result.modified {
         return Ok(());
@@ -1022,22 +1051,26 @@ fn apply_hook_modifications(
         parse_frontmatter(original_content).map_err(|e| e.to_string())?;
 
     // Determine final frontmatter
-    let final_frontmatter = if let Some(ref new_fm) = hook_result.frontmatter {
-        new_fm.clone()
-    } else if let Some(fm) = original_parsed.frontmatter {
-        let mut mapping = serde_yaml::Mapping::new();
-        for (k, v) in fm.fields {
-            mapping.insert(serde_yaml::Value::String(k), v);
+    let final_fields = if let Some(ref new_fm) = hook_result.frontmatter {
+        if let serde_yaml::Value::Mapping(map) = new_fm {
+            let mut fields = HashMap::new();
+            for (k, v) in map {
+                if let serde_yaml::Value::String(ks) = k {
+                    fields.insert(ks.clone(), v.clone());
+                }
+            }
+            fields
+        } else {
+            HashMap::new()
         }
-        serde_yaml::Value::Mapping(mapping)
+    } else if let Some(fm) = original_parsed.frontmatter {
+        fm.fields
     } else {
-        serde_yaml::Value::Null
+        HashMap::new()
     };
 
     // Determine final content body
-    // If hook returned content, it might contain frontmatter, so parse it to get just the body
     let final_body = if let Some(ref new_content) = hook_result.content {
-        // Parse the hook's content to extract just the body (in case it includes frontmatter)
         let content_parsed = parse_frontmatter(new_content).map_err(|e| e.to_string())?;
         content_parsed.body
     } else {
@@ -1045,13 +1078,12 @@ fn apply_hook_modifications(
     };
 
     // Rebuild the document
-    let final_content = if final_frontmatter.is_null() {
-        final_body
-    } else {
-        let yaml_str =
-            serde_yaml::to_string(&final_frontmatter).map_err(|e| e.to_string())?;
-        format!("---\n{}---\n{}", yaml_str, final_body)
+    let doc = ParsedDocument {
+        frontmatter: Some(Frontmatter { fields: final_fields }),
+        body: final_body,
     };
+
+    let final_content = serialize_with_order(&doc, order);
 
     // Write back to file
     fs::write(output_path, final_content).map_err(|e| e.to_string())
@@ -1466,7 +1498,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = ensure_core_metadata(content, &core).unwrap();
+        let result = ensure_core_metadata(content, &core, None).unwrap();
 
         let parsed = parse_frontmatter(&result).unwrap();
         let fm = parsed.frontmatter.unwrap();

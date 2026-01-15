@@ -1,6 +1,6 @@
 # Lua-First Architecture Plan
 
-> **SUPERSEDED**: This document is superseded by [PLAN-v0.2.0.md](./PLAN-v0.2.0.md) for current development priorities. Phases 1-4 are complete; Phase 5 is deferred. Retained for historical reference and detailed Lua integration documentation.
+> **COMPLETE**: All phases of the Lua-first migration are now complete. This document is retained for historical reference and detailed Lua integration documentation. See [PLAN-v0.2.0.md](./PLAN-v0.2.0.md) for the overall v0.2.0 release status.
 
 ## Overview
 
@@ -218,9 +218,12 @@ output: Projects/MCP/Tasks/MCP-042.md
 - [x] Migrate built-in task/project templates to Lua-first
 - [x] Add example templates in documentation (lua-scripting.md)
 
-#### Phase 5: Captures and Macros (Future)
-- [ ] Consider if captures should also be Lua-based
-- [ ] Evaluate macro system overlap
+#### Phase 5: Captures and Macros (Completed)
+- [x] Lua-based captures implemented (`crates/core/src/captures/lua_loader.rs`)
+- [x] Lua-based macros implemented (`crates/core/src/macros/lua_loader.rs`)
+- [x] YAML captures/macros deprecated with warning
+- [x] Documentation updated (`docs/lua-scripting.md`)
+- [x] Examples migrated to Lua
 
 ## File Structure (After Migration)
 
@@ -414,11 +417,14 @@ Templates must now use `lua:` to reference a Lua script for prompts and schema.
 
 Templates without `lua:` will only have access to CLI-provided variables (`--var`).
 
-## Next Steps
+## Completion Summary
+
+All phases of the Lua-first architecture migration are complete:
 
 1. ~~Phase 1: Lua-template linking~~ Complete (v0.2.0)
 2. ~~Phase 2: Enhanced prompts~~ Complete (enum selectors, multiline, project-id prompt)
 3. ~~Phase 3: Validation integration~~ Complete (schema + Lua validate() on create)
 4. ~~Phase 4: Built-in templates~~ Complete (task, project, daily examples in docs)
-5. Phase 5: Captures and Macros (future consideration)
-6. Iterate based on usage feedback
+5. ~~Phase 5: Captures and Macros~~ Complete (Lua-based captures/macros with YAML deprecation)
+
+Future work will be tracked in separate planning documents.

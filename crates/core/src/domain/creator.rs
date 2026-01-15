@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use super::NoteType;
 use super::context::CreationContext;
 use super::traits::{DomainError, DomainResult, NoteBehavior};
+use crate::frontmatter::{Frontmatter, ParsedDocument, serialize_with_order};
 use crate::types::scaffolding::generate_scaffolding;
 
 /// Result of a successful note creation.
@@ -161,12 +162,12 @@ fn ensure_core_metadata(content: &str, ctx: &CreationContext) -> DomainResult<St
         fields.insert("week".into(), serde_yaml::Value::String(w.clone()));
     }
 
-    // Rebuild content
-    let yaml = serde_yaml::to_string(&fields).map_err(|e| {
-        DomainError::Other(format!("Failed to serialize frontmatter: {}", e))
-    })?;
+    // Rebuild content using serializer with order
+    let doc =
+        ParsedDocument { frontmatter: Some(Frontmatter { fields }), body: parsed.body };
 
-    Ok(format!("---\n{}---\n{}", yaml, parsed.body))
+    let order = ctx.typedef.as_ref().and_then(|td| td.frontmatter_order.as_deref());
+    Ok(serialize_with_order(&doc, order))
 }
 
 #[cfg(test)]

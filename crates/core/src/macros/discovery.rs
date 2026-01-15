@@ -1,12 +1,14 @@
 //! Macro discovery and repository.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 use walkdir::WalkDir;
 
-use super::types::{LoadedMacro, MacroInfo, MacroSpec};
+use super::lua_loader::load_macro_from_lua;
+use super::types::{LoadedMacro, MacroFormat, MacroInfo, MacroSpec};
 
 /// Error type for macro discovery.
 #[derive(Debug, Error)]
@@ -40,11 +42,22 @@ pub enum MacroRepoError {
         #[source]
         source: serde_yaml::Error,
     },
+
+    #[error("failed to parse macro Lua {path}: {source}")]
+    LuaParse {
+        path: PathBuf,
+        #[source]
+        source: crate::scripting::ScriptingError,
+    },
+
+    #[error("invalid macro definition in {path}: {message}")]
+    LuaInvalid { path: PathBuf, message: String },
 }
 
 /// Discover macro files in a directory.
 ///
-/// Finds all `.yaml` files in the given directory and its subdirectories.
+/// Finds all `.lua` and `.yaml` files in the given directory and its subdirectories.
+/// Lua files take precedence over YAML files with the same name.
 pub fn discover_macros(root: &Path) -> Result<Vec<MacroInfo>, MacroDiscoveryError> {
     let root = root
         .canonicalize()
@@ -54,7 +67,8 @@ pub fn discover_macros(root: &Path) -> Result<Vec<MacroInfo>, MacroDiscoveryErro
         return Err(MacroDiscoveryError::MissingDir(root.display().to_string()));
     }
 
-    let mut out = Vec::new();
+    // Use a map to handle Lua/YAML precedence (Lua wins)
+    let mut macros: HashMap<String, MacroInfo> = HashMap::new();
 
     for entry in WalkDir::new(&root) {
         let entry = entry
@@ -64,34 +78,62 @@ pub fn discover_macros(root: &Path) -> Result<Vec<MacroInfo>, MacroDiscoveryErro
         if !path.is_file() {
             continue;
         }
-        if !is_yaml_file(path) {
-            continue;
-        }
+
+        let (logical, format) = match get_macro_format(path) {
+            Some((l, f)) => (l, f),
+            None => continue,
+        };
 
         let rel = path.strip_prefix(&root).unwrap_or(path);
-        let logical = logical_name_from_relative(rel);
+        let full_logical =
+            if rel.parent().map(|p| p.as_os_str().is_empty()).unwrap_or(true) {
+                logical.clone()
+            } else {
+                let parent = rel.parent().unwrap().to_string_lossy();
+                format!("{}/{}", parent, logical)
+            };
 
-        out.push(MacroInfo { logical_name: logical, path: path.to_path_buf() });
+        // Lua takes precedence over YAML
+        match macros.get(&full_logical) {
+            Some(existing) if existing.format == MacroFormat::Lua => {
+                // Keep existing Lua file
+                continue;
+            }
+            _ => {
+                macros.insert(
+                    full_logical.clone(),
+                    MacroInfo {
+                        logical_name: full_logical,
+                        path: path.to_path_buf(),
+                        format,
+                    },
+                );
+            }
+        }
     }
 
+    let mut out: Vec<MacroInfo> = macros.into_values().collect();
     out.sort_by(|a, b| a.logical_name.cmp(&b.logical_name));
     Ok(out)
 }
 
-fn is_yaml_file(path: &Path) -> bool {
-    path.extension().and_then(|e| e.to_str()).is_some_and(|e| e == "yaml" || e == "yml")
-}
+/// Get the macro format and logical name from a file path.
+/// Returns None if the file is not a macro file.
+fn get_macro_format(path: &Path) -> Option<(String, MacroFormat)> {
+    let name = path.file_name().and_then(|s| s.to_str())?;
 
-fn logical_name_from_relative(rel: &Path) -> String {
-    let s = rel.to_string_lossy();
-    // Remove .yaml or .yml extension
-    if let Some(stripped) = s.strip_suffix(".yaml") {
-        return stripped.to_string();
+    if name.ends_with(".lua") {
+        let logical = name.strip_suffix(".lua")?.to_string();
+        Some((logical, MacroFormat::Lua))
+    } else if name.ends_with(".yaml") {
+        let logical = name.strip_suffix(".yaml")?.to_string();
+        Some((logical, MacroFormat::Yaml))
+    } else if name.ends_with(".yml") {
+        let logical = name.strip_suffix(".yml")?.to_string();
+        Some((logical, MacroFormat::Yaml))
+    } else {
+        None
     }
-    if let Some(stripped) = s.strip_suffix(".yml") {
-        return stripped.to_string();
-    }
-    s.to_string()
 }
 
 /// Repository for discovering and loading macros.
@@ -120,11 +162,24 @@ impl MacroRepository {
             .find(|m| m.logical_name == name)
             .ok_or_else(|| MacroRepoError::NotFound(name.to_string()))?;
 
-        let content = fs::read_to_string(&info.path)
-            .map_err(|e| MacroRepoError::Io { path: info.path.clone(), source: e })?;
+        let spec = match info.format {
+            MacroFormat::Lua => load_macro_from_lua(&info.path)?,
+            MacroFormat::Yaml => {
+                // Emit deprecation warning for YAML macros
+                eprintln!(
+                    "warning: YAML macros are deprecated. Please migrate '{}' to Lua format.",
+                    info.path.display()
+                );
 
-        let spec: MacroSpec = serde_yaml::from_str(&content)
-            .map_err(|e| MacroRepoError::Parse { path: info.path.clone(), source: e })?;
+                let content = fs::read_to_string(&info.path).map_err(|e| {
+                    MacroRepoError::Io { path: info.path.clone(), source: e }
+                })?;
+
+                serde_yaml::from_str::<MacroSpec>(&content).map_err(|e| {
+                    MacroRepoError::Parse { path: info.path.clone(), source: e }
+                })?
+            }
+        };
 
         Ok(LoadedMacro {
             logical_name: info.logical_name.clone(),
@@ -141,7 +196,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn test_discover_macros() {
+    fn test_discover_macros_yaml() {
         let temp = TempDir::new().unwrap();
         let macros_dir = temp.path().join("macros");
         fs::create_dir_all(&macros_dir).unwrap();
@@ -166,9 +221,70 @@ mod tests {
         let macros = discover_macros(&macros_dir).unwrap();
 
         assert_eq!(macros.len(), 3);
-        assert!(macros.iter().any(|m| m.logical_name == "daily-note"));
-        assert!(macros.iter().any(|m| m.logical_name == "weekly-review"));
-        assert!(macros.iter().any(|m| m.logical_name == "project/setup"));
+        assert!(
+            macros
+                .iter()
+                .any(|m| m.logical_name == "daily-note" && m.format == MacroFormat::Yaml)
+        );
+        assert!(
+            macros
+                .iter()
+                .any(|m| m.logical_name == "weekly-review"
+                    && m.format == MacroFormat::Yaml)
+        );
+        assert!(
+            macros
+                .iter()
+                .any(|m| m.logical_name == "project/setup"
+                    && m.format == MacroFormat::Yaml)
+        );
+    }
+
+    #[test]
+    fn test_discover_macros_lua() {
+        let temp = TempDir::new().unwrap();
+        let macros_dir = temp.path().join("macros");
+        fs::create_dir_all(&macros_dir).unwrap();
+
+        fs::write(macros_dir.join("weekly-review.lua"), "return {}").unwrap();
+        fs::write(macros_dir.join("daily-note.lua"), "return {}").unwrap();
+
+        let macros = discover_macros(&macros_dir).unwrap();
+
+        assert_eq!(macros.len(), 2);
+        assert!(
+            macros
+                .iter()
+                .any(|m| m.logical_name == "daily-note" && m.format == MacroFormat::Lua)
+        );
+        assert!(
+            macros.iter().any(
+                |m| m.logical_name == "weekly-review" && m.format == MacroFormat::Lua
+            )
+        );
+    }
+
+    #[test]
+    fn test_discover_macros_lua_precedence() {
+        let temp = TempDir::new().unwrap();
+        let macros_dir = temp.path().join("macros");
+        fs::create_dir_all(&macros_dir).unwrap();
+
+        // Both Lua and YAML with same name - Lua should win
+        fs::write(macros_dir.join("test.lua"), "return {}").unwrap();
+        fs::write(macros_dir.join("test.yaml"), "name: test\nsteps: []").unwrap();
+        fs::write(macros_dir.join("yaml-only.yaml"), "name: yaml-only\nsteps: []")
+            .unwrap();
+
+        let macros = discover_macros(&macros_dir).unwrap();
+
+        assert_eq!(macros.len(), 2);
+
+        let test_macro = macros.iter().find(|m| m.logical_name == "test").unwrap();
+        assert_eq!(test_macro.format, MacroFormat::Lua);
+
+        let yaml_only = macros.iter().find(|m| m.logical_name == "yaml-only").unwrap();
+        assert_eq!(yaml_only.format, MacroFormat::Yaml);
     }
 
     #[test]
