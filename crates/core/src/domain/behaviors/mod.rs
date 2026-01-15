@@ -28,7 +28,10 @@ use super::traits::{DomainError, DomainResult};
 /// Adds standard context variables (date, time, title, etc.) and renders
 /// the template string. Returns an absolute path (relative paths are joined
 /// with vault_root).
-pub fn render_output_template(template: &str, ctx: &CreationContext) -> DomainResult<PathBuf> {
+pub fn render_output_template(
+    template: &str,
+    ctx: &CreationContext,
+) -> DomainResult<PathBuf> {
     let mut render_ctx = ctx.vars.clone();
 
     // Add standard context variables
@@ -39,10 +42,8 @@ pub fn render_output_template(template: &str, ctx: &CreationContext) -> DomainRe
     render_ctx.insert("today".into(), now.format("%Y-%m-%d").to_string());
     render_ctx.insert("now".into(), now.to_rfc3339());
 
-    render_ctx.insert(
-        "vault_root".into(),
-        ctx.config.vault_root.to_string_lossy().to_string(),
-    );
+    render_ctx
+        .insert("vault_root".into(), ctx.config.vault_root.to_string_lossy().to_string());
     render_ctx.insert("type".into(), ctx.type_name.clone());
     render_ctx.insert("title".into(), ctx.title.clone());
 
@@ -63,13 +64,10 @@ pub fn render_output_template(template: &str, ctx: &CreationContext) -> DomainRe
         render_ctx.insert("week".into(), week.clone());
     }
 
-    let rendered = render_string(template, &render_ctx)
-        .map_err(|e| DomainError::Other(format!("Failed to render output path: {}", e)))?;
+    let rendered = render_string(template, &render_ctx).map_err(|e| {
+        DomainError::Other(format!("Failed to render output path: {}", e))
+    })?;
 
     let path = PathBuf::from(&rendered);
-    if path.is_absolute() {
-        Ok(path)
-    } else {
-        Ok(ctx.config.vault_root.join(path))
-    }
+    if path.is_absolute() { Ok(path) } else { Ok(ctx.config.vault_root.join(path)) }
 }
