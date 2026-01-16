@@ -10,6 +10,7 @@ pub mod output;
 pub mod project;
 pub mod reindex;
 pub mod rename;
+pub mod report;
 pub mod search;
 pub mod stale;
 pub mod task;

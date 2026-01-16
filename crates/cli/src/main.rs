@@ -118,6 +118,9 @@ enum Commands {
     /// Project management commands
     #[command(subcommand)]
     Project(ProjectCommands),
+
+    /// Generate activity reports for a time period
+    Report(ReportArgs),
 }
 
 /// Task management subcommands.
@@ -202,6 +205,25 @@ pub struct TaskStatusArgs {
     /// Task ID (e.g., "MCP-001")
     #[arg(add = ArgValueCompleter::new(completions::complete_notes))]
     pub task_id: String,
+}
+
+#[derive(Debug, Args)]
+pub struct ReportArgs {
+    /// Generate report for a specific month (YYYY-MM format)
+    #[arg(long, conflicts_with = "week")]
+    pub month: Option<String>,
+
+    /// Generate report for a specific week (YYYY-WXX format)
+    #[arg(long, conflicts_with = "month")]
+    pub week: Option<String>,
+
+    /// Output report to a markdown file instead of terminal
+    #[arg(long, short)]
+    pub output: Option<std::path::PathBuf>,
+
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -732,5 +754,15 @@ fn main() {
                 );
             }
         },
+        Some(Commands::Report(args)) => {
+            cmd::report::run(
+                cli.config.as_deref(),
+                cli.profile.as_deref(),
+                args.month.as_deref(),
+                args.week.as_deref(),
+                args.output.as_deref(),
+                args.json,
+            );
+        }
     }
 }
