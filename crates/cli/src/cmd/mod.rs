@@ -14,4 +14,5 @@ pub mod report;
 pub mod search;
 pub mod stale;
 pub mod task;
+pub mod today;
 pub mod validate;
