@@ -181,7 +181,8 @@ fn parse_week(week: &str) -> (NaiveDate, NaiveDate, String, String) {
 
     // ISO week: Week 1 is the first week with at least 4 days in the new year
     let jan4 = NaiveDate::from_ymd_opt(year, 1, 4).unwrap();
-    let week1_monday = jan4 - Duration::days(jan4.weekday().num_days_from_monday() as i64);
+    let week1_monday =
+        jan4 - Duration::days(jan4.weekday().num_days_from_monday() as i64);
     let start = week1_monday + Duration::weeks((week_num - 1) as i64);
     let end = start + Duration::days(6);
 
@@ -221,9 +222,7 @@ fn generate_report(
     let tasks_completed: Vec<&IndexedNote> = tasks
         .iter()
         .filter(|t| {
-            get_completed_at(t)
-                .map(|d| d >= start_date && d <= end_date)
-                .unwrap_or(false)
+            get_completed_at(t).map(|d| d >= start_date && d <= end_date).unwrap_or(false)
         })
         .copied()
         .collect();
@@ -232,9 +231,7 @@ fn generate_report(
     let tasks_created: Vec<&IndexedNote> = tasks
         .iter()
         .filter(|t| {
-            get_created_at(t)
-                .map(|d| d >= start_date && d <= end_date)
-                .unwrap_or(false)
+            get_created_at(t).map(|d| d >= start_date && d <= end_date).unwrap_or(false)
         })
         .copied()
         .collect();
@@ -243,9 +240,7 @@ fn generate_report(
     let daily_notes_in_period: usize = daily_notes
         .iter()
         .filter(|n| {
-            get_note_date(n)
-                .map(|d| d >= start_date && d <= end_date)
-                .unwrap_or(false)
+            get_note_date(n).map(|d| d >= start_date && d <= end_date).unwrap_or(false)
         })
         .count();
 
@@ -258,11 +253,8 @@ fn generate_report(
     // Initialize with known projects
     for project in &projects {
         let (id, _) = extract_project_info(project);
-        let title = if project.title.is_empty() {
-            id.clone()
-        } else {
-            project.title.clone()
-        };
+        let title =
+            if project.title.is_empty() { id.clone() } else { project.title.clone() };
         project_stats.insert(id, (title, 0, 0));
     }
 
@@ -381,10 +373,7 @@ fn print_terminal_report(report: &ReportData) {
 
     // Summary
     println!("SUMMARY");
-    println!(
-        "  Tasks Completed:    {}",
-        report.summary.tasks_completed
-    );
+    println!("  Tasks Completed:    {}", report.summary.tasks_completed);
     println!("  Tasks Created:      {}", report.summary.tasks_created);
     println!("  Projects Active:    {}", report.summary.projects_active);
     println!(
@@ -491,8 +480,18 @@ fn format_month_title(period: &str) -> String {
     }
 
     let month_names = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December",
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
     ];
 
     let month_num: usize = parts[1].parse().unwrap_or(1);
@@ -526,23 +525,14 @@ fn format_markdown_report(report: &ReportData) -> String {
     md.push_str("## Summary\n\n");
     md.push_str("| Metric | Value |\n");
     md.push_str("|--------|-------|\n");
-    md.push_str(&format!(
-        "| Tasks Completed | {} |\n",
-        report.summary.tasks_completed
-    ));
-    md.push_str(&format!(
-        "| Tasks Created | {} |\n",
-        report.summary.tasks_created
-    ));
-    md.push_str(&format!(
-        "| Projects Active | {} |\n",
-        report.summary.projects_active
-    ));
+    md.push_str(&format!("| Tasks Completed | {} |\n", report.summary.tasks_completed));
+    md.push_str(&format!("| Tasks Created | {} |\n", report.summary.tasks_created));
+    md.push_str(&format!("| Projects Active | {} |\n", report.summary.projects_active));
     md.push_str(&format!(
         "| Daily Notes | {}/{} days |\n",
         report.summary.daily_notes, report.summary.daily_notes_possible
     ));
-    md.push_str("\n");
+    md.push('\n');
 
     // Tasks by project
     if !report.tasks_by_project.is_empty() {
@@ -555,7 +545,7 @@ fn format_markdown_report(report: &ReportData) -> String {
                 p.id, p.title, p.created, p.completed
             ));
         }
-        md.push_str("\n");
+        md.push('\n');
     }
 
     // Top completed
@@ -570,7 +560,7 @@ fn format_markdown_report(report: &ReportData) -> String {
                 task.completed_at
             ));
         }
-        md.push_str("\n");
+        md.push('\n');
     }
 
     md
@@ -593,13 +583,9 @@ fn get_completed_at(note: &IndexedNote) -> Option<NaiveDate> {
     let date_str = fm.get("completed_at")?.as_str()?;
 
     // Try parsing as date first, then as datetime
-    NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-        .ok()
-        .or_else(|| {
-            chrono::DateTime::parse_from_rfc3339(date_str)
-                .ok()
-                .map(|dt| dt.date_naive())
-        })
+    NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok().or_else(|| {
+        chrono::DateTime::parse_from_rfc3339(date_str).ok().map(|dt| dt.date_naive())
+    })
 }
 
 /// Get created_at date from frontmatter.
@@ -608,13 +594,9 @@ fn get_created_at(note: &IndexedNote) -> Option<NaiveDate> {
     let fm: serde_json::Value = serde_json::from_str(fm_json).ok()?;
     let date_str = fm.get("created_at")?.as_str()?;
 
-    NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-        .ok()
-        .or_else(|| {
-            chrono::DateTime::parse_from_rfc3339(date_str)
-                .ok()
-                .map(|dt| dt.date_naive())
-        })
+    NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok().or_else(|| {
+        chrono::DateTime::parse_from_rfc3339(date_str).ok().map(|dt| dt.date_naive())
+    })
 }
 
 /// Get date from daily note frontmatter.
