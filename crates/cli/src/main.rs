@@ -121,6 +121,41 @@ enum Commands {
 
     /// Generate activity reports for a time period
     Report(ReportArgs),
+
+    /// Daily planning and review dashboard
+    Today(TodayArgs),
+}
+
+/// Today command subcommands.
+#[derive(Debug, Subcommand)]
+pub enum TodayCommands {
+    /// Open today's daily note in default editor
+    Open,
+}
+
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv today                         # Smart dashboard (auto-selects plan/review based on time)
+  mdv today --plan                  # Force morning planning mode
+  mdv today --review                # Force evening review mode
+  mdv today open                    # Open today's daily note in $EDITOR
+")]
+pub struct TodayArgs {
+    /// Force morning planning mode
+    #[arg(long, conflicts_with = "review")]
+    pub plan: bool,
+
+    /// Force evening review mode
+    #[arg(long, conflicts_with = "plan")]
+    pub review: bool,
+
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+
+    #[command(subcommand)]
+    pub command: Option<TodayCommands>,
 }
 
 /// Task management subcommands.
@@ -763,6 +798,9 @@ fn main() {
                 args.output.as_deref(),
                 args.json,
             );
+        }
+        Some(Commands::Today(args)) => {
+            cmd::today::run(cli.config.as_deref(), cli.profile.as_deref(), args);
         }
     }
 }

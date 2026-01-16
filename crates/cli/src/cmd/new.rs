@@ -1163,7 +1163,7 @@ fn log_to_daily(
         if note_id.is_empty() { String::new() } else { format!(" {}", note_id) };
 
     let log_entry = format!(
-        "- **{}** Created {}{}: [[{}|{}]]\n",
+        "- **{}**: Created {}{}: [[{}|{}]]\n",
         time, note_type, id_display, link, title
     );
 
