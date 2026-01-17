@@ -5,7 +5,7 @@ use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::domain::{
-    CoreMetadata, CreationContext, NoteCreator, NoteType as DomainNoteType,
+    CoreMetadata, CreationContext, DailyLogService, NoteCreator, NoteType as DomainNoteType,
 };
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::frontmatter::{serialize_with_order, Frontmatter, ParsedDocument};
@@ -349,7 +349,9 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
             .or_else(|| ctx.get("project-id"))
             .cloned()
             .unwrap_or_default();
-        log_to_daily(cfg, template_name, &title, &note_id, &output_path);
+        if let Err(e) = DailyLogService::log_creation(cfg, template_name, &title, &note_id, &output_path) {
+            eprintln!("Warning: failed to log to daily note: {e}");
+        }
 
         // Force reindex so the new note appears in queries
         reindex_vault(cfg);
@@ -968,87 +970,6 @@ fn apply_hook_modifications(
 
     // Write back to file
     fs::write(output_path, final_content).map_err(|e| e.to_string())
-}
-
-/// Log a creation event to today's daily note.
-/// Creates the daily note if it doesn't exist.
-fn log_to_daily(
-    cfg: &ResolvedConfig,
-    note_type: &str,
-    title: &str,
-    note_id: &str,
-    output_path: &Path,
-) {
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let time = chrono::Local::now().format("%H:%M").to_string();
-
-    // Build daily note path (default pattern: Journal/Daily/YYYY-MM-DD.md)
-    let daily_path = cfg.vault_root.join(format!("Journal/Daily/{}.md", today));
-
-    // Ensure parent directory exists
-    if let Some(parent) = daily_path.parent() {
-        if let Err(e) = fs::create_dir_all(parent) {
-            eprintln!("Warning: could not create daily directory: {e}");
-            return;
-        }
-    }
-
-    // Read or create daily note
-    let mut content = match fs::read_to_string(&daily_path) {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // Create minimal daily note
-            let content = format!(
-                "---\ntype: daily\ndate: {}\n---\n\n# {}\n\n## Log\n",
-                today, today
-            );
-            if let Err(e) = fs::write(&daily_path, &content) {
-                eprintln!("Warning: could not create daily note: {e}");
-                return;
-            }
-            println!("Created daily note: {}", daily_path.display());
-            content
-        }
-        Err(e) => {
-            eprintln!("Warning: could not read daily note: {e}");
-            return;
-        }
-    };
-
-    // Build the log entry with link to the note
-    let rel_path = output_path.strip_prefix(&cfg.vault_root).unwrap_or(output_path);
-    let link = rel_path.file_stem().and_then(|s| s.to_str()).unwrap_or("note");
-
-    // Format: "- **HH:MM** Created task [MCP-001]: [[MCP-001|Title]]"
-    let id_display =
-        if note_id.is_empty() { String::new() } else { format!(" {}", note_id) };
-
-    let log_entry = format!(
-        "- **{}**: Created {}{}: [[{}|{}]]\n",
-        time, note_type, id_display, link, title
-    );
-
-    // Find the Log section and append, or append at end
-    if let Some(log_pos) = content.find("## Log") {
-        // Find the end of the Log section (next ## or end of file)
-        let after_log = &content[log_pos + 6..]; // Skip "## Log"
-        let insert_pos = if let Some(next_section) = after_log.find("\n## ") {
-            log_pos + 6 + next_section
-        } else {
-            content.len()
-        };
-
-        // Insert the log entry
-        content.insert_str(insert_pos, &format!("\n{}", log_entry));
-    } else {
-        // No Log section, add one
-        content.push_str(&format!("\n## Log\n{}", log_entry));
-    }
-
-    // Write back
-    if let Err(e) = fs::write(&daily_path, &content) {
-        eprintln!("Warning: could not update daily note: {e}");
-    }
 }
 
 /// Query existing projects from the index and prompt user to select one.
