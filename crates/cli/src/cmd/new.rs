@@ -699,9 +699,11 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
 
                     // Re-apply core metadata to protect against hook tampering
                     if let Ok(current) = std::fs::read_to_string(&output_path) {
-                        if let Ok(fixed) =
-                            ensure_core_metadata(&current, &ctx.core_metadata, order.as_deref())
-                        {
+                        if let Ok(fixed) = ensure_core_metadata(
+                            &current,
+                            &ctx.core_metadata,
+                            order.as_deref(),
+                        ) {
                             if let Err(e) = std::fs::write(&output_path, fixed) {
                                 eprintln!(
                                     "Warning: failed to re-apply core metadata: {e}"

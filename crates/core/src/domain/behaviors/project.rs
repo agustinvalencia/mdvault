@@ -85,10 +85,23 @@ impl NoteLifecycle for ProjectBehavior {
         Ok(())
     }
 
-    fn after_create(&self, _ctx: &CreationContext, _content: &str) -> DomainResult<()> {
-        // TODO: Log to daily note
-        // TODO: Run Lua on_create hook if defined
-        // TODO: Reindex vault
+    fn after_create(&self, ctx: &CreationContext, _content: &str) -> DomainResult<()> {
+        // Log to daily note
+        if let Some(ref output_path) = ctx.output_path {
+            let project_id = ctx.core_metadata.project_id.as_deref().unwrap_or("");
+            if let Err(e) = super::super::services::DailyLogService::log_creation(
+                ctx.config,
+                "project",
+                &ctx.title,
+                project_id,
+                output_path,
+            ) {
+                // Log warning but don't fail the creation
+                tracing::warn!("Failed to log to daily note: {}", e);
+            }
+        }
+
+        // TODO: Run Lua on_create hook if defined (requires VaultContext)
 
         Ok(())
     }
