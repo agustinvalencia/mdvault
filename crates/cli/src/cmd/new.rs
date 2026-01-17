@@ -21,8 +21,8 @@ use mdvault_core::templates::engine::{
 use mdvault_core::templates::repository::{TemplateRepoError, TemplateRepository};
 use mdvault_core::types::try_fix_note;
 use mdvault_core::types::{
-    discovery::load_typedef_from_file, generate_scaffolding, validate_note_for_creation,
-    TypeDefinition, TypeRegistry, TypedefRepository,
+    discovery::load_typedef_from_file, validate_note_for_creation, TypeDefinition, TypeRegistry,
+    TypedefRepository,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -524,251 +524,140 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         }
     }
 
-    // Create the note - use template if available, otherwise scaffolding via NoteCreator
-    if let Some(ref loaded) = loaded_template {
-        // Template path: manual creation with template rendering
-        let behavior = note_type.behavior();
+    // Create the note using NoteCreator (handles both template and scaffolding)
+    // Set template in context if available
+    if let Some(loaded) = loaded_template {
+        ctx.template = Some(loaded);
+    }
 
-        // Run before_create to set IDs, counters, etc.
-        if let Err(e) = behavior.before_create(&mut ctx) {
-            eprintln!("FAIL mdv new");
-            eprintln!("{e}");
-            std::process::exit(1);
-        }
+    // Set output path override if provided via CLI
+    if let Some(ref out) = args.output {
+        ctx.output_path = Some(out.clone());
+    }
 
-        // Resolve output path: CLI --output overrides behavior default
-        let output_path = if let Some(ref out) = args.output {
-            out.clone()
-        } else {
-            match behavior.output_path(&ctx) {
-                Ok(p) => p,
+    let creator = NoteCreator::new(note_type);
+    match creator.create(&mut ctx) {
+        Ok(result) => {
+            // Read the created content for validation and hooks
+            let mut content = match std::fs::read_to_string(&result.path) {
+                Ok(c) => c,
                 Err(e) => {
                     eprintln!("FAIL mdv new");
-                    eprintln!("Failed to resolve output path: {e}");
+                    eprintln!("Failed to read created file: {e}");
                     std::process::exit(1);
-                }
-            }
-        };
-
-        if output_path.exists() {
-            eprintln!("Refusing to overwrite existing file: {}", output_path.display());
-            std::process::exit(1);
-        }
-
-        // Render template
-        let info = TemplateInfo {
-            logical_name: loaded.logical_name.clone(),
-            path: loaded.path.clone(),
-        };
-        let mut template_ctx = build_minimal_context(cfg, &info);
-        template_ctx.insert("title".to_string(), title.clone());
-        for (k, v) in &ctx.vars {
-            template_ctx.insert(k.clone(), v.clone());
-        }
-        template_ctx
-            .insert("output_path".to_string(), output_path.to_string_lossy().to_string());
-        if let Some(name) = output_path.file_name().and_then(|s| s.to_str()) {
-            template_ctx.insert("output_filename".to_string(), name.to_string());
-        }
-
-        let content = match render(loaded, &template_ctx) {
-            Ok(rendered) => rendered,
-            Err(e) => {
-                eprintln!("Failed to render template: {e}");
-                eprintln!("Falling back to scaffolding...");
-                generate_scaffolding(type_name, ctx.typedef.as_deref(), &title, &ctx.vars)
-            }
-        };
-
-        let order = ctx.typedef.as_deref().and_then(|td| td.frontmatter_order.clone());
-
-        let mut content =
-            match ensure_core_metadata(&content, &ctx.core_metadata, order.as_deref()) {
-                Ok(fixed) => fixed,
-                Err(e) => {
-                    eprintln!("Warning: failed to apply core metadata: {e}");
-                    content
                 }
             };
 
-        // Validate and autofix before writing
-        match validate_before_write(&type_registry, type_name, &output_path, &content) {
-            Ok(Some(fixed)) => {
-                println!("Auto-fixed validation errors");
-                content = fixed;
-            }
-            Ok(None) => {} // Valid
-            Err(errors) => {
-                eprintln!("Validation failed:");
-                for err in &errors {
-                    eprintln!("  - {}", err);
+            // Validate and auto-fix if needed
+            match validate_before_write(&type_registry, type_name, &result.path, &content) {
+                Ok(Some(fixed)) => {
+                    println!("Auto-fixed validation errors");
+                    content = fixed;
+                    // Write the fixed content back
+                    if let Err(e) = fs::write(&result.path, &content) {
+                        eprintln!("Warning: failed to write fixed content: {e}");
+                    }
                 }
-                std::process::exit(1);
+                Ok(None) => {} // Valid
+                Err(errors) => {
+                    // Validation failed - remove the created file and exit
+                    let _ = fs::remove_file(&result.path);
+                    eprintln!("Validation failed:");
+                    for err in &errors {
+                        eprintln!("  - {}", err);
+                    }
+                    std::process::exit(1);
+                }
             }
-        }
 
-        // Create parent directories and write file
-        if let Some(parent) = output_path.parent() {
-            if let Err(e) = fs::create_dir_all(parent) {
-                eprintln!("Failed to create directory: {e}");
-                std::process::exit(1);
-            }
-        }
-        if let Err(e) = fs::write(&output_path, &content) {
-            eprintln!("Failed to write file: {e}");
-            std::process::exit(1);
-        }
+            match run_on_create_hook_if_exists(
+                cfg,
+                &result.path,
+                &content,
+                ctx.typedef.as_deref(),
+                &ctx.vars,
+            ) {
+                Ok(hook_result) if hook_result.modified => {
+                    let order = ctx
+                        .typedef
+                        .as_deref()
+                        .and_then(|td| td.frontmatter_order.clone());
 
-        // Run after_create
-        if let Err(e) = behavior.after_create(&ctx, &content) {
-            eprintln!("Warning: after_create failed: {e}");
-        }
-
-        // Run on_create hook if exists
-        match run_on_create_hook_if_exists(
-            cfg,
-            &output_path,
-            &content,
-            ctx.typedef.as_deref(),
-            &ctx.vars,
-        ) {
-            Ok(hook_result) if hook_result.modified => {
-                // Check if hook modified variables - if so, re-render template
-                if let Some(ref new_vars) = hook_result.variables {
-                    if let serde_yaml::Value::Mapping(ref vars_map) = new_vars {
-                        // Update ctx.vars with new values
-                        for (k, v) in vars_map {
-                            if let serde_yaml::Value::String(ks) = k {
-                                let vs = match v {
-                                    serde_yaml::Value::String(s) => s.clone(),
-                                    serde_yaml::Value::Number(n) => n.to_string(),
-                                    serde_yaml::Value::Bool(b) => b.to_string(),
-                                    _ => format!("{:?}", v),
-                                };
-                                ctx.set_var(ks, vs);
+                    // Check if hook modified variables - if so and we have a template, re-render
+                    if let Some(ref new_vars) = hook_result.variables {
+                        if let serde_yaml::Value::Mapping(ref vars_map) = new_vars {
+                            // Update ctx.vars with new values from hook
+                            for (k, v) in vars_map {
+                                if let serde_yaml::Value::String(ks) = k {
+                                    let vs = match v {
+                                        serde_yaml::Value::String(s) => s.clone(),
+                                        serde_yaml::Value::Number(n) => n.to_string(),
+                                        serde_yaml::Value::Bool(b) => b.to_string(),
+                                        _ => format!("{:?}", v),
+                                    };
+                                    ctx.set_var(ks, vs);
+                                }
                             }
                         }
-                    }
 
-                    // Re-render template with updated variables
-                    let mut template_ctx = build_minimal_context(cfg, &info);
-                    template_ctx.insert("title".to_string(), title.clone());
-                    for (k, v) in &ctx.vars {
-                        template_ctx.insert(k.clone(), v.clone());
-                    }
-                    template_ctx.insert(
-                        "output_path".to_string(),
-                        output_path.to_string_lossy().to_string(),
-                    );
-                    if let Some(name) = output_path.file_name().and_then(|s| s.to_str()) {
-                        template_ctx
-                            .insert("output_filename".to_string(), name.to_string());
-                    }
+                        // Re-render template with updated variables if we had a template
+                        if let Some(ref loaded) = ctx.template {
+                            let info = TemplateInfo {
+                                logical_name: loaded.logical_name.clone(),
+                                path: loaded.path.clone(),
+                            };
+                            let mut template_ctx = build_minimal_context(cfg, &info);
+                            template_ctx.insert("title".to_string(), ctx.title.clone());
+                            for (k, v) in &ctx.vars {
+                                template_ctx.insert(k.clone(), v.clone());
+                            }
+                            template_ctx.insert(
+                                "output_path".to_string(),
+                                result.path.to_string_lossy().to_string(),
+                            );
+                            if let Some(name) =
+                                result.path.file_name().and_then(|s| s.to_str())
+                            {
+                                template_ctx
+                                    .insert("output_filename".to_string(), name.to_string());
+                            }
 
-                    let regenerated = match render(loaded, &template_ctx) {
-                        Ok(rendered) => rendered,
-                        Err(e) => {
-                            eprintln!("Warning: failed to re-render template: {e}");
-                            content.clone()
-                        }
-                    };
+                            let regenerated = match render(loaded, &template_ctx) {
+                                Ok(rendered) => rendered,
+                                Err(e) => {
+                                    eprintln!("Warning: failed to re-render template: {e}");
+                                    content.clone()
+                                }
+                            };
 
-                    // Re-apply core metadata and write
-                    let final_content = match ensure_core_metadata(
-                        &regenerated,
-                        &ctx.core_metadata,
-                        order.as_deref(),
-                    ) {
-                        Ok(fixed) => fixed,
-                        Err(_) => regenerated,
-                    };
+                            // Re-apply core metadata and write
+                            let final_content = match ensure_core_metadata(
+                                &regenerated,
+                                &ctx.core_metadata,
+                                order.as_deref(),
+                            ) {
+                                Ok(fixed) => fixed,
+                                Err(_) => regenerated,
+                            };
 
-                    if let Err(e) = fs::write(&output_path, &final_content) {
-                        eprintln!("Warning: failed to write re-rendered content: {e}");
-                    }
-                } else {
-                    // No variable changes, just apply hook modifications
-                    if let Err(e) = apply_hook_modifications(
-                        &output_path,
-                        &content,
-                        &hook_result,
-                        order.as_deref(),
-                    ) {
-                        eprintln!("Warning: failed to apply hook modifications: {e}");
-                    }
-
-                    // Re-apply core metadata to protect against hook tampering
-                    if let Ok(current) = std::fs::read_to_string(&output_path) {
-                        if let Ok(fixed) = ensure_core_metadata(
-                            &current,
-                            &ctx.core_metadata,
-                            order.as_deref(),
-                        ) {
-                            if let Err(e) = std::fs::write(&output_path, fixed) {
+                            if let Err(e) = fs::write(&result.path, &final_content) {
+                                eprintln!("Warning: failed to write re-rendered content: {e}");
+                            }
+                        } else {
+                            // No template, just apply hook modifications
+                            if let Err(e) = apply_hook_modifications(
+                                &result.path,
+                                &content,
+                                &hook_result,
+                                order.as_deref(),
+                            ) {
                                 eprintln!(
-                                    "Warning: failed to re-apply core metadata: {e}"
+                                    "Warning: failed to apply hook modifications: {e}"
                                 );
                             }
                         }
-                    }
-                }
-            }
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("Warning: hook execution failed: {e}");
-            }
-        }
-
-        // Log to daily note
-        let note_id = ctx
-            .core_metadata
-            .task_id
-            .as_deref()
-            .or(ctx.core_metadata.project_id.as_deref())
-            .unwrap_or("");
-        log_to_daily(cfg, type_name, &ctx.title, note_id, &output_path);
-
-        println!("OK   mdv new");
-        println!("type:   {}", type_name);
-        if let Some(ref id) = ctx.core_metadata.task_id {
-            println!("id:     {}", id);
-        } else if let Some(ref id) = ctx.core_metadata.project_id {
-            println!("id:     {}", id);
-        }
-        println!("output: {}", output_path.display());
-    } else {
-        // Scaffolding path: use NoteCreator
-        // Set output path override if provided via CLI
-        if let Some(ref out) = args.output {
-            ctx.output_path = Some(out.clone());
-        }
-
-        let creator = NoteCreator::new(note_type);
-        match creator.create(&mut ctx) {
-            Ok(result) => {
-                // Run on_create hook if exists
-                let content = match std::fs::read_to_string(&result.path) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        eprintln!("FAIL mdv new");
-                        eprintln!("Failed to read created file: {e}");
-                        std::process::exit(1);
-                    }
-                };
-
-                match run_on_create_hook_if_exists(
-                    cfg,
-                    &result.path,
-                    &content,
-                    ctx.typedef.as_deref(),
-                    &ctx.vars,
-                ) {
-                    Ok(hook_result) if hook_result.modified => {
-                        let order = ctx
-                            .typedef
-                            .as_deref()
-                            .and_then(|td| td.frontmatter_order.clone());
-
+                    } else {
+                        // No variable changes, just apply hook modifications
                         if let Err(e) = apply_hook_modifications(
                             &result.path,
                             &content,
@@ -777,44 +666,42 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                         ) {
                             eprintln!("Warning: failed to apply hook modifications: {e}");
                         }
+                    }
 
-                        // Re-apply core metadata to protect against hook tampering
-                        if let Ok(current) = std::fs::read_to_string(&result.path) {
-                            if let Ok(fixed) = ensure_core_metadata(
-                                &current,
-                                &ctx.core_metadata,
-                                order.as_deref(),
-                            ) {
-                                if let Err(e) = std::fs::write(&result.path, fixed) {
-                                    eprintln!(
-                                        "Warning: failed to re-apply core metadata: {e}"
-                                    );
-                                }
+                    // Re-apply core metadata to protect against hook tampering
+                    if let Ok(current) = std::fs::read_to_string(&result.path) {
+                        if let Ok(fixed) = ensure_core_metadata(
+                            &current,
+                            &ctx.core_metadata,
+                            order.as_deref(),
+                        ) {
+                            if let Err(e) = std::fs::write(&result.path, fixed) {
+                                eprintln!(
+                                    "Warning: failed to re-apply core metadata: {e}"
+                                );
                             }
                         }
                     }
-                    Ok(_) => {} // No modifications
-                    Err(e) => {
-                        eprintln!("Warning: hook execution failed: {e}");
-                    }
                 }
-
-                // Log to daily note
-                let note_id = result.generated_id.as_deref().unwrap_or("");
-                log_to_daily(cfg, &result.type_name, &ctx.title, note_id, &result.path);
-
-                println!("OK   mdv new");
-                println!("type:   {}", result.type_name);
-                if let Some(ref id) = result.generated_id {
-                    println!("id:     {}", id);
+                Ok(_) => {} // No modifications
+                Err(e) => {
+                    eprintln!("Warning: hook execution failed: {e}");
                 }
-                println!("output: {}", result.path.display());
             }
-            Err(e) => {
-                eprintln!("FAIL mdv new");
-                eprintln!("{e}");
-                std::process::exit(1);
+
+            // Note: Daily logging is handled by behavior.after_create() via DailyLogService
+
+            println!("OK   mdv new");
+            println!("type:   {}", result.type_name);
+            if let Some(ref id) = result.generated_id {
+                println!("id:     {}", id);
             }
+            println!("output: {}", result.path.display());
+        }
+        Err(e) => {
+            eprintln!("FAIL mdv new");
+            eprintln!("{e}");
+            std::process::exit(1);
         }
     }
 }

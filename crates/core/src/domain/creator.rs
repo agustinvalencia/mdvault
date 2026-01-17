@@ -3,8 +3,11 @@
 //! The `NoteCreator` provides a unified flow for creating notes of any type,
 //! using polymorphic dispatch to handle type-specific behaviors.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+
+use chrono::Local;
 
 use super::NoteType;
 use super::context::CreationContext;
@@ -115,8 +118,9 @@ impl NoteCreator {
     /// Otherwise, generates scaffolding from the type definition.
     fn generate_content(&self, ctx: &CreationContext) -> DomainResult<String> {
         if let Some(ref template) = ctx.template {
-            // Use template rendering
-            render_template(template, &ctx.vars).map_err(|e| {
+            // Build render context with standard variables
+            let render_ctx = self.build_render_context(ctx);
+            render_template(template, &render_ctx).map_err(|e| {
                 DomainError::Other(format!("Failed to render template: {}", e))
             })
         } else {
@@ -128,6 +132,68 @@ impl NoteCreator {
                 &ctx.vars,
             ))
         }
+    }
+
+    /// Build a render context with standard template variables.
+    fn build_render_context(&self, ctx: &CreationContext) -> HashMap<String, String> {
+        let mut render_ctx = HashMap::new();
+
+        // Start with user-provided variables
+        render_ctx.extend(ctx.vars.clone());
+
+        // Add date/time variables
+        let now = Local::now();
+        render_ctx.insert("date".into(), now.format("%Y-%m-%d").to_string());
+        render_ctx.insert("time".into(), now.format("%H:%M").to_string());
+        render_ctx.insert("datetime".into(), now.to_rfc3339());
+        render_ctx.insert("today".into(), now.format("%Y-%m-%d").to_string());
+        render_ctx.insert("now".into(), now.to_rfc3339());
+
+        // Add config paths
+        render_ctx.insert(
+            "vault_root".into(),
+            ctx.config.vault_root.to_string_lossy().to_string(),
+        );
+        render_ctx.insert(
+            "templates_dir".into(),
+            ctx.config.templates_dir.to_string_lossy().to_string(),
+        );
+
+        // Add template info if available
+        if let Some(ref template) = ctx.template {
+            render_ctx.insert("template_name".into(), template.logical_name.clone());
+            render_ctx.insert(
+                "template_path".into(),
+                template.path.to_string_lossy().to_string(),
+            );
+        }
+
+        // Add output path info if available
+        if let Some(ref output_path) = ctx.output_path {
+            render_ctx.insert(
+                "output_path".into(),
+                output_path.to_string_lossy().to_string(),
+            );
+            if let Some(name) = output_path.file_name().and_then(|s| s.to_str()) {
+                render_ctx.insert("output_filename".into(), name.to_string());
+            }
+            if let Some(parent) = output_path.parent() {
+                render_ctx.insert("output_dir".into(), parent.to_string_lossy().to_string());
+            }
+        }
+
+        // Add core metadata fields
+        if let Some(ref id) = ctx.core_metadata.task_id {
+            render_ctx.insert("task-id".into(), id.clone());
+        }
+        if let Some(ref id) = ctx.core_metadata.project_id {
+            render_ctx.insert("project-id".into(), id.clone());
+        }
+        if let Some(ref project) = ctx.core_metadata.project {
+            render_ctx.insert("project".into(), project.clone());
+        }
+
+        render_ctx
     }
 }
 
