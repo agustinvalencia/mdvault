@@ -10,6 +10,7 @@ use super::NoteType;
 use super::context::CreationContext;
 use super::traits::{DomainError, DomainResult, NoteBehavior};
 use crate::frontmatter::{Frontmatter, ParsedDocument, serialize_with_order};
+use crate::templates::engine::render as render_template;
 use crate::types::scaffolding::generate_scaffolding;
 
 /// Result of a successful note creation.
@@ -109,15 +110,24 @@ impl NoteCreator {
     }
 
     /// Generate the note content.
+    ///
+    /// If a template is provided in the context, renders it with variable substitution.
+    /// Otherwise, generates scaffolding from the type definition.
     fn generate_content(&self, ctx: &CreationContext) -> DomainResult<String> {
-        // For now, use scaffolding generation
-        // Template rendering will be added in the integration phase
-        Ok(generate_scaffolding(
-            &ctx.type_name,
-            ctx.typedef.as_deref(),
-            &ctx.title,
-            &ctx.vars,
-        ))
+        if let Some(ref template) = ctx.template {
+            // Use template rendering
+            render_template(template, &ctx.vars).map_err(|e| {
+                DomainError::Other(format!("Failed to render template: {}", e))
+            })
+        } else {
+            // Fall back to scaffolding generation
+            Ok(generate_scaffolding(
+                &ctx.type_name,
+                ctx.typedef.as_deref(),
+                &ctx.title,
+                &ctx.vars,
+            ))
+        }
     }
 }
 

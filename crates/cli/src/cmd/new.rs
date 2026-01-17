@@ -4,7 +4,9 @@ use dialoguer::{theme::ColorfulTheme, Editor, Input, Select};
 use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
-use mdvault_core::domain::{CreationContext, NoteCreator, NoteType as DomainNoteType};
+use mdvault_core::domain::{
+    CoreMetadata, CreationContext, NoteCreator, NoteType as DomainNoteType,
+};
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::frontmatter::{serialize_with_order, Frontmatter, ParsedDocument};
 use mdvault_core::index::{IndexBuilder, IndexDb, NoteQuery, NoteType};
@@ -26,24 +28,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::debug;
-
-/// Core metadata that must be preserved in notes regardless of template/hook modifications.
-/// These fields are managed by mdvault and should not be removed or overwritten by user code.
-#[derive(Debug, Clone, Default)]
-struct CoreMetadata {
-    /// Note type (project, task, etc.)
-    note_type: Option<String>,
-    /// Title of the note
-    title: Option<String>,
-    /// Project ID (for projects)
-    project_id: Option<String>,
-    /// Task ID (for tasks)
-    task_id: Option<String>,
-    /// Task counter (for projects)
-    task_counter: Option<u32>,
-    /// Parent project (for tasks)
-    project: Option<String>,
-}
 
 pub fn run(config: Option<&Path>, profile: Option<&str>, args: NewArgs) {
     debug!("Running create new");
@@ -596,20 +580,10 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
             }
         };
 
-        // Build local CoreMetadata and apply to content
-        let local_core = CoreMetadata {
-            note_type: ctx.core_metadata.note_type.clone(),
-            title: ctx.core_metadata.title.clone(),
-            project_id: ctx.core_metadata.project_id.clone(),
-            task_id: ctx.core_metadata.task_id.clone(),
-            task_counter: ctx.core_metadata.task_counter,
-            project: ctx.core_metadata.project.clone(),
-        };
-
         let order = ctx.typedef.as_deref().and_then(|td| td.frontmatter_order.clone());
 
         let mut content =
-            match ensure_core_metadata(&content, &local_core, order.as_deref()) {
+            match ensure_core_metadata(&content, &ctx.core_metadata, order.as_deref()) {
                 Ok(fixed) => fixed,
                 Err(e) => {
                     eprintln!("Warning: failed to apply core metadata: {e}");
@@ -702,7 +676,7 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                     // Re-apply core metadata and write
                     let final_content = match ensure_core_metadata(
                         &regenerated,
-                        &local_core,
+                        &ctx.core_metadata,
                         order.as_deref(),
                     ) {
                         Ok(fixed) => fixed,
@@ -726,7 +700,7 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                     // Re-apply core metadata to protect against hook tampering
                     if let Ok(current) = std::fs::read_to_string(&output_path) {
                         if let Ok(fixed) =
-                            ensure_core_metadata(&current, &local_core, order.as_deref())
+                            ensure_core_metadata(&current, &ctx.core_metadata, order.as_deref())
                         {
                             if let Err(e) = std::fs::write(&output_path, fixed) {
                                 eprintln!(
@@ -780,16 +754,6 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                     }
                 };
 
-                // Build local CoreMetadata from domain context for ensure_core_metadata
-                let local_core = CoreMetadata {
-                    note_type: ctx.core_metadata.note_type.clone(),
-                    title: ctx.core_metadata.title.clone(),
-                    project_id: ctx.core_metadata.project_id.clone(),
-                    task_id: ctx.core_metadata.task_id.clone(),
-                    task_counter: ctx.core_metadata.task_counter,
-                    project: ctx.core_metadata.project.clone(),
-                };
-
                 match run_on_create_hook_if_exists(
                     cfg,
                     &result.path,
@@ -816,7 +780,7 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                         if let Ok(current) = std::fs::read_to_string(&result.path) {
                             if let Ok(fixed) = ensure_core_metadata(
                                 &current,
-                                &local_core,
+                                &ctx.core_metadata,
                                 order.as_deref(),
                             ) {
                                 if let Err(e) = std::fs::write(&result.path, fixed) {
@@ -895,6 +859,14 @@ fn ensure_core_metadata(
 
     if let Some(ref proj) = core.project {
         fields.insert("project".to_string(), serde_yaml::Value::String(proj.clone()));
+    }
+
+    if let Some(ref date) = core.date {
+        fields.insert("date".to_string(), serde_yaml::Value::String(date.clone()));
+    }
+
+    if let Some(ref week) = core.week {
+        fields.insert("week".to_string(), serde_yaml::Value::String(week.clone()));
     }
 
     // Rebuild the document
