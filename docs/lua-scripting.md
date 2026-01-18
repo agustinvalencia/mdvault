@@ -280,6 +280,8 @@ The `lua:` path is resolved relative to your `types_dir` (e.g., `~/.config/mdvau
 3. **Output paths**: Lua's `output` field is used when template doesn't specify one
 4. **Validation**: Schema and `validate()` function are applied before writing
 
+> **Tip**: If a schema field has a `default` value, that default is used automatically without prompting. This is particularly useful for journal types where `title` can default to today's date (e.g., `default = mdv.date("today")`).
+
 ### Creating a Type Definition
 
 Create a `.lua` file in `~/.config/mdvault/types/`. The filename becomes the type name:
@@ -1229,7 +1231,9 @@ Hooks should check for errors but failures are non-fatal—the CLI logs a warnin
 
 ### Complete Hook Example: Linking to Daily Note
 
-This example shows how to automatically log task creation to the daily note. First, create a capture that targets the daily note:
+> **Note**: Built-in types (`task` and `project`) automatically log creation events to today's daily note. The example below demonstrates how to add similar behavior to custom types.
+
+This example shows how to automatically log note creation to the daily note. First, create a capture that targets the daily note:
 
 ```yaml
 # ~/.config/mdvault/captures/log-to-daily.yaml
@@ -1705,6 +1709,8 @@ return {
 
     schema = {
         ["type"] = { type = "string", core = true },
+        -- Title defaults to today's date, so no prompt is shown
+        ["title"] = { type = "date", default = mdv.date("today"), core = true },
         ["date"] = { type = "date", core = true },
         ["mood"] = {
             type = "string",
@@ -1756,10 +1762,12 @@ Week {{week_number}}
 # Create a new project (prompts for ID and status)
 mdv new project "My New Project"
 
-# Create a task in a project
+# Create a task in a project (automatically logged to daily note)
 mdv new task "Implement feature X" --var project=MNP
 
-# Create today's daily note
+# Create today's daily note (title defaults to today's date, no prompt)
+mdv new daily
+# Or with template:
 mdv new --template daily
 
 # Batch mode (uses defaults, no prompts)
