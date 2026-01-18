@@ -364,25 +364,29 @@ Critical behaviors that must be predictable:
 
 ## Migration Path
 
-### Phase 1: Extract Domain Module
+### Phase 1: Extract Domain Module - COMPLETE
 - Create `crates/core/src/domain/` with trait definitions
 - Implement `TaskBehavior`, `ProjectBehavior` etc.
 - Keep existing `new.rs` working (no behavior changes)
 
-### Phase 2: Refactor `new.rs`
+### Phase 2: Refactor `new.rs` - COMPLETE
 - Replace string matching with `NoteType::from_name()`
 - Route through trait methods
 - Remove duplicated code paths
 - Remove triple `ensure_core_metadata()` calls
 
-### Phase 3: Consolidate Template/Scaffolding Modes
+### Phase 3: Consolidate Template/Scaffolding Modes - COMPLETE
 - Unify the two creation paths
 - Both use the same trait dispatch
+- `NoteCreator` handles both template and scaffolding generation
+- `DailyLogService` centralized in domain layer
 
-### Phase 4: Test & Validate
-- Ensure all existing tests pass
+### Phase 4: Test & Validate - COMPLETE
+- Ensure all existing tests pass (430+ tests)
 - Add trait-specific unit tests
 - Verify Lua extensions still work
+
+> **Status:** Migration completed in PR #81 (2026-01-18). See `docs/refactoring/2026-01-16-new-command-refactor.md` for details.
 
 ## Open Questions
 

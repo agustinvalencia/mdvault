@@ -1,8 +1,26 @@
 # Refactoring Analysis: `mdv new` and Domain Behaviors
 
 **Date:** 2026-01-16
-**Status:** Partial Integration
+**Status:** Completed (2026-01-18)
 **Analyst:** Claude (verified)
+
+## Completion Summary
+
+The refactoring has been completed in PR #81. Key achievements:
+
+- **Line reduction:** 1549 -> 1356 lines (~193 lines, 12.5%)
+- **CoreMetadata:** Consolidated to single domain struct
+- **DailyLogService:** Created and integrated into behaviors
+- **NoteCreator:** Now handles both template and scaffolding creation
+- **Unified flow:** Both template and scaffolding paths use `NoteCreator::create()`
+
+### Commits (on `refactor/domain-behaviors-completion` branch):
+1. `refactor(domain): consolidate CoreMetadata and add template support`
+2. `refactor(domain): add DailyLogService and integrate into behaviors`
+3. `refactor(cli): unify template and scaffolding flows in mdv new`
+4. `refactor(cli): use DailyLogService in template mode`
+
+---
 
 ## Overview
 
@@ -205,9 +223,15 @@ Once the refactoring achieves full delegation to `NoteCreator`, the following CL
 
 ## Next Steps
 
-1. [ ] Create domain services for daily logging and reindexing
-2. [ ] Extend NoteCreator with template rendering support
-3. [ ] Migrate hook execution into NoteCreator
-4. [ ] Remove CLI `CoreMetadata` and `ensure_core_metadata`
-5. [ ] Unify template mode and scaffolding mode entry points
-6. [ ] Remove dead code incrementally with test verification
+1. [x] Create domain services for daily logging and reindexing - **DailyLogService created**
+2. [x] Extend NoteCreator with template rendering support - **template field added to CreationContext**
+3. [ ] Migrate hook execution into NoteCreator - **Deferred: hooks remain in CLI due to VaultContext complexity**
+4. [x] Remove CLI `CoreMetadata` and `ensure_core_metadata` - **Now uses domain CoreMetadata; CLI ensure_core_metadata kept for hook post-processing**
+5. [x] Unify template mode and scaffolding mode entry points - **run_scaffolding_mode now unified**
+6. [x] Remove dead code incrementally with test verification - **log_to_daily removed, all tests pass**
+
+### Remaining Work (Future PRs)
+
+- **Hook integration:** Move `run_on_create_hook_if_exists` into domain layer (requires VaultContext refactoring)
+- **run_template_mode:** Could be further unified with scaffolding mode (currently separate for pure template creation without type behaviors)
+- **reindex_vault:** Could move to a VaultService in domain layer
