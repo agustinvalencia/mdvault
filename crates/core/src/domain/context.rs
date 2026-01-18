@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::config::types::ResolvedConfig;
+use crate::templates::repository::LoadedTemplate;
 use crate::types::{TypeDefinition, TypeRegistry};
 
 /// Core metadata fields managed by Rust.
@@ -73,6 +74,9 @@ pub struct CreationContext<'a> {
     // Output state
     pub output_path: Option<PathBuf>,
 
+    // Template (if using template-based creation)
+    pub template: Option<LoadedTemplate>,
+
     // Mode flags
     pub batch_mode: bool,
 }
@@ -107,6 +111,7 @@ impl<'a> CreationContext<'a> {
             vars,
             core_metadata,
             output_path: None,
+            template: None,
             batch_mode: false,
         }
     }
@@ -114,6 +119,12 @@ impl<'a> CreationContext<'a> {
     /// Add CLI-provided variables.
     pub fn with_vars(mut self, cli_vars: HashMap<String, String>) -> Self {
         self.vars.extend(cli_vars);
+        self
+    }
+
+    /// Set a template to use for content generation.
+    pub fn with_template(mut self, template: LoadedTemplate) -> Self {
+        self.template = Some(template);
         self
     }
 

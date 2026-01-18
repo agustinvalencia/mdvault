@@ -25,6 +25,7 @@
 pub mod behaviors;
 pub mod context;
 pub mod creator;
+pub mod services;
 pub mod traits;
 
 pub use behaviors::{
@@ -35,6 +36,7 @@ pub use context::{
     CoreMetadata, CreationContext, FieldPrompt, PromptContext, PromptType,
 };
 pub use creator::{CreationResult, NoteCreator};
+pub use services::DailyLogService;
 pub use traits::{
     DomainError, DomainResult, NoteBehavior, NoteIdentity, NoteLifecycle, NotePrompts,
 };

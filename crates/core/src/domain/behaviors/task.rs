@@ -106,9 +106,22 @@ impl NoteLifecycle for TaskBehavior {
             increment_project_counter(ctx.config, project)?;
         }
 
-        // TODO: Log to daily note
-        // TODO: Run Lua on_create hook if defined
-        // TODO: Reindex vault
+        // Log to daily note
+        if let Some(ref output_path) = ctx.output_path {
+            let task_id = ctx.core_metadata.task_id.as_deref().unwrap_or("");
+            if let Err(e) = super::super::services::DailyLogService::log_creation(
+                ctx.config,
+                "task",
+                &ctx.title,
+                task_id,
+                output_path,
+            ) {
+                // Log warning but don't fail the creation
+                tracing::warn!("Failed to log to daily note: {}", e);
+            }
+        }
+
+        // TODO: Run Lua on_create hook if defined (requires VaultContext)
 
         Ok(())
     }
