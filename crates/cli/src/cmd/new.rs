@@ -5,7 +5,8 @@ use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::domain::{
-    CoreMetadata, CreationContext, DailyLogService, NoteCreator, NoteType as DomainNoteType,
+    CoreMetadata, CreationContext, DailyLogService, NoteCreator,
+    NoteType as DomainNoteType,
 };
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::frontmatter::{serialize_with_order, Frontmatter, ParsedDocument};
@@ -21,8 +22,8 @@ use mdvault_core::templates::engine::{
 use mdvault_core::templates::repository::{TemplateRepoError, TemplateRepository};
 use mdvault_core::types::try_fix_note;
 use mdvault_core::types::{
-    discovery::load_typedef_from_file, validate_note_for_creation, TypeDefinition, TypeRegistry,
-    TypedefRepository,
+    discovery::load_typedef_from_file, validate_note_for_creation, TypeDefinition,
+    TypeRegistry, TypedefRepository,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -349,7 +350,13 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
             .or_else(|| ctx.get("project-id"))
             .cloned()
             .unwrap_or_default();
-        if let Err(e) = DailyLogService::log_creation(cfg, template_name, &title, &note_id, &output_path) {
+        if let Err(e) = DailyLogService::log_creation(
+            cfg,
+            template_name,
+            &title,
+            &note_id,
+            &output_path,
+        ) {
             eprintln!("Warning: failed to log to daily note: {e}");
         }
 
@@ -405,13 +412,12 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         None => {
             // Check if the type's schema has a default for title
             let title_default = type_registry.get(type_name).and_then(|td| {
-                td.schema
-                    .get("title")
-                    .and_then(|fs| fs.default.as_ref())
-                    .and_then(|v| match v {
+                td.schema.get("title").and_then(|fs| fs.default.as_ref()).and_then(|v| {
+                    match v {
                         serde_yaml::Value::String(s) => Some(s.clone()),
                         _ => None,
-                    })
+                    }
+                })
             });
 
             if let Some(default_title) = title_default {
@@ -566,7 +572,8 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
             };
 
             // Validate and auto-fix if needed
-            match validate_before_write(&type_registry, type_name, &result.path, &content) {
+            match validate_before_write(&type_registry, type_name, &result.path, &content)
+            {
                 Ok(Some(fixed)) => {
                     println!("Auto-fixed validation errors");
                     content = fixed;
@@ -635,14 +642,18 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                             if let Some(name) =
                                 result.path.file_name().and_then(|s| s.to_str())
                             {
-                                template_ctx
-                                    .insert("output_filename".to_string(), name.to_string());
+                                template_ctx.insert(
+                                    "output_filename".to_string(),
+                                    name.to_string(),
+                                );
                             }
 
                             let regenerated = match render(loaded, &template_ctx) {
                                 Ok(rendered) => rendered,
                                 Err(e) => {
-                                    eprintln!("Warning: failed to re-render template: {e}");
+                                    eprintln!(
+                                        "Warning: failed to re-render template: {e}"
+                                    );
                                     content.clone()
                                 }
                             };
@@ -658,7 +669,9 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                             };
 
                             if let Err(e) = fs::write(&result.path, &final_content) {
-                                eprintln!("Warning: failed to write re-rendered content: {e}");
+                                eprintln!(
+                                    "Warning: failed to write re-rendered content: {e}"
+                                );
                             }
                         } else {
                             // No template, just apply hook modifications

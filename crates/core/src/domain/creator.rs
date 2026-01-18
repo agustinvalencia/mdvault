@@ -170,15 +170,14 @@ impl NoteCreator {
 
         // Add output path info if available
         if let Some(ref output_path) = ctx.output_path {
-            render_ctx.insert(
-                "output_path".into(),
-                output_path.to_string_lossy().to_string(),
-            );
+            render_ctx
+                .insert("output_path".into(), output_path.to_string_lossy().to_string());
             if let Some(name) = output_path.file_name().and_then(|s| s.to_str()) {
                 render_ctx.insert("output_filename".into(), name.to_string());
             }
             if let Some(parent) = output_path.parent() {
-                render_ctx.insert("output_dir".into(), parent.to_string_lossy().to_string());
+                render_ctx
+                    .insert("output_dir".into(), parent.to_string_lossy().to_string());
             }
         }
 
