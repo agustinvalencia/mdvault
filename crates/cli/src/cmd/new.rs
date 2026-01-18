@@ -399,21 +399,36 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     let loaded_template =
         template_repo.as_ref().and_then(|repo| repo.get_by_name(type_name).ok());
 
-    // Get title (required for scaffolding)
+    // Get title - check for schema default before prompting
     let title = match &args.title {
         Some(t) => t.clone(),
         None => {
-            if args.batch {
+            // Check if the type's schema has a default for title
+            let title_default = type_registry.get(type_name).and_then(|td| {
+                td.schema
+                    .get("title")
+                    .and_then(|fs| fs.default.as_ref())
+                    .and_then(|v| match v {
+                        serde_yaml::Value::String(s) => Some(s.clone()),
+                        _ => None,
+                    })
+            });
+
+            if let Some(default_title) = title_default {
+                // Use the schema default (e.g., today's date for daily notes)
+                default_title
+            } else if args.batch {
                 eprintln!("Error: title is required in batch mode");
                 eprintln!("Usage: mdv new {type_name} \"Title\"");
                 std::process::exit(1);
-            }
-            // Prompt for title
-            match prompt_for_field("title", "Note title", None, true) {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("Error: {e}");
-                    std::process::exit(1);
+            } else {
+                // Prompt for title
+                match prompt_for_field("title", "Note title", None, true) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    }
                 }
             }
         }
