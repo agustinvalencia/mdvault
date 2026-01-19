@@ -4,6 +4,7 @@ use dialoguer::{theme::ColorfulTheme, Editor, Input, Select};
 use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
+use mdvault_core::context::ContextManager;
 use mdvault_core::domain::{
     CoreMetadata, CreationContext, DailyLogService, NoteCreator,
     NoteType as DomainNoteType,
@@ -114,10 +115,21 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         provided_vars.entry("title".to_string()).or_insert(t.clone());
     }
 
-    // For task templates: show project picker if project not already provided
-    if template_name == "task" && !provided_vars.contains_key("project") && !args.batch {
-        if let Some(project) = prompt_project_selection(cfg) {
-            provided_vars.insert("project".to_string(), project);
+    // For task templates: use focus context or show project picker if project not already provided
+    if template_name == "task" && !provided_vars.contains_key("project") {
+        // Check for active focus context first
+        if let Ok(context_mgr) = ContextManager::load(&cfg.vault_root) {
+            if let Some(focused_project) = context_mgr.active_project() {
+                debug!("Using focused project: {}", focused_project);
+                provided_vars.insert("project".to_string(), focused_project.to_string());
+            }
+        }
+
+        // If still no project and not batch mode, prompt for selection
+        if !provided_vars.contains_key("project") && !args.batch {
+            if let Some(project) = prompt_project_selection(cfg) {
+                provided_vars.insert("project".to_string(), project);
+            }
         }
     }
 
@@ -454,6 +466,16 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     let mut ctx = CreationContext::new(type_name, &title, cfg, &type_registry)
         .with_vars(cli_vars)
         .with_batch_mode(args.batch);
+
+    // For task types: inject focused project if not already provided via --var
+    if type_name == "task" && !ctx.vars.contains_key("project") {
+        if let Ok(context_mgr) = ContextManager::load(&cfg.vault_root) {
+            if let Some(focused_project) = context_mgr.active_project() {
+                debug!("Using focused project for task: {}", focused_project);
+                ctx.set_var("project", focused_project);
+            }
+        }
+    }
 
     // Handle type-specific prompts
     let behavior = note_type.behavior();

@@ -124,6 +124,9 @@ enum Commands {
 
     /// Daily planning and review dashboard
     Today(TodayArgs),
+
+    /// Set or show active focus context
+    Focus(FocusArgs),
 }
 
 /// Today command subcommands.
@@ -639,6 +642,32 @@ pub struct CompletionsArgs {
     pub shell: Shell,
 }
 
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv focus                           # Show current focus
+  mdv focus MCP                       # Set focus to project MCP
+  mdv focus MCP --note \"OAuth work\"   # Set focus with note
+  mdv focus --clear                   # Clear focus
+")]
+pub struct FocusArgs {
+    /// Project ID to focus on (e.g., \"MCP\", \"VAULT\")
+    #[arg(add = ArgValueCompleter::new(completions::complete_projects))]
+    pub project: Option<String>,
+
+    /// Note describing current work
+    #[arg(long, short)]
+    pub note: Option<String>,
+
+    /// Clear the current focus
+    #[arg(long, short)]
+    pub clear: bool,
+
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
     let pos =
         s.find('=').ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
@@ -801,6 +830,9 @@ fn main() {
         }
         Some(Commands::Today(args)) => {
             cmd::today::run(cli.config.as_deref(), cli.profile.as_deref(), args);
+        }
+        Some(Commands::Focus(args)) => {
+            cmd::focus::run(cli.config.as_deref(), cli.profile.as_deref(), args);
         }
     }
 }

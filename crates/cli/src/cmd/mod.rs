@@ -1,5 +1,6 @@
 pub mod capture;
 pub mod doctor;
+pub mod focus;
 pub mod links;
 pub mod list;
 pub mod list_templates;

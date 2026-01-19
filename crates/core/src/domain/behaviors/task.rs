@@ -6,7 +6,7 @@
 //! - Logging to daily note
 //! - Output path: Projects/{project}/Tasks/{id}.md or Inbox/{id}.md
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::types::TypeDefinition;
@@ -214,8 +214,13 @@ fn get_project_info(
 }
 
 /// Find the project file by project name/ID.
+///
+/// Searches in the following order:
+/// 1. Direct path patterns (fast path)
+/// 2. File named {project}.md in any Projects subfolder
+/// 3. Any project file with matching project-id in frontmatter
 fn find_project_file(config: &ResolvedConfig, project: &str) -> DomainResult<PathBuf> {
-    // Try common patterns
+    // Try common patterns first (fast path)
     let patterns = [
         format!("Projects/{}/{}.md", project, project),
         format!("Projects/{}.md", project),
@@ -229,7 +234,63 @@ fn find_project_file(config: &ResolvedConfig, project: &str) -> DomainResult<Pat
         }
     }
 
+    let projects_dir = config.vault_root.join("Projects");
+    if !projects_dir.exists() {
+        return Err(DomainError::Other(format!(
+            "Project file not found for: {}",
+            project
+        )));
+    }
+
+    // Search for project file by name in any Projects subfolder
+    // Handles structures like: Projects/my-project-folder/MDV.md
+    if let Ok(entries) = fs::read_dir(&projects_dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                // Look for {project}.md in this folder
+                let candidate = entry.path().join(format!("{}.md", project));
+                if candidate.exists() {
+                    return Ok(candidate);
+                }
+            }
+        }
+    }
+
+    // Search by frontmatter project-id
+    // Handles structures where file is named differently (e.g., markdownvault-development.md with project-id: MDV)
+    if let Ok(entries) = fs::read_dir(&projects_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                // Look for any .md file in this folder
+                if let Ok(files) = fs::read_dir(&path) {
+                    for file_entry in files.flatten() {
+                        let file_path = file_entry.path();
+                        if file_has_project_id(&file_path, project) {
+                            return Ok(file_path);
+                        }
+                    }
+                }
+            } else if file_has_project_id(&path, project) {
+                return Ok(path);
+            }
+        }
+    }
+
     Err(DomainError::Other(format!("Project file not found for: {}", project)))
+}
+
+/// Check if a file has a matching project-id in its frontmatter.
+fn file_has_project_id(path: &Path, project_id: &str) -> bool {
+    if path.extension().map(|e| e == "md").unwrap_or(false)
+        && let Ok(content) = fs::read_to_string(path)
+        && let Ok(parsed) = crate::frontmatter::parse(&content)
+        && let Some(fm) = parsed.frontmatter
+        && let Some(pid) = fm.fields.get("project-id")
+    {
+        return pid.as_str() == Some(project_id);
+    }
+    false
 }
 
 /// Increment the task_counter in a project file.
