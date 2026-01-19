@@ -92,6 +92,16 @@ impl ConfigLoader {
             None => default_typedefs_dir(),
         };
 
+        // Resolve excluded folders
+        let excluded_folders: Vec<PathBuf> = prof
+            .excluded_folders
+            .iter()
+            .filter_map(|folder| {
+                let expanded = sub(folder);
+                expand_path(&expanded).ok()
+            })
+            .collect();
+
         // Resolve log file path if present
         let logging = if let Some(ref file) = log_cfg.file {
             let expanded_file = expand_path(&sub(&file.to_string_lossy()))?;
@@ -111,6 +121,7 @@ impl ConfigLoader {
             captures_dir,
             macros_dir,
             typedefs_dir,
+            excluded_folders,
             security: sec.clone(),
             logging,
         })

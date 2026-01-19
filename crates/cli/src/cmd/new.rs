@@ -829,7 +829,11 @@ fn reindex_vault(cfg: &ResolvedConfig) {
     // Open the database and run incremental reindex
     match IndexDb::open(&index_path) {
         Ok(db) => {
-            let builder = IndexBuilder::new(&db, &cfg.vault_root);
+            let builder = IndexBuilder::with_exclusions(
+                &db,
+                &cfg.vault_root,
+                cfg.excluded_folders.clone(),
+            );
             if let Err(e) = builder.incremental_reindex(None) {
                 eprintln!("Warning: reindex failed: {e}");
             }

@@ -261,6 +261,7 @@ mod tests {
             captures_dir: vault_root.join(".mdvault/captures"),
             macros_dir: vault_root.join(".mdvault/macros"),
             typedefs_dir: vault_root.join(".mdvault/typedefs"),
+            excluded_folders: vec![],
             security: Default::default(),
             logging: Default::default(),
         }

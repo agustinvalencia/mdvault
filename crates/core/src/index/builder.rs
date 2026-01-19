@@ -71,12 +71,22 @@ pub type ProgressCallback = Box<dyn Fn(usize, usize, &str)>;
 pub struct IndexBuilder<'a> {
     db: &'a IndexDb,
     vault_root: &'a Path,
+    excluded_folders: Vec<std::path::PathBuf>,
 }
 
 impl<'a> IndexBuilder<'a> {
     /// Create a new index builder.
     pub fn new(db: &'a IndexDb, vault_root: &'a Path) -> Self {
-        Self { db, vault_root }
+        Self { db, vault_root, excluded_folders: Vec::new() }
+    }
+
+    /// Create a new index builder with folder exclusions.
+    pub fn with_exclusions(
+        db: &'a IndexDb,
+        vault_root: &'a Path,
+        excluded_folders: Vec<std::path::PathBuf>,
+    ) -> Self {
+        Self { db, vault_root, excluded_folders }
     }
 
     /// Perform a full reindex of the vault.
@@ -88,8 +98,9 @@ impl<'a> IndexBuilder<'a> {
         let start = std::time::Instant::now();
         let mut stats = IndexStats::default();
 
-        // Walk the vault
-        let walker = VaultWalker::new(self.vault_root)?;
+        // Walk the vault with exclusions
+        let walker =
+            VaultWalker::with_exclusions(self.vault_root, self.excluded_folders.clone())?;
         let files = walker.walk()?;
         stats.files_found = files.len();
 
@@ -136,8 +147,9 @@ impl<'a> IndexBuilder<'a> {
         let start = std::time::Instant::now();
         let mut stats = IndexStats::default();
 
-        // Phase 1: Walk the vault and collect all current files
-        let walker = VaultWalker::new(self.vault_root)?;
+        // Phase 1: Walk the vault and collect all current files (with exclusions)
+        let walker =
+            VaultWalker::with_exclusions(self.vault_root, self.excluded_folders.clone())?;
         let files = walker.walk()?;
         stats.files_found = files.len();
 
