@@ -6,13 +6,15 @@
 //! - Handle defaults and required/optional status
 //! - Support batch mode (non-interactive) for CI/scripting
 
-use dialoguer::{theme::ColorfulTheme, Input, Select};
+use dialoguer::{theme::ColorfulTheme, FuzzySelect, Input, Select};
+use mdvault_core::scripting::{SelectorCallback, SelectorItem, SelectorOptions};
 use mdvault_core::templates::engine::RenderContext;
 use mdvault_core::vars::{
     collect_all_variables, try_evaluate_date_expr, VarSpec, VarsMap,
 };
 use std::collections::HashMap;
 use std::io::{self, IsTerminal};
+use std::sync::Arc;
 
 /// Options for prompting behavior.
 #[derive(Debug, Clone, Default)]
@@ -325,6 +327,49 @@ pub fn parse_var_args(args: &[String]) -> HashMap<String, String> {
         }
     }
     map
+}
+
+/// Create a selector callback that uses dialoguer's FuzzySelect.
+///
+/// This callback is passed to VaultContext to enable `mdv.selector()` in Lua scripts.
+/// It displays an interactive fuzzy-search selector and returns the selected value.
+///
+/// # Example
+///
+/// ```ignore
+/// let selector = create_fuzzy_selector_callback();
+/// let vault_ctx = VaultContext::new(...).with_selector(selector);
+/// ```
+pub fn create_fuzzy_selector_callback() -> SelectorCallback {
+    Arc::new(|items: &[SelectorItem], options: &SelectorOptions| {
+        if items.is_empty() {
+            return None;
+        }
+
+        // Build display labels
+        let labels: Vec<&str> = items.iter().map(|item| item.label.as_str()).collect();
+
+        // Use FuzzySelect if fuzzy mode is enabled, otherwise regular Select
+        let result = if options.fuzzy {
+            FuzzySelect::with_theme(&ColorfulTheme::default())
+                .with_prompt(&options.prompt)
+                .items(&labels)
+                .default(options.default.unwrap_or(0))
+                .interact_opt()
+                .ok()
+                .flatten()
+        } else {
+            Select::with_theme(&ColorfulTheme::default())
+                .with_prompt(&options.prompt)
+                .items(&labels)
+                .default(options.default.unwrap_or(0))
+                .interact_opt()
+                .ok()
+                .flatten()
+        };
+
+        result.map(|idx| items[idx].value.clone())
+    })
 }
 
 #[cfg(test)]

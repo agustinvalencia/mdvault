@@ -44,6 +44,7 @@
 //! - `mdv.backlinks(path)` - Get notes linking to a path
 //! - `mdv.outlinks(path)` - Get notes a path links to
 //! - `mdv.query(opts)` - Query the vault index
+//! - `mdv.selector(opts)` - Show interactive fuzzy selector for notes of a type
 //!
 //! # Security
 //!
@@ -59,6 +60,7 @@ pub mod engine;
 pub mod hook_runner;
 pub mod hooks;
 pub mod index_bindings;
+pub mod selector;
 pub mod types;
 pub mod vault_bindings;
 pub mod vault_context;
@@ -68,5 +70,6 @@ pub use hook_runner::{
     HookResult, UpdateHookResult, run_on_create_hook, run_on_update_hook,
 };
 pub use hooks::{HookError, NoteContext};
+pub use selector::{SelectorCallback, SelectorItem, SelectorOptions};
 pub use types::{SandboxConfig, ScriptingError};
 pub use vault_context::{CurrentNote, VaultContext};

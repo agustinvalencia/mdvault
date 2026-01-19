@@ -147,6 +147,18 @@ pub struct FieldSchema {
     /// Restrict to notes of a specific type.
     #[serde(default)]
     pub note_type: Option<String>,
+
+    // Interactive selection
+    /// If set, show a fuzzy selector for notes of this type during prompting.
+    /// The selector shows all notes of the specified type and returns the selected
+    /// note's path (without .md extension) or a custom field from frontmatter.
+    ///
+    /// Example in Lua typedef:
+    /// ```lua
+    /// project = { selector = "project", prompt = "Select project" }
+    /// ```
+    #[serde(default)]
+    pub selector: Option<String>,
 }
 
 impl FieldSchema {
@@ -225,5 +237,34 @@ mod tests {
         let schema = FieldSchema::required_enum(vec!["a".to_string(), "b".to_string()]);
         assert!(schema.required);
         assert_eq!(schema.enum_values, Some(vec!["a".to_string(), "b".to_string()]));
+    }
+
+    #[test]
+    fn test_field_schema_with_selector() {
+        let schema = FieldSchema {
+            field_type: Some(FieldType::String),
+            selector: Some("project".to_string()),
+            prompt: Some("Select project".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(schema.selector, Some("project".to_string()));
+        assert_eq!(schema.prompt, Some("Select project".to_string()));
+    }
+
+    #[test]
+    fn test_field_schema_selector_deserialization() {
+        let yaml = r#"
+            type: string
+            selector: project
+            prompt: "Select project"
+            default: inbox
+        "#;
+        let schema: FieldSchema = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(schema.selector, Some("project".to_string()));
+        assert_eq!(schema.prompt, Some("Select project".to_string()));
+        assert_eq!(
+            schema.default,
+            Some(serde_yaml::Value::String("inbox".to_string()))
+        );
     }
 }

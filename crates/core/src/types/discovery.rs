@@ -330,6 +330,9 @@ fn parse_field_schema(
     // Get inherited flag (field value will be set by on_create hook)
     let inherited: bool = table.get("inherited").unwrap_or(false);
 
+    // Get selector for interactive note selection
+    let selector: Option<String> = table.get("selector").ok();
+
     Ok(FieldSchema {
         field_type,
         required,
@@ -350,6 +353,7 @@ fn parse_field_schema(
         core,
         multiline,
         inherited,
+        selector,
     })
 }
 
@@ -582,5 +586,51 @@ return {
         let result = repo.load_typedef("invalid");
 
         assert!(matches!(result, Err(TypedefError::InvalidDefinition { .. })));
+    }
+
+    #[test]
+    fn test_load_typedef_with_selector() {
+        let temp = TempDir::new().unwrap();
+        let types_dir = temp.path().join("types");
+        fs::create_dir_all(&types_dir).unwrap();
+
+        fs::write(
+            types_dir.join("task.lua"),
+            r#"
+return {
+    schema = {
+        title = { type = "string", required = true },
+        project = {
+            type = "string",
+            selector = "project",
+            prompt = "Select project",
+            default = "inbox"
+        },
+        area = {
+            selector = "area",
+            prompt = "Which area?"
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let repo = TypedefRepository::new(&types_dir).unwrap();
+        let typedef = repo.load_typedef("task").unwrap();
+
+        // Check selector field was parsed correctly
+        let project_field = typedef.schema.get("project").unwrap();
+        assert_eq!(project_field.selector, Some("project".to_string()));
+        assert_eq!(project_field.prompt, Some("Select project".to_string()));
+        assert_eq!(
+            project_field.default,
+            Some(serde_yaml::Value::String("inbox".to_string()))
+        );
+
+        // Check second selector field
+        let area_field = typedef.schema.get("area").unwrap();
+        assert_eq!(area_field.selector, Some("area".to_string()));
+        assert_eq!(area_field.prompt, Some("Which area?".to_string()));
     }
 }

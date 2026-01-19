@@ -1,4 +1,7 @@
-use crate::prompt::{prompt_for_enum, prompt_for_field, CollectedVars, PromptOptions};
+use crate::prompt::{
+    create_fuzzy_selector_callback, prompt_for_enum, prompt_for_field, CollectedVars,
+    PromptOptions,
+};
 use crate::NewArgs;
 use dialoguer::{theme::ColorfulTheme, Editor, Input, Select};
 use mdvault_core::captures::CaptureRepository;
@@ -141,7 +144,12 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
 
     let collected = if let Some(ref typedef) = lua_typedef {
         // Use Lua schema for prompting - fields with `prompt` set will be prompted
-        match collect_schema_variables(typedef, &provided_vars, &prompt_options) {
+        match collect_schema_variables(
+            typedef,
+            &provided_vars,
+            &prompt_options,
+            Some(cfg),
+        ) {
             Ok(c) => c,
             Err(e) => {
                 eprintln!("Error: {e}");
@@ -555,7 +563,12 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         let provided_vars: HashMap<String, String> = ctx.vars.clone();
         let prompt_options = PromptOptions { batch_mode: args.batch };
 
-        match collect_schema_variables(typedef, &provided_vars, &prompt_options) {
+        match collect_schema_variables(
+            typedef,
+            &provided_vars,
+            &prompt_options,
+            Some(cfg),
+        ) {
             Ok(collected) => {
                 // Merge collected variables into context
                 for (k, v) in collected.values {
@@ -921,14 +934,15 @@ fn run_on_create_hook_if_exists(
         .ok()
         .map(std::sync::Arc::new);
 
-    // Build VaultContext
+    // Build VaultContext with selector callback for interactive prompts
     let mut vault_ctx = VaultContext::new(
         cfg.clone(),
         template_repo,
         capture_repo,
         macro_repo,
         type_registry,
-    );
+    )
+    .with_selector(create_fuzzy_selector_callback());
 
     if let Some(db) = index_db {
         vault_ctx = vault_ctx.with_index(db);
@@ -1087,10 +1101,13 @@ fn prompt_project_selection(cfg: &ResolvedConfig) -> Option<String> {
 /// - Have `prompt` defined (the prompt text to show)
 /// - Are not already provided in `provided_vars`
 /// - Are not marked as `core` (managed by Rust)
+///
+/// If a field has `selector` set, shows a fuzzy note selector instead of text input.
 fn collect_schema_variables(
     typedef: &TypeDefinition,
     provided_vars: &HashMap<String, String>,
     options: &PromptOptions,
+    cfg: Option<&ResolvedConfig>,
 ) -> Result<CollectedVars, String> {
     let mut result = CollectedVars {
         values: HashMap::new(),
@@ -1118,8 +1135,57 @@ fn collect_schema_variables(
             continue;
         }
 
-        // If field has a prompt, ask the user
-        if let Some(ref prompt_text) = schema.prompt {
+        // Check if field has a selector - use fuzzy note picker
+        if let Some(ref selector_type) = schema.selector {
+            if options.batch_mode {
+                // In batch mode, use default or fail if required
+                if let Some(ref default) = schema.default {
+                    let value = yaml_value_to_string(default);
+                    result.values.insert(field_name.clone(), value);
+                    result.defaulted.push(field_name.clone());
+                } else if schema.required {
+                    return Err(format!(
+                        "Missing required field '{}' in batch mode (selector field)",
+                        field_name
+                    ));
+                }
+            } else if let Some(config) = cfg {
+                // Interactive: show fuzzy selector for notes of the specified type
+                let prompt_text = schema.prompt.as_deref().unwrap_or(field_name.as_str());
+
+                match prompt_with_note_selector(config, selector_type, prompt_text) {
+                    Ok(Some(value)) => {
+                        result.values.insert(field_name.clone(), value);
+                        result.prompted.push(field_name.clone());
+                    }
+                    Ok(None) => {
+                        // User cancelled - use default if available
+                        if let Some(ref default) = schema.default {
+                            result.values.insert(
+                                field_name.clone(),
+                                yaml_value_to_string(default),
+                            );
+                            result.defaulted.push(field_name.clone());
+                        } else if schema.required {
+                            return Err(format!(
+                                "Required field '{}' was cancelled",
+                                field_name
+                            ));
+                        }
+                    }
+                    Err(e) => return Err(e),
+                }
+            } else {
+                // No config available, fall through to default handling
+                if let Some(ref default) = schema.default {
+                    result
+                        .values
+                        .insert(field_name.clone(), yaml_value_to_string(default));
+                    result.defaulted.push(field_name.clone());
+                }
+            }
+        } else if let Some(ref prompt_text) = schema.prompt {
+            // If field has a prompt, ask the user
             if options.batch_mode {
                 // In batch mode, use default or fail if required
                 if let Some(ref default) = schema.default {
@@ -1291,6 +1357,62 @@ fn prompt_for_schema_field(
     input
         .interact_text()
         .map_err(|e| format!("Failed to read input for '{}': {}", field_name, e))
+}
+
+/// Prompt using a fuzzy note selector.
+///
+/// Opens the index database, queries notes of the specified type,
+/// and shows a fuzzy selector for the user to pick from.
+///
+/// Returns:
+/// - `Ok(Some(value))` - User selected a note, value is the note's name (file stem)
+/// - `Ok(None)` - User cancelled selection
+/// - `Err(msg)` - Error occurred
+fn prompt_with_note_selector(
+    cfg: &ResolvedConfig,
+    note_type: &str,
+    prompt_text: &str,
+) -> Result<Option<String>, String> {
+    use dialoguer::FuzzySelect;
+
+    // Open the index database
+    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let db = IndexDb::open(&index_path).map_err(|e| {
+        format!("Failed to open index for selector (run 'mdv reindex' first): {}", e)
+    })?;
+
+    // Query notes of the specified type
+    let query = NoteQuery {
+        note_type: Some(note_type.parse().unwrap_or_default()),
+        ..Default::default()
+    };
+
+    let notes = db.query_notes(&query).map_err(|e| format!("Query error: {}", e))?;
+
+    if notes.is_empty() {
+        return Ok(None);
+    }
+
+    // Build selection items: display title, return file stem (name without .md)
+    let items: Vec<String> = notes.iter().map(|n| n.title.clone()).collect();
+
+    // Show fuzzy selector
+    let selection = FuzzySelect::with_theme(&ColorfulTheme::default())
+        .with_prompt(prompt_text)
+        .items(&items)
+        .default(0)
+        .interact_opt()
+        .map_err(|e| format!("Selector error: {}", e))?;
+
+    Ok(selection.map(|idx| {
+        // Return the file stem (note name without .md extension)
+        notes[idx]
+            .path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string()
+    }))
 }
 
 /// Prompt for a template variable value.
@@ -1474,9 +1596,80 @@ mod tests {
         let provided = HashMap::new();
         let options = PromptOptions { batch_mode: true };
 
-        let result = collect_schema_variables(&typedef, &provided, &options);
+        let result = collect_schema_variables(&typedef, &provided, &options, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Missing required field"));
+    }
+
+    #[test]
+    fn test_collect_schema_variables_selector_batch_with_default() {
+        let mut schema = HashMap::new();
+        schema.insert(
+            "project".to_string(),
+            FieldSchema {
+                selector: Some("project".to_string()),
+                prompt: Some("Select project".to_string()),
+                default: Some(Value::String("inbox".to_string())),
+                ..Default::default()
+            },
+        );
+
+        let typedef = TypeDefinition { schema, ..TypeDefinition::empty("test") };
+
+        let provided = HashMap::new();
+        let options = PromptOptions { batch_mode: true };
+
+        // In batch mode with a default, selector field should use the default
+        let result = collect_schema_variables(&typedef, &provided, &options, None).unwrap();
+        assert_eq!(result.values.get("project"), Some(&"inbox".to_string()));
+        assert!(result.defaulted.contains(&"project".to_string()));
+    }
+
+    #[test]
+    fn test_collect_schema_variables_selector_batch_required_no_default() {
+        let mut schema = HashMap::new();
+        schema.insert(
+            "project".to_string(),
+            FieldSchema {
+                selector: Some("project".to_string()),
+                prompt: Some("Select project".to_string()),
+                required: true,
+                ..Default::default()
+            },
+        );
+
+        let typedef = TypeDefinition { schema, ..TypeDefinition::empty("test") };
+
+        let provided = HashMap::new();
+        let options = PromptOptions { batch_mode: true };
+
+        // In batch mode without a default, required selector field should error
+        let result = collect_schema_variables(&typedef, &provided, &options, None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("selector field"));
+    }
+
+    #[test]
+    fn test_collect_schema_variables_selector_provided() {
+        let mut schema = HashMap::new();
+        schema.insert(
+            "project".to_string(),
+            FieldSchema {
+                selector: Some("project".to_string()),
+                prompt: Some("Select project".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let typedef = TypeDefinition { schema, ..TypeDefinition::empty("test") };
+
+        let mut provided = HashMap::new();
+        provided.insert("project".to_string(), "my-project".to_string());
+        let options = PromptOptions { batch_mode: false };
+
+        // When value is already provided, selector should not be invoked
+        let result = collect_schema_variables(&typedef, &provided, &options, None).unwrap();
+        assert_eq!(result.values.get("project"), Some(&"my-project".to_string()));
     }
 
     #[test]

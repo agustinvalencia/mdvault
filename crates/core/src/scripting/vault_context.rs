@@ -13,6 +13,8 @@ use crate::macros::MacroRepository;
 use crate::templates::repository::TemplateRepository;
 use crate::types::TypeRegistry;
 
+use super::selector::SelectorCallback;
+
 /// Information about the current note being processed.
 ///
 /// This is set when validating or processing a specific note,
@@ -53,6 +55,8 @@ pub struct VaultContext {
     pub current_note: Option<CurrentNote>,
     /// Vault root path for resolving relative paths.
     pub vault_root: PathBuf,
+    /// Optional selector callback for interactive prompts.
+    pub selector_callback: Option<SelectorCallback>,
 }
 
 impl VaultContext {
@@ -74,6 +78,7 @@ impl VaultContext {
             index_db: None,
             current_note: None,
             vault_root,
+            selector_callback: None,
         }
     }
 
@@ -95,6 +100,7 @@ impl VaultContext {
             index_db: None,
             current_note: None,
             vault_root,
+            selector_callback: None,
         }
     }
 
@@ -107,6 +113,15 @@ impl VaultContext {
     /// Set the current note being processed.
     pub fn with_current_note(mut self, note: CurrentNote) -> Self {
         self.current_note = Some(note);
+        self
+    }
+
+    /// Set the selector callback for interactive prompts.
+    ///
+    /// The selector callback is called when Lua scripts invoke `mdv.selector()`.
+    /// It should display the items to the user and return the selected value.
+    pub fn with_selector(mut self, callback: SelectorCallback) -> Self {
+        self.selector_callback = Some(callback);
         self
     }
 }
