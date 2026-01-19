@@ -113,6 +113,8 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
 
     // Handle title: In template mode, the first positional arg (note_type) is actually the title
     // since --template replaces the type name. Also check args.title for completeness.
+    // If title is not provided here, collect_schema_variables will prompt for it
+    // when the schema has title with `prompt` or `default` set.
     let title = args.title.clone().or_else(|| args.note_type.clone());
     if let Some(ref t) = title {
         provided_vars.entry("title".to_string()).or_insert(t.clone());
@@ -1130,8 +1132,9 @@ fn collect_schema_variables(
             continue;
         }
 
-        // Skip core fields (managed by Rust)
-        if schema.core {
+        // Skip core fields that have no prompt and no default (auto-managed by Rust)
+        // Core fields with prompt OR default should still be processed
+        if schema.core && schema.prompt.is_none() && schema.default.is_none() {
             continue;
         }
 

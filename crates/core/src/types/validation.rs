@@ -106,9 +106,19 @@ fn validate_schema(
 
         // Check required fields
         // Skip inherited fields during creation (they'll be set by on_create hook)
+        // Skip core fields (they're managed outside frontmatter, e.g., title from filename/heading)
+        // Skip prompted fields (they're template variables, not frontmatter fields)
         if schema.required && value.is_none() {
             if skip_inherited && schema.inherited {
                 // Skip - inherited field will be populated by hook
+                continue;
+            }
+            if schema.core {
+                // Skip - core fields are not stored in frontmatter
+                continue;
+            }
+            if schema.prompt.is_some() {
+                // Skip - prompted fields are template variables, not frontmatter fields
                 continue;
             }
             result.add_error(ValidationError::MissingRequired {
