@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::prompt::{collect_variables, PromptOptions};
+use crate::prompt::{collect_variables, create_fuzzy_selector_callback, PromptOptions};
 use mdvault_core::captures::{CaptureRepoError, CaptureRepository, CaptureSpec};
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
@@ -366,7 +366,8 @@ fn run_on_update_hook_if_needed(cfg: &ResolvedConfig, target_file: &Path, conten
         Arc::new(capture_repo),
         Arc::new(macro_repo),
         Arc::new(registry),
-    );
+    )
+    .with_selector(create_fuzzy_selector_callback());
 
     // Run the hook
     match run_on_update_hook(&typedef, &note_ctx, vault_ctx) {

@@ -13,10 +13,12 @@ use std::path::Path;
 use chrono::Local;
 use mlua::{Function, Lua, MultiValue, Result as LuaResult, Table, Value};
 
+use super::selector::{SelectorItem, SelectorOptions};
 use super::vault_context::VaultContext;
 use crate::captures::CaptureSpec;
 use crate::config::types::ResolvedConfig;
 use crate::frontmatter::{apply_ops, parse, serialize};
+use crate::index::NoteQuery;
 use crate::macros::runner::{MacroRunError, RunContext, RunOptions, StepExecutor};
 use crate::macros::types::{CaptureStep, ShellStep, StepResult, TemplateStep};
 use crate::markdown_ast::{MarkdownEditor, SectionMatch};
@@ -37,6 +39,7 @@ pub fn register_vault_bindings(lua: &Lua, ctx: VaultContext) -> LuaResult<()> {
     mdv.set("capture", create_capture_fn(lua)?)?;
     mdv.set("macro", create_macro_fn(lua)?)?;
     mdv.set("read_note", create_read_note_fn(lua)?)?;
+    mdv.set("selector", create_selector_fn(lua)?)?;
 
     Ok(())
 }
@@ -327,6 +330,105 @@ fn create_read_note_fn(lua: &Lua) -> LuaResult<Function> {
         }
 
         Ok(MultiValue::from_vec(vec![Value::Table(note_table), Value::Nil]))
+    })
+}
+
+/// Create the `mdv.selector(opts)` function.
+///
+/// Shows an interactive selector for notes of a given type.
+/// Requires a selector callback to be set in the VaultContext.
+///
+/// Options:
+/// - `type`: Note type to filter (required, e.g., "project", "task")
+/// - `prompt`: Prompt text to display (optional, defaults to "Select {type}")
+/// - `fuzzy`: Enable fuzzy search (optional, defaults to true)
+///
+/// Returns: selected note's path as string, or nil if cancelled/unavailable.
+///
+/// # Examples (in Lua)
+///
+/// ```lua
+/// local project = mdv.selector({ type = "project" })
+/// if project then
+///     print("Selected: " .. project)
+/// end
+///
+/// -- With custom prompt
+/// local task = mdv.selector({
+///     type = "task",
+///     prompt = "Choose a task to link"
+/// })
+/// ```
+fn create_selector_fn(lua: &Lua) -> LuaResult<Function> {
+    lua.create_function(|lua, opts: Table| {
+        let ctx = lua
+            .app_data_ref::<VaultContext>()
+            .ok_or_else(|| mlua::Error::runtime("VaultContext not available"))?;
+
+        // Check if selector callback is available
+        let selector = match &ctx.selector_callback {
+            Some(cb) => cb.clone(),
+            None => {
+                return Err(mlua::Error::runtime(
+                    "Selector not available (no interactive context)",
+                ));
+            }
+        };
+
+        // Check if index is available
+        let db = match &ctx.index_db {
+            Some(db) => db,
+            None => {
+                return Err(mlua::Error::runtime(
+                    "Index database not available. Run 'mdv reindex' first.",
+                ));
+            }
+        };
+
+        // Parse options
+        let note_type: String = opts.get("type").map_err(|_| {
+            mlua::Error::runtime(
+                "selector requires 'type' option (e.g., { type = \"project\" })",
+            )
+        })?;
+
+        let prompt: String =
+            opts.get("prompt").unwrap_or_else(|_| format!("Select {}", note_type));
+
+        let fuzzy: bool = opts.get("fuzzy").unwrap_or(true);
+
+        // Query for notes of the given type
+        let query = NoteQuery {
+            note_type: Some(note_type.parse().unwrap_or_default()),
+            ..Default::default()
+        };
+
+        let notes = db
+            .query_notes(&query)
+            .map_err(|e| mlua::Error::runtime(format!("Query error: {}", e)))?;
+
+        if notes.is_empty() {
+            return Ok(Value::Nil);
+        }
+
+        // Build selector items
+        let items: Vec<SelectorItem> = notes
+            .iter()
+            .map(|note| {
+                let label = note.title.clone();
+                let value = note.path.to_string_lossy().to_string();
+                SelectorItem::new(label, value)
+            })
+            .collect();
+
+        // Build selector options
+        let selector_opts = SelectorOptions::new(prompt).with_fuzzy(fuzzy);
+
+        // Call the selector
+        match selector(&items, &selector_opts) {
+            Some(selected) => Ok(Value::String(lua.create_string(&selected)?)),
+            None => Ok(Value::Nil),
+        }
     })
 }
 

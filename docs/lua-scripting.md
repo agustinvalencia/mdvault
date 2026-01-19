@@ -400,8 +400,65 @@ field_name = {
 
     -- Reference constraints
     note_type = "project"      -- Restrict to specific type
+
+    -- Interactive selection
+    selector = "project"       -- Show fuzzy selector for notes of this type
 }
 ```
+
+### Selector Fields
+
+Fields with `selector` attribute show an interactive fuzzy-search picker for notes of the specified type, instead of a text input. This is useful for linking notes to parents like projects or areas.
+
+```lua
+schema = {
+    project = {
+        selector = "project",           -- Show fuzzy picker for project notes
+        prompt = "Select project",      -- Custom prompt text
+        default = "inbox",              -- Default if user cancels (optional)
+        required = false
+    },
+    area = {
+        selector = "area",              -- Show fuzzy picker for area notes
+        prompt = "Which area?"
+    }
+}
+```
+
+When the CLI prompts for this field:
+1. Opens the vault index and queries all notes of the specified type
+2. Shows a fuzzy-searchable list of note titles
+3. Returns the selected note's name (file stem without `.md`)
+
+**Behavior:**
+
+| Scenario | Result |
+|----------|--------|
+| User selects a note | Field is set to the note's name |
+| User cancels (Esc) | Uses `default` if set, otherwise skipped (or error if `required`) |
+| No notes of type exist | Returns `nil`, uses default |
+| Batch mode | Uses `default` or errors if required |
+
+**Example: Task with Project Selector**
+
+```lua
+-- types/task.lua
+return {
+    name = "task",
+    schema = {
+        type = { default = "task", core = true },
+        title = { required = true, prompt = "Task title?" },
+        project = {
+            selector = "project",
+            prompt = "Assign to project",
+            default = "inbox"
+        },
+        status = { default = "open" }
+    }
+}
+```
+
+When creating a task with `mdv new task "My Task"`, you'll see a fuzzy-searchable list of all projects to pick from.
 
 ### Inherited Fields
 
@@ -1379,9 +1436,50 @@ local tasks = mdv.query({ type = "task", limit = 10 })
 
 -- Find a project by its project-id
 local project = mdv.find_project("MCP")
+
+-- Show interactive fuzzy selector for notes of a type
+local selected = mdv.selector({ type = "project", prompt = "Select project" })
 ```
 
 > **Note**: These functions require running `mdv reindex` first to build the vault index.
+
+### `mdv.selector(opts)`
+
+Show an interactive fuzzy-search selector for notes of a given type. This is useful in `on_create` hooks when you want to let the user pick a related note interactively.
+
+**Options:**
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `type` | string | Yes | Note type to filter (e.g., "project", "task", "area") |
+| `prompt` | string | No | Prompt text (defaults to "Select {type}") |
+| `fuzzy` | boolean | No | Enable fuzzy search (default: `true`) |
+
+**Returns:** Selected note's path as string, or `nil` if cancelled/no notes available.
+
+**Example:**
+
+```lua
+on_create = function(note)
+    -- Let user pick a project interactively
+    local project_path = mdv.selector({
+        type = "project",
+        prompt = "Assign to project (Esc for inbox)"
+    })
+
+    if project_path then
+        -- Extract project name from path (e.g., "projects/myproject.md" -> "myproject")
+        local project_name = project_path:match("([^/]+)%.md$")
+        note.frontmatter.project = project_name
+    else
+        note.frontmatter.project = "inbox"
+    end
+
+    return note
+end
+```
+
+> **Note**: `mdv.selector()` only works in interactive contexts (CLI). It will error if no selector callback is available (e.g., in automated scripts).
 
 ## Examples
 

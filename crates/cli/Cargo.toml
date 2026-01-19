@@ -20,7 +20,7 @@ clap = { version = "4.5.54", features = ["derive"] }
 clap_complete = { version = "4.5", features = ["unstable-dynamic"] }
 color-eyre = "0.6"
 crossterm = "0.28"
-dialoguer = "0.11"
+dialoguer = { version = "0.11", features = ["fuzzy-select"] }
 mdvault-core = { version = "0.2.1", path = "../core" }
 ratatui = "0.29"
 regex = "1.12.2"
