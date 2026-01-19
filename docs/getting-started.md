@@ -123,13 +123,42 @@ Use `create_if_missing: true` in the target to auto-create the file if it doesn'
 
 ## Common Workflows
 
+### Focus Mode
+
+Focus mode lets you set an active project context. When focused, task creation automatically uses that project without prompting:
+
+```bash
+# Set focus to a project
+mdv focus MDV
+
+# Set focus with a note describing current work
+mdv focus MDV --note "Working on OAuth implementation"
+
+# Show current focus
+mdv focus
+
+# Create a task (uses MDV automatically, no project prompt)
+mdv new task "Implement OAuth flow"
+
+# Override focus with explicit --var
+mdv new task "Side quest" --var project=OTHER
+
+# Clear focus when done
+mdv focus --clear
+
+# JSON output (useful for integrations)
+mdv focus --json
+```
+
+The focus state is stored per-vault in `.mdvault/state/context.toml` and persists across sessions.
+
 ### Creating Notes
 
 ```bash
-# Create a task (interactive - prompts to select project)
+# Create a task (uses focus project, or prompts if no focus)
 mdv new task "Implement search feature"
 
-# Create a task with explicit project
+# Create a task with explicit project (overrides focus)
 mdv new task "Implement search feature" --var project=myproject
 
 # Create from a template
