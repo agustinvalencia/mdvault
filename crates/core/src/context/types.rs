@@ -33,11 +33,7 @@ pub struct FocusContext {
 impl FocusContext {
     /// Create a new focus context.
     pub fn new(project: impl Into<String>) -> Self {
-        Self {
-            project: project.into(),
-            started_at: Some(Local::now()),
-            note: None,
-        }
+        Self { project: project.into(), started_at: Some(Local::now()), note: None }
     }
 
     /// Create a focus context with a note.

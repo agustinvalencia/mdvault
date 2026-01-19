@@ -9,7 +9,11 @@ use mdvault_core::context::ContextManager;
 use crate::FocusArgs;
 
 /// Run the focus command.
-pub fn run(config_path: Option<&std::path::Path>, profile: Option<&str>, args: FocusArgs) {
+pub fn run(
+    config_path: Option<&std::path::Path>,
+    profile: Option<&str>,
+    args: FocusArgs,
+) {
     let cfg = match ConfigLoader::load(config_path, profile) {
         Ok(cfg) => cfg,
         Err(e) => {

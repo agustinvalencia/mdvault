@@ -236,7 +236,10 @@ fn find_project_file(config: &ResolvedConfig, project: &str) -> DomainResult<Pat
 
     let projects_dir = config.vault_root.join("Projects");
     if !projects_dir.exists() {
-        return Err(DomainError::Other(format!("Project file not found for: {}", project)));
+        return Err(DomainError::Other(format!(
+            "Project file not found for: {}",
+            project
+        )));
     }
 
     // Search for project file by name in any Projects subfolder

@@ -160,14 +160,7 @@ fn test_focus_json_output() {
 
     // Set focus
     mdv_cmd()
-        .args([
-            "--config",
-            config.to_str().unwrap(),
-            "focus",
-            "JSON",
-            "--note",
-            "Test",
-        ])
+        .args(["--config", config.to_str().unwrap(), "focus", "JSON", "--note", "Test"])
         .output()
         .expect("Failed to execute command");
 
@@ -180,7 +173,8 @@ fn test_focus_json_output() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Parse as JSON
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Invalid JSON output");
 
     assert_eq!(json["focus"]["project"], "JSON");
     assert_eq!(json["focus"]["note"], "Test");
@@ -204,7 +198,8 @@ fn test_focus_json_empty() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Parse as JSON
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Invalid JSON output");
 
     assert!(json["focus"].is_null());
 }

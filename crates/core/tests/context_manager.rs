@@ -36,9 +36,7 @@ fn test_context_manager_set_focus_with_note() {
     let tmp = tempdir().unwrap();
 
     let mut manager = ContextManager::load(tmp.path()).unwrap();
-    manager
-        .set_focus_with_note("PROJ", "Working on feature X")
-        .unwrap();
+    manager.set_focus_with_note("PROJ", "Working on feature X").unwrap();
 
     let focus = manager.focus().unwrap();
     assert_eq!(focus.project, "PROJ");
@@ -65,9 +63,7 @@ fn test_context_manager_persistence() {
     // Set focus
     {
         let mut manager = ContextManager::load(tmp.path()).unwrap();
-        manager
-            .set_focus_with_note("TEST", "Persistence check")
-            .unwrap();
+        manager.set_focus_with_note("TEST", "Persistence check").unwrap();
     }
 
     // Load again and verify
@@ -114,9 +110,7 @@ fn test_context_manager_replace_focus() {
 
 #[test]
 fn test_context_state_json_serialization() {
-    let state = ContextState {
-        focus: Some(FocusContext::new("JSON")),
-    };
+    let state = ContextState { focus: Some(FocusContext::new("JSON")) };
 
     let json = serde_json::to_string(&state).unwrap();
     assert!(json.contains("\"project\":\"JSON\""));
@@ -127,9 +121,8 @@ fn test_context_state_json_serialization() {
 
 #[test]
 fn test_context_state_toml_serialization() {
-    let state = ContextState {
-        focus: Some(FocusContext::with_note("TOML", "Test note")),
-    };
+    let state =
+        ContextState { focus: Some(FocusContext::with_note("TOML", "Test note")) };
 
     let toml = toml::to_string_pretty(&state).unwrap();
     assert!(toml.contains("project = \"TOML\""));
