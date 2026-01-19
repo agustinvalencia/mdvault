@@ -1620,7 +1620,8 @@ mod tests {
         let options = PromptOptions { batch_mode: true };
 
         // In batch mode with a default, selector field should use the default
-        let result = collect_schema_variables(&typedef, &provided, &options, None).unwrap();
+        let result =
+            collect_schema_variables(&typedef, &provided, &options, None).unwrap();
         assert_eq!(result.values.get("project"), Some(&"inbox".to_string()));
         assert!(result.defaulted.contains(&"project".to_string()));
     }
@@ -1668,7 +1669,8 @@ mod tests {
         let options = PromptOptions { batch_mode: false };
 
         // When value is already provided, selector should not be invoked
-        let result = collect_schema_variables(&typedef, &provided, &options, None).unwrap();
+        let result =
+            collect_schema_variables(&typedef, &provided, &options, None).unwrap();
         assert_eq!(result.values.get("project"), Some(&"my-project".to_string()));
     }
 

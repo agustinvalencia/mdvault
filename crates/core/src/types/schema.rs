@@ -262,9 +262,6 @@ mod tests {
         let schema: FieldSchema = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(schema.selector, Some("project".to_string()));
         assert_eq!(schema.prompt, Some("Select project".to_string()));
-        assert_eq!(
-            schema.default,
-            Some(serde_yaml::Value::String("inbox".to_string()))
-        );
+        assert_eq!(schema.default, Some(serde_yaml::Value::String("inbox".to_string())));
     }
 }
