@@ -1166,6 +1166,64 @@ fn collect_schema_variables(
         }
     }
 
+    // Process template variables (for body substitution, not frontmatter)
+    // These are defined in the `variables` section of Lua typedefs
+    let mut vars: Vec<_> = typedef.variables.iter().collect();
+    vars.sort_by(|a, b| a.0.cmp(b.0));
+
+    for (var_name, var_spec) in vars {
+        // Skip if already provided
+        if result.values.contains_key(var_name) {
+            continue;
+        }
+
+        let prompt_text = var_spec.prompt();
+        let default_value = var_spec.default();
+        let is_required = var_spec.is_required();
+
+        // Only prompt if there's a prompt text defined
+        if !prompt_text.is_empty() {
+            if options.batch_mode {
+                // In batch mode, use default or fail if required
+                if let Some(default) = default_value {
+                    result.values.insert(var_name.clone(), default.to_string());
+                    result.defaulted.push(var_name.clone());
+                } else if is_required {
+                    return Err(format!(
+                        "Missing required variable '{}' in batch mode",
+                        var_name
+                    ));
+                }
+            } else {
+                // Interactive: prompt for variable
+                match prompt_for_variable(
+                    var_name,
+                    prompt_text,
+                    default_value,
+                    is_required,
+                ) {
+                    Ok(value) if !value.is_empty() => {
+                        result.values.insert(var_name.clone(), value);
+                        result.prompted.push(var_name.clone());
+                    }
+                    Ok(_) => {
+                        // Empty value - use default if available
+                        if let Some(default) = default_value {
+                            result.values.insert(var_name.clone(), default.to_string());
+                            result.defaulted.push(var_name.clone());
+                        }
+                        result.prompted.push(var_name.clone());
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        } else if let Some(default) = default_value {
+            // No prompt but has default - use it
+            result.values.insert(var_name.clone(), default.to_string());
+            result.defaulted.push(var_name.clone());
+        }
+    }
+
     Ok(result)
 }
 
@@ -1229,6 +1287,31 @@ fn prompt_for_schema_field(
     input
         .interact_text()
         .map_err(|e| format!("Failed to read input for '{}': {}", field_name, e))
+}
+
+/// Prompt for a template variable value.
+///
+/// Template variables are simpler than schema fields - they're always strings
+/// and don't support enum or multiline options.
+fn prompt_for_variable(
+    var_name: &str,
+    prompt_text: &str,
+    default: Option<&str>,
+    required: bool,
+) -> Result<String, String> {
+    let theme = ColorfulTheme::default();
+
+    let mut input = Input::<String>::with_theme(&theme);
+    input = input.with_prompt(prompt_text);
+    input = input.allow_empty(!required);
+
+    if let Some(def) = default {
+        input = input.with_initial_text(def);
+    }
+
+    input
+        .interact_text()
+        .map_err(|e| format!("Failed to read input for '{}': {}", var_name, e))
 }
 
 /// Convert a serde_yaml::Value to a string for template context.
