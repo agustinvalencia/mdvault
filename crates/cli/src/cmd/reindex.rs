@@ -54,8 +54,9 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, verbose: bool, force: b
         }))
     };
 
-    // Build index
-    let builder = IndexBuilder::new(&db, &rc.vault_root);
+    // Build index with exclusions
+    let builder =
+        IndexBuilder::with_exclusions(&db, &rc.vault_root, rc.excluded_folders.clone());
     let result = if force {
         builder.full_reindex(progress)
     } else {

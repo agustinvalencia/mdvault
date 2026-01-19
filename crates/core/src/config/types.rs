@@ -22,6 +22,10 @@ pub struct Profile {
     pub macros_dir: String,
     /// Optional override for typedefs directory (defaults to global ~/.config/mdvault/types/)
     pub typedefs_dir: Option<String>,
+    /// Folders to exclude from vault operations (relative to vault_root).
+    /// These folders and their contents will be ignored by indexing, validation, etc.
+    #[serde(default)]
+    pub excluded_folders: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -61,6 +65,8 @@ pub struct ResolvedConfig {
     pub macros_dir: PathBuf,
     /// Directory for Lua type definitions (global, not per-profile).
     pub typedefs_dir: PathBuf,
+    /// Folders to exclude from vault operations (resolved to absolute paths).
+    pub excluded_folders: Vec<PathBuf>,
     pub security: SecurityPolicy,
     pub logging: LoggingConfig,
 }
