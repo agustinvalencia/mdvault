@@ -6,7 +6,7 @@
 //! - Logging to daily note
 //! - Output path: Projects/{project}/Tasks/{id}.md or Inbox/{id}.md
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::types::TypeDefinition;
@@ -266,40 +266,31 @@ fn find_project_file(config: &ResolvedConfig, project: &str) -> DomainResult<Pat
                 if let Ok(files) = fs::read_dir(&path) {
                     for file_entry in files.flatten() {
                         let file_path = file_entry.path();
-                        if file_path.extension().map(|e| e == "md").unwrap_or(false) {
-                            // Check if this file has matching project-id
-                            if let Ok(content) = fs::read_to_string(&file_path) {
-                                if let Ok(parsed) = crate::frontmatter::parse(&content) {
-                                    if let Some(fm) = parsed.frontmatter {
-                                        if let Some(pid) = fm.fields.get("project-id") {
-                                            if pid.as_str() == Some(project) {
-                                                return Ok(file_path);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        if file_has_project_id(&file_path, project) {
+                            return Ok(file_path);
                         }
                     }
                 }
-            } else if path.extension().map(|e| e == "md").unwrap_or(false) {
-                // Direct .md file in Projects folder
-                if let Ok(content) = fs::read_to_string(&path) {
-                    if let Ok(parsed) = crate::frontmatter::parse(&content) {
-                        if let Some(fm) = parsed.frontmatter {
-                            if let Some(pid) = fm.fields.get("project-id") {
-                                if pid.as_str() == Some(project) {
-                                    return Ok(path);
-                                }
-                            }
-                        }
-                    }
-                }
+            } else if file_has_project_id(&path, project) {
+                return Ok(path);
             }
         }
     }
 
     Err(DomainError::Other(format!("Project file not found for: {}", project)))
+}
+
+/// Check if a file has a matching project-id in its frontmatter.
+fn file_has_project_id(path: &Path, project_id: &str) -> bool {
+    if path.extension().map(|e| e == "md").unwrap_or(false)
+        && let Ok(content) = fs::read_to_string(path)
+        && let Ok(parsed) = crate::frontmatter::parse(&content)
+        && let Some(fm) = parsed.frontmatter
+        && let Some(pid) = fm.fields.get("project-id")
+    {
+        return pid.as_str() == Some(project_id);
+    }
+    false
 }
 
 /// Increment the task_counter in a project file.
