@@ -116,6 +116,7 @@ mod tests {
             excluded_folders: vec![],
             security: Default::default(),
             logging: Default::default(),
+            activity: Default::default(),
         }
     }
 

@@ -3,6 +3,7 @@
 use std::io::{self, Write};
 use std::path::Path;
 
+use mdvault_core::activity::ActivityLogService;
 use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::index::IndexDb;
 use mdvault_core::rename::{
@@ -60,6 +61,28 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: RenameArgs) {
     // Execute rename
     match execute_rename(&db, &rc.vault_root, &args.source, &args.dest) {
         Ok(result) => {
+            // Log to activity log
+            if let Some(activity) = ActivityLogService::try_from_config(&rc) {
+                // Try to determine note type from the file
+                let note_type = std::fs::read_to_string(&result.new_path)
+                    .ok()
+                    .and_then(|content| mdvault_core::frontmatter::parse(&content).ok())
+                    .and_then(|parsed| parsed.frontmatter)
+                    .and_then(|fm| fm.fields.get("type").cloned())
+                    .and_then(|v| match v {
+                        serde_yaml::Value::String(s) => Some(s),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| "note".to_string());
+
+                let _ = activity.log_rename(
+                    &note_type,
+                    &result.old_path,
+                    &result.new_path,
+                    result.references_updated,
+                );
+            }
+
             println!();
             println!(
                 "Renamed: {} -> {}",

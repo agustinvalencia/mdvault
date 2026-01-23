@@ -12,6 +12,8 @@ pub struct ConfigFile {
     pub security: SecurityPolicy,
     #[serde(default)]
     pub logging: LoggingConfig,
+    #[serde(default)]
+    pub activity: ActivityConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -56,6 +58,38 @@ fn default_log_level() -> String {
     "info".to_string()
 }
 
+/// Configuration for activity logging.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ActivityConfig {
+    /// Whether activity logging is enabled (default: true)
+    #[serde(default = "default_activity_enabled")]
+    pub enabled: bool,
+    /// Number of days to retain logs before rotation (default: 90)
+    #[serde(default = "default_retention_days")]
+    pub retention_days: u32,
+    /// Which operations to log (empty = all operations)
+    #[serde(default)]
+    pub log_operations: Vec<String>,
+}
+
+impl Default for ActivityConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_activity_enabled(),
+            retention_days: default_retention_days(),
+            log_operations: Vec::new(),
+        }
+    }
+}
+
+fn default_activity_enabled() -> bool {
+    true
+}
+
+fn default_retention_days() -> u32 {
+    90
+}
+
 #[derive(Debug, Clone)]
 pub struct ResolvedConfig {
     pub active_profile: String,
@@ -69,4 +103,5 @@ pub struct ResolvedConfig {
     pub excluded_folders: Vec<PathBuf>,
     pub security: SecurityPolicy,
     pub logging: LoggingConfig,
+    pub activity: ActivityConfig,
 }

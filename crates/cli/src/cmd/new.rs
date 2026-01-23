@@ -4,6 +4,7 @@ use crate::prompt::{
 };
 use crate::NewArgs;
 use dialoguer::{theme::ColorfulTheme, Editor, Input, Select};
+use mdvault_core::activity::ActivityLogService;
 use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
@@ -386,6 +387,17 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         reindex_vault(cfg);
     }
 
+    // Log to activity log
+    if let Some(activity) = ActivityLogService::try_from_config(cfg) {
+        let note_id = ctx
+            .get("task-id")
+            .or_else(|| ctx.get("project-id"))
+            .cloned()
+            .unwrap_or_default();
+        let title = ctx.get("title").cloned();
+        let _ = activity.log_new(template_name, &note_id, &output_path, title.as_deref());
+    }
+
     println!("OK   mdv new");
     println!("template: {}", template_name);
     println!("output:   {}", output_path.display());
@@ -757,6 +769,13 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
             }
 
             // Note: Daily logging is handled by behavior.after_create() via DailyLogService
+
+            // Log to activity log
+            if let Some(activity) = ActivityLogService::try_from_config(cfg) {
+                let note_id = result.generated_id.as_deref().unwrap_or("");
+                let title = ctx.vars.get("title").map(|s| s.as_str());
+                let _ = activity.log_new(type_name, note_id, &result.path, title);
+            }
 
             println!("OK   mdv new");
             println!("type:   {}", result.type_name);
