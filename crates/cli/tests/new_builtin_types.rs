@@ -483,9 +483,8 @@ fn daily_with_date_expression_evaluates_title_and_path() {
     let (_tmp, vault, cfg_path) = setup_vault();
 
     // Calculate expected date (7 days from now)
-    let expected_date = (chrono::Local::now() + chrono::Duration::days(7))
-        .format("%Y-%m-%d")
-        .to_string();
+    let expected_date =
+        (chrono::Local::now() + chrono::Duration::days(7)).format("%Y-%m-%d").to_string();
 
     // Setup: Create daily.lua typedef with output using {{title}}
     let typedef_path = vault.join(".mdvault/typedefs/daily.lua");
@@ -532,9 +531,8 @@ fn weekly_with_date_expression_evaluates_title_and_path() {
 
     // Calculate expected week (2 weeks from now)
     // Note: The weekly behavior uses %V (ISO week) for date expressions
-    let expected_week = (chrono::Local::now() + chrono::Duration::weeks(2))
-        .format("%Y-W%V")
-        .to_string();
+    let expected_week =
+        (chrono::Local::now() + chrono::Duration::weeks(2)).format("%Y-W%V").to_string();
 
     // Setup: Create weekly.lua typedef with output using {{title}}
     let typedef_path = vault.join(".mdvault/typedefs/weekly.lua");
