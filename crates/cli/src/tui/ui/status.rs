@@ -32,11 +32,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 
     // Calculate padding for right-alignment
     let left_len = left_text.len();
-    let right_len = if app.status.is_some() {
-        app.status.as_ref().unwrap().text.len()
-    } else {
-        right_text.len()
-    };
+    let right_len =
+        if let Some(status) = &app.status { status.text.len() } else { right_text.len() };
     let padding =
         area.width.saturating_sub(left_len as u16 + right_len as u16 + 2) as usize;
 
