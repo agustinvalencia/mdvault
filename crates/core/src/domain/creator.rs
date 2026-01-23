@@ -125,10 +125,14 @@ impl NoteCreator {
             })
         } else {
             // Fall back to scaffolding generation
+            // Use evaluated title from core_metadata if available (e.g., for daily/weekly
+            // notes where date expressions like "today + 7d" are evaluated to actual dates)
+            let title_for_scaffolding =
+                ctx.core_metadata.title.as_ref().unwrap_or(&ctx.title);
             Ok(generate_scaffolding(
                 &ctx.type_name,
                 ctx.typedef.as_deref(),
-                &ctx.title,
+                title_for_scaffolding,
                 &ctx.vars,
             ))
         }

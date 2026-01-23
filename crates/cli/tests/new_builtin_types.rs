@@ -477,3 +477,100 @@ fn weekly_creation_uses_week_path() {
     assert!(content.contains("type: weekly"));
     assert!(content.contains(&format!("title: {}", week)));
 }
+
+#[test]
+fn daily_with_date_expression_evaluates_title_and_path() {
+    let (_tmp, vault, cfg_path) = setup_vault();
+
+    // Calculate expected date (7 days from now)
+    let expected_date = (chrono::Local::now() + chrono::Duration::days(7))
+        .format("%Y-%m-%d")
+        .to_string();
+
+    // Setup: Create daily.lua typedef with output using {{title}}
+    let typedef_path = vault.join(".mdvault/typedefs/daily.lua");
+    write(
+        &typedef_path,
+        r#"return {
+    output = "Journal/Daily/{{title}}.md",
+    schema = {
+        date = { type = "string", default_expr = "os.date('%Y-%m-%d')" }
+    }
+}"#,
+    );
+
+    // Action: mdv new daily "today + 7d" --batch
+    // The date expression should be evaluated for both path and heading
+    let output = run_mdv(&cfg_path, &["new", "daily", "today + 7d", "--batch"]);
+
+    assert!(output.status.success(), "Command failed: {:?}", output);
+
+    // Assertions: File should be created with evaluated date, not literal "today + 7d"
+    let daily_path = vault.join(format!("Journal/Daily/{}.md", expected_date));
+    assert!(
+        daily_path.exists(),
+        "Daily note not found at {:?} (should use evaluated date, not 'today + 7d')",
+        daily_path
+    );
+
+    let content = fs::read_to_string(&daily_path).unwrap();
+    assert!(content.contains("type: daily"));
+    assert!(content.contains(&format!("title: {}", expected_date)));
+    assert!(content.contains(&format!("date: {}", expected_date)));
+    // Heading should also use evaluated date
+    assert!(
+        content.contains(&format!("# {}", expected_date)),
+        "Heading should be '# {}', not '# today + 7d'. Content:\n{}",
+        expected_date,
+        content
+    );
+}
+
+#[test]
+fn weekly_with_date_expression_evaluates_title_and_path() {
+    let (_tmp, vault, cfg_path) = setup_vault();
+
+    // Calculate expected week (2 weeks from now)
+    // Note: The weekly behavior uses %V (ISO week) for date expressions
+    let expected_week = (chrono::Local::now() + chrono::Duration::weeks(2))
+        .format("%Y-W%V")
+        .to_string();
+
+    // Setup: Create weekly.lua typedef with output using {{title}}
+    let typedef_path = vault.join(".mdvault/typedefs/weekly.lua");
+    write(
+        &typedef_path,
+        r#"return {
+    output = "Journal/Weekly/{{title}}.md",
+    schema = {
+        week = { type = "string", default_expr = "os.date('%Y-W%W')" }
+    }
+}"#,
+    );
+
+    // Action: mdv new weekly "today + 2w" --batch
+    // The date expression should be evaluated for both path and heading
+    let output = run_mdv(&cfg_path, &["new", "weekly", "today + 2w", "--batch"]);
+
+    assert!(output.status.success(), "Command failed: {:?}", output);
+
+    // Assertions: File should be created with evaluated week, not literal "today + 2w"
+    let weekly_path = vault.join(format!("Journal/Weekly/{}.md", expected_week));
+    assert!(
+        weekly_path.exists(),
+        "Weekly note not found at {:?} (should use evaluated week, not 'today + 2w')",
+        weekly_path
+    );
+
+    let content = fs::read_to_string(&weekly_path).unwrap();
+    assert!(content.contains("type: weekly"));
+    assert!(content.contains(&format!("title: {}", expected_week)));
+    assert!(content.contains(&format!("week: {}", expected_week)));
+    // Heading should also use evaluated week
+    assert!(
+        content.contains(&format!("# {}", expected_week)),
+        "Heading should be '# {}', not '# today + 2w'. Content:\n{}",
+        expected_week,
+        content
+    );
+}

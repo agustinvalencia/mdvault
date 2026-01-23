@@ -45,7 +45,10 @@ pub fn render_output_template(
     render_ctx
         .insert("vault_root".into(), ctx.config.vault_root.to_string_lossy().to_string());
     render_ctx.insert("type".into(), ctx.type_name.clone());
-    render_ctx.insert("title".into(), ctx.title.clone());
+    // Use evaluated title from core_metadata if available (e.g., for daily/weekly notes
+    // where date expressions like "today + 7d" are evaluated to actual dates)
+    let title = ctx.core_metadata.title.as_ref().unwrap_or(&ctx.title);
+    render_ctx.insert("title".into(), title.clone());
 
     // Add core metadata fields if available
     if let Some(ref id) = ctx.core_metadata.project_id {
