@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::prompt::{collect_variables, create_fuzzy_selector_callback, PromptOptions};
+use mdvault_core::activity::ActivityLogService;
 use mdvault_core::captures::{CaptureRepoError, CaptureRepository, CaptureSpec};
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
@@ -267,6 +268,12 @@ pub fn run(
 
     // 9. Run on_update hook if defined for this note type
     run_on_update_hook_if_needed(&cfg, &target_file, &result_content);
+
+    // 10. Log to activity log
+    if let Some(activity) = ActivityLogService::try_from_config(&cfg) {
+        let section_name = section_info.as_ref().map(|(title, _)| title.as_str());
+        let _ = activity.log_capture(capture_name, &target_file, section_name);
+    }
 
     println!("OK   mdv capture");
     println!("capture: {}", capture_name);

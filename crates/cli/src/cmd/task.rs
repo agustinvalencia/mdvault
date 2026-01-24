@@ -1,5 +1,6 @@
 //! Task management commands.
 
+use mdvault_core::activity::ActivityLogService;
 use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery, NoteType};
 use std::path::Path;
@@ -299,6 +300,11 @@ pub fn done(
     if let Err(e) = std::fs::write(&full_path, final_content) {
         eprintln!("Failed to write task: {e}");
         std::process::exit(1);
+    }
+
+    // Log to activity log
+    if let Some(activity) = ActivityLogService::try_from_config(&cfg) {
+        let _ = activity.log_complete("task", &task_id, &full_path, summary);
     }
 
     println!("OK   mdv task done");

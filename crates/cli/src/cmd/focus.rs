@@ -3,6 +3,7 @@
 //! The focus command sets, shows, or clears the active project context.
 //! This context is used by other commands to provide smart defaults.
 
+use mdvault_core::activity::ActivityLogService;
 use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::context::ContextManager;
 
@@ -32,10 +33,21 @@ pub fn run(
 
     // Handle --clear flag
     if args.clear {
+        // Get current project for logging before clearing
+        let prev_project = manager.active_project().map(|s| s.to_string());
+
         if let Err(e) = manager.clear_focus() {
             eprintln!("Failed to clear focus: {e}");
             std::process::exit(1);
         }
+
+        // Log to activity log
+        if let Some(activity) = ActivityLogService::try_from_config(&cfg) {
+            if let Some(ref project) = prev_project {
+                let _ = activity.log_focus(project, None, "clear");
+            }
+        }
+
         println!("Focus cleared.");
         return;
     }
@@ -51,6 +63,11 @@ pub fn run(
         if let Err(e) = result {
             eprintln!("Failed to set focus: {e}");
             std::process::exit(1);
+        }
+
+        // Log to activity log
+        if let Some(activity) = ActivityLogService::try_from_config(&cfg) {
+            let _ = activity.log_focus(project, args.note.as_deref(), "set");
         }
 
         println!("Focus set to: {}", project);

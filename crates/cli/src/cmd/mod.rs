@@ -1,4 +1,5 @@
 pub mod capture;
+pub mod context;
 pub mod doctor;
 pub mod focus;
 pub mod links;

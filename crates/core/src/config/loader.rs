@@ -1,5 +1,5 @@
 use crate::config::types::{
-    ConfigFile, LoggingConfig, Profile, ResolvedConfig, SecurityPolicy,
+    ActivityConfig, ConfigFile, LoggingConfig, Profile, ResolvedConfig, SecurityPolicy,
 };
 use shellexpand::full;
 use std::path::{Path, PathBuf};
@@ -71,7 +71,13 @@ impl ConfigLoader {
             .get(&active)
             .ok_or_else(|| ConfigError::ProfileNotFound(active.clone()))?;
 
-        let resolved = Self::resolve_profile(&active, prof, &cf.security, &cf.logging)?;
+        let resolved = Self::resolve_profile(
+            &active,
+            prof,
+            &cf.security,
+            &cf.logging,
+            &cf.activity,
+        )?;
         Ok(resolved)
     }
 
@@ -80,6 +86,7 @@ impl ConfigLoader {
         prof: &Profile,
         sec: &SecurityPolicy,
         log_cfg: &LoggingConfig,
+        activity_cfg: &ActivityConfig,
     ) -> Result<ResolvedConfig, ConfigError> {
         let vault_root = expand_path(&prof.vault_root)?;
         let sub = |s: &str| s.replace("{{vault_root}}", &vault_root.to_string_lossy());
@@ -124,6 +131,7 @@ impl ConfigLoader {
             excluded_folders,
             security: sec.clone(),
             logging,
+            activity: activity_cfg.clone(),
         })
     }
 }
