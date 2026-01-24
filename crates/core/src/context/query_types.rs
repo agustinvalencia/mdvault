@@ -425,3 +425,351 @@ impl WeekContext {
         )
     }
 }
+
+// ============================================================================
+// Note Context Types
+// ============================================================================
+
+/// Context for a specific note.
+#[derive(Debug, Clone, Serialize)]
+pub struct NoteContext {
+    /// Note type (project, task, daily, etc.).
+    pub note_type: String,
+
+    /// Path to the note.
+    pub path: PathBuf,
+
+    /// Note title.
+    pub title: String,
+
+    /// Frontmatter metadata.
+    pub metadata: serde_json::Value,
+
+    /// Section headings in the note.
+    pub sections: Vec<String>,
+
+    /// Task counts (for projects).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tasks: Option<TaskCounts>,
+
+    /// Recent task activity (for projects).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recent_tasks: Option<RecentTasks>,
+
+    /// Recent activity related to this note.
+    pub activity: NoteActivity,
+
+    /// References (backlinks and outgoing links).
+    pub references: NoteReferences,
+}
+
+/// Task status counts for a project.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct TaskCounts {
+    /// Total number of tasks.
+    pub total: u32,
+
+    /// Tasks with status "todo".
+    pub todo: u32,
+
+    /// Tasks with status "doing" or "in-progress".
+    pub doing: u32,
+
+    /// Tasks with status "done" or "completed".
+    pub done: u32,
+
+    /// Tasks with status "blocked" or "waiting".
+    pub blocked: u32,
+}
+
+/// Recent task activity for a project.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct RecentTasks {
+    /// Recently completed tasks.
+    pub completed: Vec<TaskInfo>,
+
+    /// Currently active tasks.
+    pub active: Vec<TaskInfo>,
+}
+
+/// Activity entries related to a note.
+#[derive(Debug, Clone, Serialize)]
+pub struct NoteActivity {
+    /// Number of days of activity included.
+    pub period_days: u32,
+
+    /// Activity entries.
+    pub entries: Vec<ActivityItem>,
+}
+
+impl Default for NoteActivity {
+    fn default() -> Self {
+        Self { period_days: 7, entries: Vec::new() }
+    }
+}
+
+/// References for a note (backlinks and outgoing links).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct NoteReferences {
+    /// Notes that link to this note.
+    pub backlinks: Vec<LinkInfo>,
+
+    /// Total count of backlinks.
+    pub backlink_count: u32,
+
+    /// Notes that this note links to.
+    pub outgoing: Vec<LinkInfo>,
+
+    /// Total count of outgoing links.
+    pub outgoing_count: u32,
+}
+
+/// Information about a link.
+#[derive(Debug, Clone, Serialize)]
+pub struct LinkInfo {
+    /// Path to the linked note.
+    pub path: PathBuf,
+
+    /// Title of the linked note.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+
+    /// Link text (if different from title).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link_text: Option<String>,
+}
+
+/// Focus context output.
+#[derive(Debug, Clone, Serialize)]
+pub struct FocusContextOutput {
+    /// Focused project name.
+    pub project: String,
+
+    /// Path to the project note.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_path: Option<PathBuf>,
+
+    /// When focus was started.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<String>,
+
+    /// Note about current work.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+
+    /// Full project context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<Box<NoteContext>>,
+}
+
+impl NoteContext {
+    /// Format as markdown.
+    pub fn to_markdown(&self) -> String {
+        let mut out = String::new();
+
+        // Header
+        out.push_str(&format!(
+            "# Context: {} ({})\n\n",
+            self.path.display(),
+            self.note_type
+        ));
+
+        // Metadata
+        out.push_str("## Metadata\n");
+        if let Some(obj) = self.metadata.as_object() {
+            for (key, value) in obj {
+                let val_str = match value {
+                    serde_json::Value::String(s) => s.clone(),
+                    serde_json::Value::Bool(b) => b.to_string(),
+                    serde_json::Value::Number(n) => n.to_string(),
+                    _ => value.to_string(),
+                };
+                out.push_str(&format!("- **{}**: {}\n", key, val_str));
+            }
+        }
+        out.push('\n');
+
+        // Sections
+        if !self.sections.is_empty() {
+            out.push_str("## Sections\n");
+            out.push_str(&self.sections.join(", "));
+            out.push_str("\n\n");
+        }
+
+        // Tasks (for projects)
+        if let Some(ref tasks) = self.tasks {
+            out.push_str("## Tasks\n");
+            out.push_str("| Status | Count |\n");
+            out.push_str("|--------|-------|\n");
+            out.push_str(&format!("| Done | {} |\n", tasks.done));
+            out.push_str(&format!("| In Progress | {} |\n", tasks.doing));
+            out.push_str(&format!("| Todo | {} |\n", tasks.todo));
+            out.push_str(&format!("| Blocked | {} |\n", tasks.blocked));
+            out.push('\n');
+        }
+
+        // Recent tasks
+        if let Some(ref recent) = self.recent_tasks {
+            if !recent.completed.is_empty() {
+                out.push_str("### Recent Completed\n");
+                for task in &recent.completed {
+                    out.push_str(&format!("- {}: {}\n", task.id, task.title));
+                }
+                out.push('\n');
+            }
+
+            if !recent.active.is_empty() {
+                out.push_str("### Active\n");
+                for task in &recent.active {
+                    out.push_str(&format!("- {}: {}\n", task.id, task.title));
+                }
+                out.push('\n');
+            }
+        }
+
+        // Activity
+        if !self.activity.entries.is_empty() {
+            out.push_str(&format!("## Activity ({} days)\n", self.activity.period_days));
+            out.push_str("| Date | Operation | Summary |\n");
+            out.push_str("|------|-----------|--------|\n");
+            for entry in &self.activity.entries {
+                let date = entry.ts.split('T').next().unwrap_or(&entry.ts);
+                let summary = entry.summary.as_deref().unwrap_or("-");
+                out.push_str(&format!("| {} | {} | {} |\n", date, entry.op, summary));
+            }
+            out.push('\n');
+        }
+
+        // References
+        out.push_str("## References\n");
+        out.push_str(&format!(
+            "- **Backlinks ({})**: ",
+            self.references.backlink_count
+        ));
+        if self.references.backlinks.is_empty() {
+            out.push_str("(none)");
+        } else {
+            let paths: Vec<String> = self
+                .references
+                .backlinks
+                .iter()
+                .take(5)
+                .map(|l| l.path.display().to_string())
+                .collect();
+            out.push_str(&paths.join(", "));
+            if self.references.backlink_count > 5 {
+                out.push_str(", ...");
+            }
+        }
+        out.push('\n');
+
+        out.push_str(&format!(
+            "- **Outgoing ({})**: ",
+            self.references.outgoing_count
+        ));
+        if self.references.outgoing.is_empty() {
+            out.push_str("(none)");
+        } else {
+            let paths: Vec<String> = self
+                .references
+                .outgoing
+                .iter()
+                .take(5)
+                .map(|l| l.path.display().to_string())
+                .collect();
+            out.push_str(&paths.join(", "));
+            if self.references.outgoing_count > 5 {
+                out.push_str(", ...");
+            }
+        }
+        out.push('\n');
+
+        out
+    }
+
+    /// Format as one-line summary.
+    pub fn to_summary(&self) -> String {
+        let tasks_str = if let Some(ref tasks) = self.tasks {
+            format!(
+                ", {} done/{} doing/{} todo",
+                tasks.done, tasks.doing, tasks.todo
+            )
+        } else {
+            String::new()
+        };
+
+        format!(
+            "{} ({}){}, {} backlinks",
+            self.path.display(),
+            self.note_type,
+            tasks_str,
+            self.references.backlink_count
+        )
+    }
+}
+
+impl FocusContextOutput {
+    /// Format as markdown.
+    pub fn to_markdown(&self) -> String {
+        let mut out = String::new();
+
+        out.push_str("# Focus Context\n\n");
+        out.push_str(&format!("- **Project**: {}\n", self.project));
+
+        if let Some(ref path) = self.project_path {
+            out.push_str(&format!("- **Path**: {}\n", path.display()));
+        }
+
+        if let Some(ref started) = self.started_at {
+            out.push_str(&format!("- **Started**: {}\n", started));
+        }
+
+        if let Some(ref note) = self.note {
+            out.push_str(&format!("- **Note**: {}\n", note));
+        }
+
+        out.push('\n');
+
+        if let Some(ref ctx) = self.context {
+            out.push_str("## Project Summary\n\n");
+            // Include task counts if available
+            if let Some(ref tasks) = ctx.tasks {
+                out.push_str("| Status | Count |\n");
+                out.push_str("|--------|-------|\n");
+                out.push_str(&format!("| Done | {} |\n", tasks.done));
+                out.push_str(&format!("| In Progress | {} |\n", tasks.doing));
+                out.push_str(&format!("| Todo | {} |\n", tasks.todo));
+                out.push_str(&format!("| Blocked | {} |\n", tasks.blocked));
+                out.push('\n');
+            }
+
+            // Include active tasks
+            if let Some(ref recent) = ctx.recent_tasks
+                && !recent.active.is_empty()
+            {
+                out.push_str("### Active Tasks\n");
+                for task in &recent.active {
+                    out.push_str(&format!("- {}: {}\n", task.id, task.title));
+                }
+                out.push('\n');
+            }
+        }
+
+        out
+    }
+
+    /// Format as one-line summary.
+    pub fn to_summary(&self) -> String {
+        let tasks_str = if let Some(ref ctx) = self.context {
+            if let Some(ref tasks) = ctx.tasks {
+                format!(" ({} done, {} doing)", tasks.done, tasks.doing)
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        format!("Focus: {}{}", self.project, tasks_str)
+    }
+}

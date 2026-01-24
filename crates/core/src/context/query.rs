@@ -476,6 +476,392 @@ impl ContextQueryService {
             None
         }
     }
+
+    /// Get context for a specific note.
+    pub fn note_context(
+        &self,
+        note_path: &Path,
+        activity_days: u32,
+    ) -> Result<NoteContext, ContextError> {
+        let Some(ref db) = self.index_db else {
+            return Err(ContextError::IndexError("Index database not available".into()));
+        };
+
+        // Get the note from the index
+        let note = db
+            .get_note_by_path(note_path)
+            .map_err(|e| ContextError::IndexError(e.to_string()))?
+            .ok_or_else(|| ContextError::IndexError(format!("Note not found: {}", note_path.display())))?;
+
+        let note_id = note.id.ok_or_else(|| ContextError::IndexError("Note has no ID".into()))?;
+
+        // Parse frontmatter
+        let metadata: serde_json::Value = note
+            .frontmatter_json
+            .as_ref()
+            .and_then(|fm| serde_json::from_str(fm).ok())
+            .unwrap_or(serde_json::Value::Null);
+
+        // Get note type
+        let note_type = format!("{:?}", note.note_type).to_lowercase();
+
+        // Get sections
+        let sections = self.parse_note_sections(note_path);
+
+        // Get task counts and recent tasks (for projects)
+        let (tasks, recent_tasks) = if note.note_type == crate::index::NoteType::Project {
+            let counts = self.get_task_counts(note_path);
+            let recent = self.get_recent_tasks(note_path);
+            (Some(counts), Some(recent))
+        } else {
+            (None, None)
+        };
+
+        // Get activity
+        let activity = self.get_note_activity(note_path, activity_days);
+
+        // Get references
+        let references = self.get_note_references(note_id);
+
+        Ok(NoteContext {
+            note_type,
+            path: note_path.to_path_buf(),
+            title: note.title,
+            metadata,
+            sections,
+            tasks,
+            recent_tasks,
+            activity,
+            references,
+        })
+    }
+
+    /// Get context for the focused project.
+    pub fn focus_context(&self) -> Result<FocusContextOutput, ContextError> {
+        let mgr = ContextManager::load(&self.vault_root)
+            .map_err(|e| ContextError::IoError(std::io::Error::other(e.to_string())))?;
+
+        let focus = mgr.focus().ok_or_else(|| {
+            ContextError::IndexError("No focus set".into())
+        })?;
+
+        let project = focus.project.clone();
+        let note = focus.note.clone();
+        let started_at = focus.started_at.map(|dt| dt.to_rfc3339());
+
+        // Try to find the project note
+        let project_path = self.find_project_path(&project);
+
+        // Get project context if path found
+        let context = if let Some(ref path) = project_path {
+            self.note_context(path, 7).ok().map(Box::new)
+        } else {
+            None
+        };
+
+        Ok(FocusContextOutput {
+            project,
+            project_path,
+            started_at,
+            note,
+            context,
+        })
+    }
+
+    /// Find the path to a project note by project name/ID.
+    fn find_project_path(&self, project: &str) -> Option<PathBuf> {
+        // Try common patterns
+        let patterns = [
+            format!("Projects/{}/{}.md", project, project),
+            format!("Projects/{}.md", project),
+        ];
+
+        for pattern in &patterns {
+            let path = PathBuf::from(pattern);
+            let full_path = self.vault_root.join(&path);
+            if full_path.exists() {
+                return Some(path);
+            }
+        }
+
+        // Fall back to index query
+        if let Some(ref db) = self.index_db {
+            use crate::index::{NoteQuery, NoteType};
+
+            let query = NoteQuery {
+                note_type: Some(NoteType::Project),
+                ..Default::default()
+            };
+
+            if let Ok(projects) = db.query_notes(&query) {
+                for proj in projects {
+                    // Check if project-id matches
+                    let fm: Option<serde_json::Value> = proj
+                        .frontmatter_json
+                        .as_ref()
+                        .and_then(|s| serde_json::from_str(s).ok());
+
+                    if let Some(fm) = fm
+                        && fm.get("project-id").and_then(|v| v.as_str()) == Some(project)
+                    {
+                        return Some(proj.path);
+                    }
+
+                    // Check if title matches
+                    if proj.title.eq_ignore_ascii_case(project) {
+                        return Some(proj.path);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Get task counts for a project.
+    fn get_task_counts(&self, project_path: &Path) -> TaskCounts {
+        let Some(ref db) = self.index_db else {
+            return TaskCounts::default();
+        };
+
+        use crate::index::{NoteQuery, NoteType};
+
+        let query = NoteQuery {
+            note_type: Some(NoteType::Task),
+            ..Default::default()
+        };
+
+        let tasks = match db.query_notes(&query) {
+            Ok(t) => t,
+            Err(_) => return TaskCounts::default(),
+        };
+
+        // Extract project folder from path
+        let project_folder = project_path
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let mut counts = TaskCounts::default();
+
+        for task in tasks {
+            // Check if task belongs to this project
+            let task_path_str = task.path.to_string_lossy();
+            if !task_path_str.contains(&format!("Projects/{}/", project_folder)) {
+                continue;
+            }
+
+            counts.total += 1;
+
+            // Get status
+            let status = task
+                .frontmatter_json
+                .as_ref()
+                .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok())
+                .and_then(|fm| fm.get("status").and_then(|v| v.as_str()).map(String::from))
+                .unwrap_or_else(|| "todo".to_string());
+
+            match status.as_str() {
+                "done" | "completed" => counts.done += 1,
+                "doing" | "in-progress" | "in_progress" => counts.doing += 1,
+                "blocked" | "waiting" => counts.blocked += 1,
+                _ => counts.todo += 1,
+            }
+        }
+
+        counts
+    }
+
+    /// Get recent tasks for a project.
+    fn get_recent_tasks(&self, project_path: &Path) -> RecentTasks {
+        let Some(ref db) = self.index_db else {
+            return RecentTasks::default();
+        };
+
+        use crate::index::{NoteQuery, NoteType};
+
+        let query = NoteQuery {
+            note_type: Some(NoteType::Task),
+            ..Default::default()
+        };
+
+        let tasks = match db.query_notes(&query) {
+            Ok(t) => t,
+            Err(_) => return RecentTasks::default(),
+        };
+
+        // Extract project folder from path
+        let project_folder = project_path
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let mut completed = Vec::new();
+        let mut active = Vec::new();
+
+        for task in tasks {
+            // Check if task belongs to this project
+            let task_path_str = task.path.to_string_lossy();
+            if !task_path_str.contains(&format!("Projects/{}/", project_folder)) {
+                continue;
+            }
+
+            let fm: Option<serde_json::Value> = task
+                .frontmatter_json
+                .as_ref()
+                .and_then(|s| serde_json::from_str(s).ok());
+
+            let status = fm
+                .as_ref()
+                .and_then(|f| f.get("status").and_then(|v| v.as_str()))
+                .unwrap_or("todo");
+
+            let task_id = fm
+                .as_ref()
+                .and_then(|f| f.get("task-id").and_then(|v| v.as_str()))
+                .unwrap_or("")
+                .to_string();
+
+            let project_name = fm
+                .as_ref()
+                .and_then(|f| f.get("project").and_then(|v| v.as_str()))
+                .map(String::from);
+
+            let task_info = TaskInfo {
+                id: task_id,
+                title: task.title.clone(),
+                project: project_name,
+                path: task.path.clone(),
+            };
+
+            match status {
+                "done" | "completed" => {
+                    if completed.len() < 5 {
+                        completed.push(task_info);
+                    }
+                }
+                "doing" | "in-progress" | "in_progress" => {
+                    active.push(task_info);
+                }
+                _ => {}
+            }
+        }
+
+        RecentTasks { completed, active }
+    }
+
+    /// Get activity entries related to a specific note.
+    fn get_note_activity(&self, note_path: &Path, days: u32) -> NoteActivity {
+        let Some(ref activity) = self.activity_service else {
+            return NoteActivity { period_days: days, entries: Vec::new() };
+        };
+
+        // Calculate date range
+        let end = Utc::now();
+        let start = end - Duration::days(days as i64);
+
+        let entries = match activity.read_entries(Some(start), Some(end)) {
+            Ok(e) => e,
+            Err(_) => return NoteActivity { period_days: days, entries: Vec::new() },
+        };
+
+        // Filter entries for this note
+        let note_path_str = note_path.to_string_lossy();
+        let filtered: Vec<ActivityItem> = entries
+            .into_iter()
+            .filter(|e| {
+                let entry_path_str = e.path.to_string_lossy();
+                entry_path_str == note_path_str
+                    || entry_path_str.starts_with(&format!("{}/", note_path_str.trim_end_matches(".md")))
+            })
+            .map(|e| ActivityItem {
+                ts: e.ts.to_rfc3339(),
+                source: "logged".to_string(),
+                op: e.op.to_string(),
+                note_type: e.note_type.clone(),
+                id: if e.id.is_empty() { None } else { Some(e.id.clone()) },
+                path: e.path.clone(),
+                summary: e.meta.get("title").and_then(|v| v.as_str()).map(String::from),
+            })
+            .collect();
+
+        NoteActivity {
+            period_days: days,
+            entries: filtered,
+        }
+    }
+
+    /// Get references (backlinks and outgoing links) for a note.
+    fn get_note_references(&self, note_id: i64) -> NoteReferences {
+        let Some(ref db) = self.index_db else {
+            return NoteReferences::default();
+        };
+
+        // Get backlinks
+        let backlinks = db.get_backlinks(note_id).unwrap_or_default();
+
+        let backlink_infos: Vec<LinkInfo> = backlinks
+            .iter()
+            .filter_map(|link| {
+                // Get source note info
+                db.get_note_by_id(link.source_id).ok().flatten().map(|note| {
+                    LinkInfo {
+                        path: note.path,
+                        title: Some(note.title),
+                        link_text: link.link_text.clone(),
+                    }
+                })
+            })
+            .take(10)
+            .collect();
+
+        // Get outgoing links
+        let outgoing = db.get_outgoing_links(note_id).unwrap_or_default();
+
+        let outgoing_infos: Vec<LinkInfo> = outgoing
+            .iter()
+            .filter_map(|link| {
+                if let Some(target_id) = link.target_id {
+                    db.get_note_by_id(target_id).ok().flatten().map(|note| {
+                        LinkInfo {
+                            path: note.path,
+                            title: Some(note.title),
+                            link_text: link.link_text.clone(),
+                        }
+                    })
+                } else {
+                    // Unresolved link
+                    Some(LinkInfo {
+                        path: PathBuf::from(&link.target_path),
+                        title: None,
+                        link_text: link.link_text.clone(),
+                    })
+                }
+            })
+            .take(10)
+            .collect();
+
+        NoteReferences {
+            backlink_count: backlinks.len() as u32,
+            backlinks: backlink_infos,
+            outgoing_count: outgoing.len() as u32,
+            outgoing: outgoing_infos,
+        }
+    }
+
+    /// Parse note sections (headings).
+    fn parse_note_sections(&self, note_path: &Path) -> Vec<String> {
+        let full_path = self.vault_root.join(note_path);
+        let content = match fs::read_to_string(&full_path) {
+            Ok(c) => c,
+            Err(_) => return Vec::new(),
+        };
+
+        let headings = MarkdownEditor::find_headings(&content);
+        headings.iter().map(|h| h.title.clone()).collect()
+    }
 }
 
 #[cfg(test)]

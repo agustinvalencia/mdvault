@@ -274,3 +274,107 @@ fn find_last_active_day(
     }
     None
 }
+
+/// Get context for a specific note.
+pub fn note(
+    config: Option<&Path>,
+    profile: Option<&str>,
+    note_path: &str,
+    format: &str,
+    activity_days: u32,
+) {
+    let cfg = match ConfigLoader::load(config, profile) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("Configuration error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let service = ContextQueryService::new(&cfg);
+
+    // Normalize path (remove leading ./ if present)
+    let note_path = note_path.trim_start_matches("./");
+    let path = std::path::Path::new(note_path);
+
+    // Get context
+    let context = match service.note_context(path, activity_days) {
+        Ok(ctx) => ctx,
+        Err(e) => {
+            eprintln!("Failed to get note context: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    // Output based on format
+    match format {
+        "json" => {
+            match serde_json::to_string_pretty(&context) {
+                Ok(json) => println!("{}", json),
+                Err(e) => {
+                    eprintln!("Failed to serialize context: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "summary" => {
+            println!("{}", context.to_summary());
+        }
+        _ => {
+            // Default: markdown
+            println!("{}", context.to_markdown());
+        }
+    }
+}
+
+/// Get context for the focused project.
+pub fn focus(
+    config: Option<&Path>,
+    profile: Option<&str>,
+    format: &str,
+    _with_tasks: bool, // TODO: implement with_tasks option
+) {
+    let cfg = match ConfigLoader::load(config, profile) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("Configuration error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let service = ContextQueryService::new(&cfg);
+
+    // Get focus context
+    let context = match service.focus_context() {
+        Ok(ctx) => ctx,
+        Err(e) => {
+            // Check if it's just "no focus set"
+            if e.to_string().contains("No focus set") {
+                println!("No focus set. Use `mdv focus <project>` to set focus.");
+                return;
+            }
+            eprintln!("Failed to get focus context: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    // Output based on format
+    match format {
+        "json" => {
+            match serde_json::to_string_pretty(&context) {
+                Ok(json) => println!("{}", json),
+                Err(e) => {
+                    eprintln!("Failed to serialize context: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "summary" => {
+            println!("{}", context.to_summary());
+        }
+        _ => {
+            // Default: markdown
+            println!("{}", context.to_markdown());
+        }
+    }
+}

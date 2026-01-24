@@ -679,6 +679,10 @@ pub enum ContextCommands {
     Day(ContextDayArgs),
     /// Get context for a specific week
     Week(ContextWeekArgs),
+    /// Get context for a specific note
+    Note(ContextNoteArgs),
+    /// Get context for the focused project
+    Focus(ContextFocusArgs),
 }
 
 #[derive(Debug, Args)]
@@ -718,6 +722,44 @@ pub struct ContextWeekArgs {
     /// Output format (md, json, summary)
     #[arg(long, default_value = "md")]
     pub format: String,
+}
+
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv context note Projects/foo/foo.md    # Context for a project
+  mdv context note tasks/TST-001.md       # Context for a task
+  mdv context note --format json path.md  # JSON output
+  mdv context note --activity-days 14     # Include 14 days of activity
+")]
+pub struct ContextNoteArgs {
+    /// Path to the note (relative to vault root)
+    pub path: String,
+
+    /// Output format (md, json, summary)
+    #[arg(long, default_value = "md")]
+    pub format: String,
+
+    /// Days of activity history to include
+    #[arg(long, default_value = "7")]
+    pub activity_days: u32,
+}
+
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv context focus                       # Show focused project context
+  mdv context focus --format json         # JSON output
+  mdv context focus --with-tasks          # Include full task list
+")]
+pub struct ContextFocusArgs {
+    /// Output format (md, json, summary)
+    #[arg(long, default_value = "md")]
+    pub format: String,
+
+    /// Include full task list
+    #[arg(long)]
+    pub with_tasks: bool,
 }
 
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
@@ -902,6 +944,23 @@ fn main() {
                     cli.profile.as_deref(),
                     args.week.as_deref(),
                     &args.format,
+                );
+            }
+            ContextCommands::Note(args) => {
+                cmd::context::note(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    &args.path,
+                    &args.format,
+                    args.activity_days,
+                );
+            }
+            ContextCommands::Focus(args) => {
+                cmd::context::focus(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    &args.format,
+                    args.with_tasks,
                 );
             }
         },
