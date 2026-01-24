@@ -283,12 +283,18 @@ impl DayContext {
             out.push_str("## Task Activity\n\n");
 
             if !self.tasks.completed.is_empty() {
-                out.push_str(&format!("### Completed ({})\n", self.tasks.completed.len()));
+                out.push_str(&format!(
+                    "### Completed ({})\n",
+                    self.tasks.completed.len()
+                ));
                 out.push_str("| Task | Title | Project |\n");
                 out.push_str("|------|-------|--------|\n");
                 for task in &self.tasks.completed {
                     let project = task.project.as_deref().unwrap_or("-");
-                    out.push_str(&format!("| {} | {} | {} |\n", task.id, task.title, project));
+                    out.push_str(&format!(
+                        "| {} | {} | {} |\n",
+                        task.id, task.title, project
+                    ));
                 }
                 out.push('\n');
             }
@@ -299,18 +305,27 @@ impl DayContext {
                 out.push_str("|------|-------|--------|\n");
                 for task in &self.tasks.created {
                     let project = task.project.as_deref().unwrap_or("-");
-                    out.push_str(&format!("| {} | {} | {} |\n", task.id, task.title, project));
+                    out.push_str(&format!(
+                        "| {} | {} | {} |\n",
+                        task.id, task.title, project
+                    ));
                 }
                 out.push('\n');
             }
 
             if !self.tasks.in_progress.is_empty() {
-                out.push_str(&format!("### In Progress ({})\n", self.tasks.in_progress.len()));
+                out.push_str(&format!(
+                    "### In Progress ({})\n",
+                    self.tasks.in_progress.len()
+                ));
                 out.push_str("| Task | Title | Project |\n");
                 out.push_str("|------|-------|--------|\n");
                 for task in &self.tasks.in_progress {
                     let project = task.project.as_deref().unwrap_or("-");
-                    out.push_str(&format!("| {} | {} | {} |\n", task.id, task.title, project));
+                    out.push_str(&format!(
+                        "| {} | {} | {} |\n",
+                        task.id, task.title, project
+                    ));
                 }
                 out.push('\n');
             }
@@ -642,10 +657,7 @@ impl NoteContext {
 
         // References
         out.push_str("## References\n");
-        out.push_str(&format!(
-            "- **Backlinks ({})**: ",
-            self.references.backlink_count
-        ));
+        out.push_str(&format!("- **Backlinks ({})**: ", self.references.backlink_count));
         if self.references.backlinks.is_empty() {
             out.push_str("(none)");
         } else {
@@ -663,10 +675,7 @@ impl NoteContext {
         }
         out.push('\n');
 
-        out.push_str(&format!(
-            "- **Outgoing ({})**: ",
-            self.references.outgoing_count
-        ));
+        out.push_str(&format!("- **Outgoing ({})**: ", self.references.outgoing_count));
         if self.references.outgoing.is_empty() {
             out.push_str("(none)");
         } else {
@@ -690,10 +699,7 @@ impl NoteContext {
     /// Format as one-line summary.
     pub fn to_summary(&self) -> String {
         let tasks_str = if let Some(ref tasks) = self.tasks {
-            format!(
-                ", {} done/{} doing/{} todo",
-                tasks.done, tasks.doing, tasks.todo
-            )
+            format!(", {} done/{} doing/{} todo", tasks.done, tasks.doing, tasks.todo)
         } else {
             String::new()
         };

@@ -52,15 +52,13 @@ pub fn day(
 
     // Output based on format
     match format {
-        "json" => {
-            match serde_json::to_string_pretty(&context) {
-                Ok(json) => println!("{}", json),
-                Err(e) => {
-                    eprintln!("Failed to serialize context: {e}");
-                    std::process::exit(1);
-                }
+        "json" => match serde_json::to_string_pretty(&context) {
+            Ok(json) => println!("{}", json),
+            Err(e) => {
+                eprintln!("Failed to serialize context: {e}");
+                std::process::exit(1);
             }
-        }
+        },
         "summary" => {
             println!("{}", context.to_summary());
         }
@@ -108,15 +106,13 @@ pub fn week(
 
     // Output based on format
     match format {
-        "json" => {
-            match serde_json::to_string_pretty(&context) {
-                Ok(json) => println!("{}", json),
-                Err(e) => {
-                    eprintln!("Failed to serialize context: {e}");
-                    std::process::exit(1);
-                }
+        "json" => match serde_json::to_string_pretty(&context) {
+            Ok(json) => println!("{}", json),
+            Err(e) => {
+                eprintln!("Failed to serialize context: {e}");
+                std::process::exit(1);
             }
-        }
+        },
         "summary" => {
             println!("{}", context.to_summary());
         }
@@ -165,7 +161,9 @@ fn parse_date_arg(arg: Option<&str>) -> Result<NaiveDate, String> {
                 DateBase::IsoWeek { year, week } => {
                     // Find Monday of the specified ISO week
                     NaiveDate::from_isoywd_opt(year, week, chrono::Weekday::Mon)
-                        .ok_or_else(|| format!("Invalid ISO week: {}-W{:02}", year, week))?
+                        .ok_or_else(|| {
+                            format!("Invalid ISO week: {}-W{:02}", year, week)
+                        })?
                 }
                 _ => today,
             };
@@ -189,7 +187,10 @@ fn parse_date_arg(arg: Option<&str>) -> Result<NaiveDate, String> {
                         _ => base_date,
                     }
                 }
-                mdvault_core::vars::datemath::DateOffset::Weekday { weekday, direction } => {
+                mdvault_core::vars::datemath::DateOffset::Weekday {
+                    weekday,
+                    direction,
+                } => {
                     use mdvault_core::vars::datemath::Direction;
                     let target_day = weekday.num_days_from_monday();
                     let current_day = base_date.weekday().num_days_from_monday();
@@ -241,7 +242,8 @@ fn parse_week_arg(arg: Option<&str>) -> Result<NaiveDate, String> {
         let parts: Vec<&str> = arg.split(['-', 'W', 'w']).collect();
         if parts.len() >= 2 {
             let year: i32 = parts[0].parse().map_err(|_| "Invalid year in ISO week")?;
-            let week: u32 = parts.last().unwrap().parse().map_err(|_| "Invalid week number")?;
+            let week: u32 =
+                parts.last().unwrap().parse().map_err(|_| "Invalid week number")?;
 
             return NaiveDate::from_isoywd_opt(year, week, chrono::Weekday::Mon)
                 .ok_or_else(|| format!("Invalid ISO week: {}-W{:02}", year, week));
@@ -308,15 +310,13 @@ pub fn note(
 
     // Output based on format
     match format {
-        "json" => {
-            match serde_json::to_string_pretty(&context) {
-                Ok(json) => println!("{}", json),
-                Err(e) => {
-                    eprintln!("Failed to serialize context: {e}");
-                    std::process::exit(1);
-                }
+        "json" => match serde_json::to_string_pretty(&context) {
+            Ok(json) => println!("{}", json),
+            Err(e) => {
+                eprintln!("Failed to serialize context: {e}");
+                std::process::exit(1);
             }
-        }
+        },
         "summary" => {
             println!("{}", context.to_summary());
         }
@@ -360,15 +360,13 @@ pub fn focus(
 
     // Output based on format
     match format {
-        "json" => {
-            match serde_json::to_string_pretty(&context) {
-                Ok(json) => println!("{}", json),
-                Err(e) => {
-                    eprintln!("Failed to serialize context: {e}");
-                    std::process::exit(1);
-                }
+        "json" => match serde_json::to_string_pretty(&context) {
+            Ok(json) => println!("{}", json),
+            Err(e) => {
+                eprintln!("Failed to serialize context: {e}");
+                std::process::exit(1);
             }
-        }
+        },
         "summary" => {
             println!("{}", context.to_summary());
         }

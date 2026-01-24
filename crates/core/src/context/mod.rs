@@ -13,8 +13,9 @@ mod types;
 pub use manager::ContextManager;
 pub use query::ContextQueryService;
 pub use query_types::{
-    ActivityItem, ContextError, DayContext, DailyNoteInfo, DaySummary, DaySummaryWithDate,
-    FocusContextOutput, LinkInfo, ModifiedNote, NoteActivity, NoteContext, NoteReferences,
-    ProjectActivity, RecentTasks, TaskActivity, TaskCounts, TaskInfo, WeekContext, WeekSummary,
+    ActivityItem, ContextError, DailyNoteInfo, DayContext, DaySummary,
+    DaySummaryWithDate, FocusContextOutput, LinkInfo, ModifiedNote, NoteActivity,
+    NoteContext, NoteReferences, ProjectActivity, RecentTasks, TaskActivity, TaskCounts,
+    TaskInfo, WeekContext, WeekSummary,
 };
 pub use types::{ContextState, FocusContext};

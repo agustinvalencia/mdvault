@@ -66,7 +66,11 @@ impl ContextQueryService {
                 note_type: entry.note_type.clone(),
                 id: if entry.id.is_empty() { None } else { Some(entry.id.clone()) },
                 path: entry.path.clone(),
-                summary: entry.meta.get("title").and_then(|v| v.as_str()).map(String::from),
+                summary: entry
+                    .meta
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
             });
         }
 
@@ -173,12 +177,13 @@ impl ContextQueryService {
 
             // Accumulate project activity
             for proj in day_context.projects {
-                let entry = project_map.entry(proj.name.clone()).or_insert(ProjectActivity {
-                    name: proj.name,
-                    tasks_done: 0,
-                    tasks_active: 0,
-                    logs_added: 0,
-                });
+                let entry =
+                    project_map.entry(proj.name.clone()).or_insert(ProjectActivity {
+                        name: proj.name,
+                        tasks_done: 0,
+                        tasks_active: 0,
+                        logs_added: 0,
+                    });
                 entry.tasks_done += proj.tasks_done;
                 entry.tasks_active = entry.tasks_active.max(proj.tasks_active);
                 entry.logs_added += proj.logs_added;
@@ -319,7 +324,8 @@ impl ContextQueryService {
         let sections: Vec<String> = headings.iter().map(|h| h.title.clone()).collect();
 
         // Count log entries (lines starting with "- ")
-        let log_count = content.lines().filter(|line| line.trim_start().starts_with("- ")).count();
+        let log_count =
+            content.lines().filter(|line| line.trim_start().starts_with("- ")).count();
 
         Some(DailyNoteInfo {
             path: PathBuf::from(rel_path),
@@ -345,11 +351,8 @@ impl ContextQueryService {
                 .unwrap_or("Untitled")
                 .to_string();
 
-            let project = entry
-                .meta
-                .get("project")
-                .and_then(|v| v.as_str())
-                .map(String::from);
+            let project =
+                entry.meta.get("project").and_then(|v| v.as_str()).map(String::from);
 
             let task_info = TaskInfo {
                 id: entry.id.clone(),
@@ -390,19 +393,23 @@ impl ContextQueryService {
             .into_iter()
             .filter_map(|note| {
                 // Parse frontmatter to get status
-                let fm: serde_json::Value =
-                    note.frontmatter_json.as_ref().and_then(|s| serde_json::from_str(s).ok())?;
+                let fm: serde_json::Value = note
+                    .frontmatter_json
+                    .as_ref()
+                    .and_then(|s| serde_json::from_str(s).ok())?;
 
                 let status = fm.get("status").and_then(|v| v.as_str()).unwrap_or("todo");
 
-                if status == "doing" || status == "in_progress" || status == "in-progress" {
+                if status == "doing" || status == "in_progress" || status == "in-progress"
+                {
                     let id = fm
                         .get("task-id")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
 
-                    let project = fm.get("project").and_then(|v| v.as_str()).map(String::from);
+                    let project =
+                        fm.get("project").and_then(|v| v.as_str()).map(String::from);
 
                     Some(TaskInfo { id, title: note.title, project, path: note.path })
                 } else {
@@ -491,9 +498,15 @@ impl ContextQueryService {
         let note = db
             .get_note_by_path(note_path)
             .map_err(|e| ContextError::IndexError(e.to_string()))?
-            .ok_or_else(|| ContextError::IndexError(format!("Note not found: {}", note_path.display())))?;
+            .ok_or_else(|| {
+                ContextError::IndexError(format!(
+                    "Note not found: {}",
+                    note_path.display()
+                ))
+            })?;
 
-        let note_id = note.id.ok_or_else(|| ContextError::IndexError("Note has no ID".into()))?;
+        let note_id =
+            note.id.ok_or_else(|| ContextError::IndexError("Note has no ID".into()))?;
 
         // Parse frontmatter
         let metadata: serde_json::Value = note
@@ -541,9 +554,8 @@ impl ContextQueryService {
         let mgr = ContextManager::load(&self.vault_root)
             .map_err(|e| ContextError::IoError(std::io::Error::other(e.to_string())))?;
 
-        let focus = mgr.focus().ok_or_else(|| {
-            ContextError::IndexError("No focus set".into())
-        })?;
+        let focus =
+            mgr.focus().ok_or_else(|| ContextError::IndexError("No focus set".into()))?;
 
         let project = focus.project.clone();
         let note = focus.note.clone();
@@ -559,13 +571,7 @@ impl ContextQueryService {
             None
         };
 
-        Ok(FocusContextOutput {
-            project,
-            project_path,
-            started_at,
-            note,
-            context,
-        })
+        Ok(FocusContextOutput { project, project_path, started_at, note, context })
     }
 
     /// Find the path to a project note by project name/ID.
@@ -588,10 +594,8 @@ impl ContextQueryService {
         if let Some(ref db) = self.index_db {
             use crate::index::{NoteQuery, NoteType};
 
-            let query = NoteQuery {
-                note_type: Some(NoteType::Project),
-                ..Default::default()
-            };
+            let query =
+                NoteQuery { note_type: Some(NoteType::Project), ..Default::default() };
 
             if let Ok(projects) = db.query_notes(&query) {
                 for proj in projects {
@@ -626,10 +630,7 @@ impl ContextQueryService {
 
         use crate::index::{NoteQuery, NoteType};
 
-        let query = NoteQuery {
-            note_type: Some(NoteType::Task),
-            ..Default::default()
-        };
+        let query = NoteQuery { note_type: Some(NoteType::Task), ..Default::default() };
 
         let tasks = match db.query_notes(&query) {
             Ok(t) => t,
@@ -659,7 +660,9 @@ impl ContextQueryService {
                 .frontmatter_json
                 .as_ref()
                 .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok())
-                .and_then(|fm| fm.get("status").and_then(|v| v.as_str()).map(String::from))
+                .and_then(|fm| {
+                    fm.get("status").and_then(|v| v.as_str()).map(String::from)
+                })
                 .unwrap_or_else(|| "todo".to_string());
 
             match status.as_str() {
@@ -681,10 +684,7 @@ impl ContextQueryService {
 
         use crate::index::{NoteQuery, NoteType};
 
-        let query = NoteQuery {
-            note_type: Some(NoteType::Task),
-            ..Default::default()
-        };
+        let query = NoteQuery { note_type: Some(NoteType::Task), ..Default::default() };
 
         let tasks = match db.query_notes(&query) {
             Ok(t) => t,
@@ -708,10 +708,8 @@ impl ContextQueryService {
                 continue;
             }
 
-            let fm: Option<serde_json::Value> = task
-                .frontmatter_json
-                .as_ref()
-                .and_then(|s| serde_json::from_str(s).ok());
+            let fm: Option<serde_json::Value> =
+                task.frontmatter_json.as_ref().and_then(|s| serde_json::from_str(s).ok());
 
             let status = fm
                 .as_ref()
@@ -774,7 +772,10 @@ impl ContextQueryService {
             .filter(|e| {
                 let entry_path_str = e.path.to_string_lossy();
                 entry_path_str == note_path_str
-                    || entry_path_str.starts_with(&format!("{}/", note_path_str.trim_end_matches(".md")))
+                    || entry_path_str.starts_with(&format!(
+                        "{}/",
+                        note_path_str.trim_end_matches(".md")
+                    ))
             })
             .map(|e| ActivityItem {
                 ts: e.ts.to_rfc3339(),
@@ -787,10 +788,7 @@ impl ContextQueryService {
             })
             .collect();
 
-        NoteActivity {
-            period_days: days,
-            entries: filtered,
-        }
+        NoteActivity { period_days: days, entries: filtered }
     }
 
     /// Get references (backlinks and outgoing links) for a note.
@@ -806,12 +804,10 @@ impl ContextQueryService {
             .iter()
             .filter_map(|link| {
                 // Get source note info
-                db.get_note_by_id(link.source_id).ok().flatten().map(|note| {
-                    LinkInfo {
-                        path: note.path,
-                        title: Some(note.title),
-                        link_text: link.link_text.clone(),
-                    }
+                db.get_note_by_id(link.source_id).ok().flatten().map(|note| LinkInfo {
+                    path: note.path,
+                    title: Some(note.title),
+                    link_text: link.link_text.clone(),
                 })
             })
             .take(10)
@@ -824,12 +820,10 @@ impl ContextQueryService {
             .iter()
             .filter_map(|link| {
                 if let Some(target_id) = link.target_id {
-                    db.get_note_by_id(target_id).ok().flatten().map(|note| {
-                        LinkInfo {
-                            path: note.path,
-                            title: Some(note.title),
-                            link_text: link.link_text.clone(),
-                        }
+                    db.get_note_by_id(target_id).ok().flatten().map(|note| LinkInfo {
+                        path: note.path,
+                        title: Some(note.title),
+                        link_text: link.link_text.clone(),
                     })
                 } else {
                     // Unresolved link
