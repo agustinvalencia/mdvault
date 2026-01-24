@@ -1015,6 +1015,394 @@ mod tests {
         assert_eq!(counts.blocked, 0);
     }
 
+    #[test]
+    fn test_day_context_with_daily_note_exists() {
+        let mut context = DayContext::new("2026-01-24", "Friday");
+        context.daily_note = Some(DailyNoteInfo {
+            path: PathBuf::from("daily/2026-01-24.md"),
+            exists: true,
+            sections: vec!["Log".to_string(), "Notes".to_string()],
+            log_count: 5,
+        });
+
+        let md = context.to_markdown();
+
+        assert!(md.contains("## Daily Note"));
+        assert!(md.contains("daily/2026-01-24.md"));
+        assert!(md.contains("Sections: Log, Notes"));
+        assert!(md.contains("Log entries: 5"));
+    }
+
+    #[test]
+    fn test_day_context_with_daily_note_not_exists() {
+        let mut context = DayContext::new("2026-01-24", "Friday");
+        context.daily_note = Some(DailyNoteInfo {
+            path: PathBuf::from("daily/2026-01-24.md"),
+            exists: false,
+            sections: vec![],
+            log_count: 0,
+        });
+
+        let md = context.to_markdown();
+
+        assert!(md.contains("(does not exist)"));
+    }
+
+    #[test]
+    fn test_day_context_with_tasks() {
+        let mut context = DayContext::new("2026-01-24", "Friday");
+        context.tasks.completed.push(TaskInfo {
+            id: "TST-001".to_string(),
+            title: "Test task".to_string(),
+            project: Some("test-project".to_string()),
+            path: PathBuf::from("Projects/test/Tasks/TST-001.md"),
+        });
+        context.tasks.created.push(TaskInfo {
+            id: "TST-002".to_string(),
+            title: "New task".to_string(),
+            project: None,
+            path: PathBuf::from("Projects/test/Tasks/TST-002.md"),
+        });
+        context.tasks.in_progress.push(TaskInfo {
+            id: "TST-003".to_string(),
+            title: "WIP task".to_string(),
+            project: Some("test-project".to_string()),
+            path: PathBuf::from("Projects/test/Tasks/TST-003.md"),
+        });
+
+        let md = context.to_markdown();
+
+        assert!(md.contains("## Task Activity"));
+        assert!(md.contains("### Completed (1)"));
+        assert!(md.contains("| TST-001 | Test task | test-project |"));
+        assert!(md.contains("### Created (1)"));
+        assert!(md.contains("| TST-002 | New task | - |"));
+        assert!(md.contains("### In Progress (1)"));
+        assert!(md.contains("| TST-003 | WIP task | test-project |"));
+    }
+
+    #[test]
+    fn test_day_context_with_modified_notes() {
+        let mut context = DayContext::new("2026-01-24", "Friday");
+        context.modified_notes.push(ModifiedNote {
+            path: PathBuf::from("Projects/test/test.md"),
+            note_type: Some("project".to_string()),
+            source: "logged".to_string(),
+            change_summary: Some("+3 logs".to_string()),
+        });
+
+        let md = context.to_markdown();
+
+        assert!(md.contains("## Modified Notes (1)"));
+        assert!(md.contains("| Projects/test/test.md | project | +3 logs |"));
+    }
+
+    #[test]
+    fn test_day_context_with_projects() {
+        let mut context = DayContext::new("2026-01-24", "Friday");
+        context.projects.push(ProjectActivity {
+            name: "test-project".to_string(),
+            tasks_done: 2,
+            tasks_active: 1,
+            logs_added: 5,
+        });
+
+        let md = context.to_markdown();
+
+        assert!(md.contains("## Projects with Activity"));
+        assert!(md.contains("| test-project | 2 | 1 | 5 |"));
+    }
+
+    #[test]
+    fn test_day_context_with_focus() {
+        let mut context = DayContext::new("2026-01-24", "Friday");
+        context.summary.focus = Some("focused-project".to_string());
+
+        let md = context.to_markdown();
+
+        assert!(md.contains("- Focus: focused-project"));
+    }
+
+    #[test]
+    fn test_week_context_with_projects() {
+        let context = WeekContext {
+            week: "2026-W04".to_string(),
+            start_date: "2026-01-20".to_string(),
+            end_date: "2026-01-26".to_string(),
+            summary: WeekSummary::default(),
+            days: vec![DaySummaryWithDate {
+                date: "2026-01-20".to_string(),
+                day_of_week: "Monday".to_string(),
+                summary: DaySummary {
+                    tasks_completed: 2,
+                    tasks_created: 1,
+                    notes_modified: 3,
+                    focus: None,
+                },
+            }],
+            tasks: TaskActivity::default(),
+            projects: vec![ProjectActivity {
+                name: "test-project".to_string(),
+                tasks_done: 5,
+                tasks_active: 2,
+                logs_added: 10,
+            }],
+        };
+
+        let md = context.to_markdown();
+
+        assert!(md.contains("## Daily Breakdown"));
+        assert!(md.contains("| 2026-01-20 | Monday | 2 | 1 | 3 |"));
+        assert!(md.contains("## Projects"));
+        assert!(md.contains("| test-project | 5 | 2 | 10 |"));
+    }
+
+    #[test]
+    fn test_note_context_to_markdown_metadata() {
+        let context = NoteContext {
+            note_type: "project".to_string(),
+            path: PathBuf::from("Projects/test/test.md"),
+            title: "Test Project".to_string(),
+            metadata: serde_json::json!({
+                "status": "active",
+                "priority": 1,
+                "archived": false,
+                "tags": ["rust", "test"]
+            }),
+            sections: vec!["Overview".to_string(), "Tasks".to_string()],
+            tasks: None,
+            recent_tasks: None,
+            activity: NoteActivity::default(),
+            references: NoteReferences::default(),
+        };
+
+        let md = context.to_markdown();
+
+        assert!(md.contains("## Metadata"));
+        assert!(md.contains("- **status**: active"));
+        assert!(md.contains("- **priority**: 1"));
+        assert!(md.contains("- **archived**: false"));
+        assert!(md.contains("## Sections"));
+        assert!(md.contains("Overview, Tasks"));
+    }
+
+    #[test]
+    fn test_note_context_with_recent_tasks() {
+        let context = NoteContext {
+            note_type: "project".to_string(),
+            path: PathBuf::from("Projects/test/test.md"),
+            title: "Test Project".to_string(),
+            metadata: serde_json::json!({}),
+            sections: vec![],
+            tasks: Some(TaskCounts { total: 5, todo: 2, doing: 1, done: 2, blocked: 0 }),
+            recent_tasks: Some(RecentTasks {
+                completed: vec![TaskInfo {
+                    id: "TST-001".to_string(),
+                    title: "Done task".to_string(),
+                    project: None,
+                    path: PathBuf::from("Projects/test/Tasks/TST-001.md"),
+                }],
+                active: vec![TaskInfo {
+                    id: "TST-002".to_string(),
+                    title: "Active task".to_string(),
+                    project: None,
+                    path: PathBuf::from("Projects/test/Tasks/TST-002.md"),
+                }],
+            }),
+            activity: NoteActivity::default(),
+            references: NoteReferences::default(),
+        };
+
+        let md = context.to_markdown();
+
+        assert!(md.contains("## Tasks"));
+        assert!(md.contains("| Done | 2 |"));
+        assert!(md.contains("| In Progress | 1 |"));
+        assert!(md.contains("| Todo | 2 |"));
+        assert!(md.contains("### Recent Completed"));
+        assert!(md.contains("- TST-001: Done task"));
+        assert!(md.contains("### Active"));
+        assert!(md.contains("- TST-002: Active task"));
+    }
+
+    #[test]
+    fn test_note_context_with_activity() {
+        let context = NoteContext {
+            note_type: "project".to_string(),
+            path: PathBuf::from("Projects/test/test.md"),
+            title: "Test Project".to_string(),
+            metadata: serde_json::json!({}),
+            sections: vec![],
+            tasks: None,
+            recent_tasks: None,
+            activity: NoteActivity {
+                period_days: 7,
+                entries: vec![ActivityItem {
+                    ts: "2026-01-24T10:30:00Z".to_string(),
+                    source: "logged".to_string(),
+                    op: "log".to_string(),
+                    note_type: "project".to_string(),
+                    id: Some("test-project".to_string()),
+                    path: PathBuf::from("Projects/test/test.md"),
+                    summary: Some("Updated status".to_string()),
+                }],
+            },
+            references: NoteReferences::default(),
+        };
+
+        let md = context.to_markdown();
+
+        assert!(md.contains("## Activity (7 days)"));
+        assert!(md.contains("| 2026-01-24 | log | Updated status |"));
+    }
+
+    #[test]
+    fn test_note_context_with_references() {
+        let context = NoteContext {
+            note_type: "project".to_string(),
+            path: PathBuf::from("Projects/test/test.md"),
+            title: "Test Project".to_string(),
+            metadata: serde_json::json!({}),
+            sections: vec![],
+            tasks: None,
+            recent_tasks: None,
+            activity: NoteActivity::default(),
+            references: NoteReferences {
+                backlinks: vec![
+                    LinkInfo {
+                        path: PathBuf::from("daily/2026-01-24.md"),
+                        title: Some("2026-01-24".to_string()),
+                        link_text: None,
+                    },
+                    LinkInfo {
+                        path: PathBuf::from("daily/2026-01-23.md"),
+                        title: Some("2026-01-23".to_string()),
+                        link_text: None,
+                    },
+                ],
+                backlink_count: 2,
+                outgoing: vec![LinkInfo {
+                    path: PathBuf::from("Projects/other/other.md"),
+                    title: Some("Other Project".to_string()),
+                    link_text: Some("related project".to_string()),
+                }],
+                outgoing_count: 1,
+            },
+        };
+
+        let md = context.to_markdown();
+
+        assert!(md.contains("## References"));
+        assert!(md.contains("- **Backlinks (2)**:"));
+        assert!(md.contains("daily/2026-01-24.md"));
+        assert!(md.contains("- **Outgoing (1)**:"));
+        assert!(md.contains("Projects/other/other.md"));
+    }
+
+    #[test]
+    fn test_note_context_with_many_references_truncated() {
+        let backlinks: Vec<LinkInfo> = (0..10)
+            .map(|i| LinkInfo {
+                path: PathBuf::from(format!("notes/note-{}.md", i)),
+                title: Some(format!("Note {}", i)),
+                link_text: None,
+            })
+            .collect();
+
+        let context = NoteContext {
+            note_type: "note".to_string(),
+            path: PathBuf::from("notes/main.md"),
+            title: "Main Note".to_string(),
+            metadata: serde_json::json!({}),
+            sections: vec![],
+            tasks: None,
+            recent_tasks: None,
+            activity: NoteActivity::default(),
+            references: NoteReferences {
+                backlinks,
+                backlink_count: 10,
+                outgoing: vec![],
+                outgoing_count: 0,
+            },
+        };
+
+        let md = context.to_markdown();
+
+        // Should show first 5 and then "..."
+        assert!(md.contains("- **Backlinks (10)**:"));
+        assert!(md.contains("notes/note-0.md"));
+        assert!(md.contains("notes/note-4.md"));
+        assert!(md.contains(", ..."));
+    }
+
+    #[test]
+    fn test_focus_context_with_full_context() {
+        let output = FocusContextOutput {
+            project: "test-project".to_string(),
+            project_path: Some(PathBuf::from("Projects/test/test.md")),
+            started_at: Some("2026-01-24T10:00:00Z".to_string()),
+            note: Some("Working on feature X".to_string()),
+            context: Some(Box::new(NoteContext {
+                note_type: "project".to_string(),
+                path: PathBuf::from("Projects/test/test.md"),
+                title: "Test Project".to_string(),
+                metadata: serde_json::json!({}),
+                sections: vec![],
+                tasks: Some(TaskCounts {
+                    total: 5,
+                    todo: 2,
+                    doing: 1,
+                    done: 2,
+                    blocked: 0,
+                }),
+                recent_tasks: Some(RecentTasks {
+                    completed: vec![],
+                    active: vec![TaskInfo {
+                        id: "TST-001".to_string(),
+                        title: "Active task".to_string(),
+                        project: None,
+                        path: PathBuf::from("Projects/test/Tasks/TST-001.md"),
+                    }],
+                }),
+                activity: NoteActivity::default(),
+                references: NoteReferences::default(),
+            })),
+        };
+
+        let md = output.to_markdown();
+
+        assert!(md.contains("# Focus Context"));
+        assert!(md.contains("- **Project**: test-project"));
+        assert!(md.contains("- **Path**: Projects/test/test.md"));
+        assert!(md.contains("- **Started**: 2026-01-24T10:00:00Z"));
+        assert!(md.contains("- **Note**: Working on feature X"));
+        assert!(md.contains("## Project Summary"));
+        assert!(md.contains("| Done | 2 |"));
+        assert!(md.contains("### Active Tasks"));
+        assert!(md.contains("- TST-001: Active task"));
+
+        let summary = output.to_summary();
+        assert!(summary.contains("Focus: test-project (2 done, 1 doing)"));
+    }
+
+    #[test]
+    fn test_note_activity_default() {
+        let activity = NoteActivity::default();
+
+        assert_eq!(activity.period_days, 7);
+        assert!(activity.entries.is_empty());
+    }
+
+    #[test]
+    fn test_note_references_default() {
+        let refs = NoteReferences::default();
+
+        assert_eq!(refs.backlink_count, 0);
+        assert!(refs.backlinks.is_empty());
+        assert_eq!(refs.outgoing_count, 0);
+        assert!(refs.outgoing.is_empty());
+    }
+
     fn make_test_config(vault_root: PathBuf) -> ResolvedConfig {
         ResolvedConfig {
             active_profile: "test".into(),
