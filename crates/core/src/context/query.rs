@@ -880,6 +880,141 @@ mod tests {
         assert_eq!(context.summary.tasks_created, 0);
     }
 
+    #[test]
+    fn test_week_context_empty() {
+        let tmp = tempdir().unwrap();
+        let config = make_test_config(tmp.path().to_path_buf());
+
+        let service = ContextQueryService::new(&config);
+        let today = Local::now().date_naive();
+        let context = service.week_context(today).unwrap();
+
+        assert_eq!(context.summary.tasks_completed, 0);
+        assert_eq!(context.summary.tasks_created, 0);
+        assert_eq!(context.days.len(), 7);
+    }
+
+    #[test]
+    fn test_note_context_no_index() {
+        let tmp = tempdir().unwrap();
+        let config = make_test_config(tmp.path().to_path_buf());
+
+        let service = ContextQueryService::new(&config);
+        let result = service.note_context(Path::new("test.md"), 7);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Index database not available"));
+    }
+
+    #[test]
+    fn test_focus_context_no_focus() {
+        let tmp = tempdir().unwrap();
+        let config = make_test_config(tmp.path().to_path_buf());
+
+        // Create the state directory but no focus file
+        fs::create_dir_all(tmp.path().join(".mdvault/state")).unwrap();
+
+        let service = ContextQueryService::new(&config);
+        let result = service.focus_context();
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No focus set"));
+    }
+
+    #[test]
+    fn test_day_context_to_summary() {
+        let context = DayContext::new("2026-01-24", "Friday");
+        let summary = context.to_summary();
+
+        assert!(summary.contains("2026-01-24"));
+        assert!(summary.contains("0 done"));
+    }
+
+    #[test]
+    fn test_day_context_to_markdown() {
+        let mut context = DayContext::new("2026-01-24", "Friday");
+        context.summary.tasks_completed = 3;
+        context.summary.tasks_created = 2;
+
+        let md = context.to_markdown();
+
+        assert!(md.contains("# Context: 2026-01-24 (Friday)"));
+        assert!(md.contains("3 tasks completed"));
+        assert!(md.contains("2 tasks created"));
+    }
+
+    #[test]
+    fn test_week_context_to_summary() {
+        let context = WeekContext {
+            week: "2026-W04".to_string(),
+            start_date: "2026-01-20".to_string(),
+            end_date: "2026-01-26".to_string(),
+            summary: WeekSummary {
+                tasks_completed: 5,
+                tasks_created: 3,
+                notes_modified: 10,
+                active_days: 4,
+            },
+            days: vec![],
+            tasks: TaskActivity::default(),
+            projects: vec![],
+        };
+
+        let summary = context.to_summary();
+
+        assert!(summary.contains("2026-W04"));
+        assert!(summary.contains("5 done"));
+        assert!(summary.contains("4 days"));
+    }
+
+    #[test]
+    fn test_note_context_to_summary() {
+        let context = NoteContext {
+            note_type: "project".to_string(),
+            path: PathBuf::from("Projects/test/test.md"),
+            title: "Test Project".to_string(),
+            metadata: serde_json::json!({"status": "active"}),
+            sections: vec!["Overview".to_string()],
+            tasks: Some(TaskCounts { total: 10, todo: 5, doing: 2, done: 3, blocked: 0 }),
+            recent_tasks: None,
+            activity: NoteActivity::default(),
+            references: NoteReferences::default(),
+        };
+
+        let summary = context.to_summary();
+
+        assert!(summary.contains("Projects/test/test.md"));
+        assert!(summary.contains("project"));
+        assert!(summary.contains("3 done"));
+        assert!(summary.contains("2 doing"));
+    }
+
+    #[test]
+    fn test_focus_context_output_to_summary() {
+        let output = FocusContextOutput {
+            project: "test-project".to_string(),
+            project_path: Some(PathBuf::from("Projects/test/test.md")),
+            started_at: Some("2026-01-24T10:00:00Z".to_string()),
+            note: None,
+            context: None,
+        };
+
+        let summary = output.to_summary();
+
+        assert!(summary.contains("test-project"));
+    }
+
+    #[test]
+    fn test_task_counts_default() {
+        let counts = TaskCounts::default();
+
+        assert_eq!(counts.total, 0);
+        assert_eq!(counts.todo, 0);
+        assert_eq!(counts.doing, 0);
+        assert_eq!(counts.done, 0);
+        assert_eq!(counts.blocked, 0);
+    }
+
     fn make_test_config(vault_root: PathBuf) -> ResolvedConfig {
         ResolvedConfig {
             active_profile: "test".into(),
