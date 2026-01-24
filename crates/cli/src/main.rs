@@ -127,6 +127,10 @@ enum Commands {
 
     /// Set or show active focus context
     Focus(FocusArgs),
+
+    /// Query context for a day or week
+    #[command(subcommand)]
+    Context(ContextCommands),
 }
 
 /// Today command subcommands.
@@ -668,6 +672,54 @@ pub struct FocusArgs {
     pub json: bool,
 }
 
+/// Context query subcommands.
+#[derive(Debug, Subcommand)]
+pub enum ContextCommands {
+    /// Get context for a specific day
+    Day(ContextDayArgs),
+    /// Get context for a specific week
+    Week(ContextWeekArgs),
+}
+
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv context day                     # Today's context
+  mdv context day yesterday           # Yesterday's context
+  mdv context day 2026-01-20          # Specific date
+  mdv context day \"today - 3d\"        # Date expression
+  mdv context day --format json       # JSON output
+")]
+pub struct ContextDayArgs {
+    /// Date (YYYY-MM-DD, \"today\", \"yesterday\", or date expression)
+    pub date: Option<String>,
+
+    /// Output format (md, json, summary)
+    #[arg(long, default_value = "md")]
+    pub format: String,
+
+    /// Find last day with activity if specified date has none
+    #[arg(long)]
+    pub lookback: bool,
+}
+
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv context week                    # Current week's context
+  mdv context week last               # Last week
+  mdv context week 2026-W04           # Specific ISO week
+  mdv context week --format json      # JSON output
+")]
+pub struct ContextWeekArgs {
+    /// Week (\"current\", \"last\", YYYY-Wxx, or date expression)
+    pub week: Option<String>,
+
+    /// Output format (md, json, summary)
+    #[arg(long, default_value = "md")]
+    pub format: String,
+}
+
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
     let pos =
         s.find('=').ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
@@ -834,5 +886,24 @@ fn main() {
         Some(Commands::Focus(args)) => {
             cmd::focus::run(cli.config.as_deref(), cli.profile.as_deref(), args);
         }
+        Some(Commands::Context(subcmd)) => match subcmd {
+            ContextCommands::Day(args) => {
+                cmd::context::day(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    args.date.as_deref(),
+                    &args.format,
+                    args.lookback,
+                );
+            }
+            ContextCommands::Week(args) => {
+                cmd::context::week(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    args.week.as_deref(),
+                    &args.format,
+                );
+            }
+        },
     }
 }
