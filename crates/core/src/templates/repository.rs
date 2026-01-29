@@ -40,7 +40,11 @@ pub struct LoadedTemplate {
     /// Raw content (includes frontmatter if present).
     pub content: String,
     /// Parsed template frontmatter (if present).
+    /// May be incomplete if frontmatter contains template variables.
     pub frontmatter: Option<TemplateFrontmatter>,
+    /// Raw frontmatter text (without --- delimiters).
+    /// Used for rendering with variable substitution.
+    pub raw_frontmatter: Option<String>,
     /// Body content (excludes frontmatter).
     pub body: String,
 }
@@ -70,7 +74,8 @@ impl TemplateRepository {
         let content = fs::read_to_string(&info.path)
             .map_err(|e| TemplateRepoError::Io { path: info.path.clone(), source: e })?;
 
-        let (frontmatter, body) = parse_template_frontmatter(&content).map_err(|e| {
+        let (frontmatter, raw_frontmatter, body) = parse_template_frontmatter(&content)
+            .map_err(|e| {
             TemplateRepoError::FrontmatterParse { path: info.path.clone(), source: e }
         })?;
 
@@ -79,6 +84,7 @@ impl TemplateRepository {
             path: info.path.clone(),
             content,
             frontmatter,
+            raw_frontmatter,
             body,
         })
     }

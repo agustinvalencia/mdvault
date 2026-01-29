@@ -8,6 +8,7 @@ fn loaded(contents: &str) -> LoadedTemplate {
         path: PathBuf::from("test.md"),
         content: contents.to_string(),
         frontmatter: None,
+        raw_frontmatter: None,
         body: contents.to_string(),
     }
 }

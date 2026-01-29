@@ -80,6 +80,79 @@ fn absolutize(path: &Path) -> PathBuf {
     }
 }
 
+/// Clean up YAML content by removing problematic lines and quoting special values.
+///
+/// This handles two cases:
+/// 1. Unreplaced template variables (e.g., `field: {{var}}`) - removes the line
+/// 2. YAML-problematic values (e.g., `field: -`) - quotes the value
+///
+/// Examples:
+/// - `status: {{status}}` where status wasn't provided -> line removed
+/// - `status: todo` where status was provided -> line kept
+/// - `phone: -` -> becomes `phone: "-"` (quoted to avoid YAML list marker interpretation)
+fn remove_unreplaced_vars(content: &str) -> String {
+    content
+        .lines()
+        .filter_map(|line| {
+            // Check if line has a key-value pair
+            if let Some((key, value)) = line.split_once(':') {
+                let value = value.trim();
+
+                // Case 1: Unreplaced template variable - remove line
+                if value.starts_with("{{")
+                    && value.ends_with("}}")
+                    && !value.contains(' ')
+                {
+                    return None;
+                }
+
+                // Case 2: YAML-problematic values - quote them
+                // Check if value needs quoting (single dash, or starts with special YAML chars)
+                if needs_yaml_quoting(value) {
+                    return Some(format!("{}: \"{}\"", key, value));
+                }
+            }
+            Some(line.to_string())
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n" // Add trailing newline
+}
+
+/// Check if a YAML value needs quoting to avoid parsing errors.
+///
+/// Returns true for values that would be misinterpreted as:
+/// - List markers: `-`
+/// - Booleans: `true`, `false`, `yes`, `no`, `on`, `off`
+/// - Null: `null`, `~`
+/// - Numbers that should be strings
+fn needs_yaml_quoting(value: &str) -> bool {
+    // Already quoted - no need to quote again
+    if (value.starts_with('"') && value.ends_with('"'))
+        || (value.starts_with('\'') && value.ends_with('\''))
+    {
+        return false;
+    }
+
+    // Single dash is a list marker in YAML
+    if value == "-" {
+        return true;
+    }
+
+    // YAML booleans (case-insensitive)
+    let lower = value.to_lowercase();
+    if matches!(lower.as_str(), "true" | "false" | "yes" | "no" | "on" | "off") {
+        return true;
+    }
+
+    // YAML null values
+    if matches!(value, "null" | "~" | "") {
+        return true;
+    }
+
+    false
+}
+
 pub fn render(
     template: &LoadedTemplate,
     ctx: &RenderContext,
@@ -90,42 +163,19 @@ pub fn render(
     // Check if template has frontmatter to include in output.
     // We render from the RAW frontmatter text to avoid YAML parsing issues
     // with template variables like {{title}} being interpreted as YAML mappings.
-    if template.frontmatter.is_some()
-        && let Some(raw_fm) = extract_raw_frontmatter(&template.content)
-    {
+    if let Some(ref raw_fm) = template.raw_frontmatter {
         // Filter out template-specific fields (output, lua, vars)
-        let filtered_fm = filter_template_fields(&raw_fm);
+        let filtered_fm = filter_template_fields(raw_fm);
         if !filtered_fm.trim().is_empty() {
             // Render variables in the filtered frontmatter text
             let rendered_fm = render_string(&filtered_fm, ctx)?;
-            return Ok(format!("---\n{}---\n\n{}", rendered_fm, rendered_body));
+            // Remove lines with unreplaced template variables (optional fields)
+            let cleaned_fm = remove_unreplaced_vars(&rendered_fm);
+            return Ok(format!("---\n{}---\n\n{}", cleaned_fm, rendered_body));
         }
     }
 
     Ok(rendered_body)
-}
-
-/// Extract raw frontmatter text from content (without the --- delimiters).
-fn extract_raw_frontmatter(content: &str) -> Option<String> {
-    let trimmed = content.trim_start();
-    if !trimmed.starts_with("---") {
-        return None;
-    }
-
-    let after_first = &trimmed[3..];
-    let after_newline = after_first
-        .strip_prefix('\n')
-        .or_else(|| after_first.strip_prefix("\r\n"))
-        .unwrap_or(after_first);
-
-    // Find closing ---
-    for (i, line) in after_newline.lines().enumerate() {
-        if line.trim() == "---" {
-            let pos: usize = after_newline.lines().take(i).map(|l| l.len() + 1).sum();
-            return Some(after_newline[..pos].to_string());
-        }
-    }
-    None
 }
 
 /// Filter out template-specific fields (output, lua, vars) from raw frontmatter.
@@ -138,24 +188,34 @@ fn filter_template_fields(raw_fm: &str) -> String {
     for line in raw_fm.lines() {
         // Check if this line starts a template-specific field
         let trimmed = line.trim_start();
-        let starts_field = template_fields.iter().any(|f| trimmed.starts_with(f));
+        let starts_template_field =
+            template_fields.iter().any(|f| trimmed.starts_with(f));
 
-        if starts_field {
+        if starts_template_field {
             // Start skipping this field and any continuation lines
             skip_until_next_field = true;
             continue;
         }
 
-        // Check if this is a continuation line (indented) or a new field
+        // If we're skipping continuation lines from a template field
         if skip_until_next_field {
-            // If line is indented (starts with whitespace) or empty, it's a continuation
-            if line.starts_with(' ') || line.starts_with('\t') || line.trim().is_empty() {
-                continue;
+            // Check if this is a new top-level field (not indented)
+            // A new field starts at column 0 and contains a colon
+            let is_new_field = !line.starts_with(' ')
+                && !line.starts_with('\t')
+                && !line.trim().is_empty()
+                && line.contains(':');
+
+            if is_new_field {
+                // This is a new field, stop skipping and include this line
+                skip_until_next_field = false;
+                result.push(line);
             }
-            // New top-level field, stop skipping
-            skip_until_next_field = false;
+            // Continue to next line (either included the new field or skipped continuation)
+            continue;
         }
 
+        // Not skipping, include this line
         result.push(line);
     }
 
@@ -393,5 +453,50 @@ mod tests {
         // Should be a date, not "today" with filter "%Y-%m-%d"
         assert!(result.contains('-'));
         assert!(!result.contains("today"));
+    }
+
+    #[test]
+    fn test_remove_unreplaced_vars() {
+        // Test removing unreplaced template variables
+        let content = "status: todo\nphone: {{phone}}\nemail: test@example.com\n";
+        let result = super::remove_unreplaced_vars(content);
+        assert!(result.contains("status: todo"));
+        assert!(!result.contains("phone:"), "unreplaced var line should be removed");
+        assert!(result.contains("email: test@example.com"));
+    }
+
+    #[test]
+    fn test_remove_unreplaced_vars_quotes_dash() {
+        // Test quoting of YAML-problematic dash value
+        let content = "name: John\nphone: -\nemail: test@example.com\n";
+        let result = super::remove_unreplaced_vars(content);
+        assert!(result.contains("name: John"));
+        assert!(
+            result.contains("phone: \"-\""),
+            "dash should be quoted, got: {}",
+            result
+        );
+        assert!(result.contains("email: test@example.com"));
+    }
+
+    #[test]
+    fn test_needs_yaml_quoting() {
+        use super::needs_yaml_quoting;
+
+        // Should need quoting
+        assert!(needs_yaml_quoting("-"));
+        assert!(needs_yaml_quoting("true"));
+        assert!(needs_yaml_quoting("false"));
+        assert!(needs_yaml_quoting("yes"));
+        assert!(needs_yaml_quoting("no"));
+        assert!(needs_yaml_quoting("null"));
+        assert!(needs_yaml_quoting("~"));
+
+        // Should NOT need quoting
+        assert!(!needs_yaml_quoting("hello"));
+        assert!(!needs_yaml_quoting("123"));
+        assert!(!needs_yaml_quoting("\"already quoted\""));
+        assert!(!needs_yaml_quoting("'already quoted'"));
+        assert!(!needs_yaml_quoting("test@example.com"));
     }
 }
