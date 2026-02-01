@@ -5,6 +5,58 @@ All notable changes to mdvault will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-02-01
+
+### Added
+
+- **Progress tracking**: `mdv project progress [PROJECT]` shows completion percentage, task breakdown by status, and velocity metrics
+  - Progress bars and percentages for all projects
+  - Rolling 4-week velocity calculation
+
+- **Activity reporting**: `mdv report --month YYYY-MM` or `--week YYYY-Wxx` generates activity summaries
+  - Tasks completed/created counts
+  - Activity heatmap visualization
+  - Markdown output option (`--output file.md`)
+
+- **Daily planning dashboard**: `mdv today` shows daily context at a glance
+  - Open tasks by status (in-progress, due today, blocked)
+  - Yesterday's completions
+  - Suggested focus based on priorities
+
+- **Focus mode**: `mdv focus PROJECT` sets active project context
+  - New tasks automatically use focused project (no prompt)
+  - Override with `--var project=OTHER`
+  - Persistent across sessions (stored in `.mdvault/state/context.toml`)
+  - `mdv focus --clear` to remove focus
+  - `mdv focus --json` for integrations
+
+- **Context commands**: Rich context queries for AI/MCP integration
+  - `mdv context day [DATE]` - Activity for a specific day
+  - `mdv context week [WEEK]` - Activity for a specific week
+  - `mdv context note PATH` - Full context for a note (metadata, sections, activity)
+  - `mdv context focus` - Current focus project with task counts
+
+- **Activity logging infrastructure**: Automatic logging of task/project creation and completion to daily notes
+
+- **Interactive Lua selectors**: Schema fields with `enum` show interactive selector menus
+
+- **Excluded folders**: `excluded_folders` config option to filter vault operations
+
+- **Future journal notes**: Create daily/weekly notes for any date using date expressions
+  - `mdv new daily "today + 1d"` creates tomorrow's daily
+  - `mdv new weekly "today + 1w"` creates next week's weekly
+
+### Fixed
+
+- Template variables in frontmatter now properly substitute (e.g., `{{title}}` in output paths)
+- Boolean values (`true`/`false`) no longer incorrectly quoted as strings in YAML frontmatter
+- Context variables now take precedence over date expression keywords in templates
+- Date expressions in note titles now correctly evaluate for headings and output paths
+- Schema fields with `prompt` attribute now properly prompt in template mode
+- Template variables from Lua typedef `variables` section now collected correctly
+- Schema defaults now used for title instead of prompting when available
+- Lua output templates and schema prompts now respected in all creation flows
+
 ## [0.2.1] - 2025-01-15
 
 ### Added
