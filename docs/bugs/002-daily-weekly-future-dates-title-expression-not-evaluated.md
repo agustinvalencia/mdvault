@@ -2,6 +2,12 @@
 
 **GitHub Issue**: https://github.com/agustinvalencia/mdvault/issues/87
 
+**Status**: ✅ FIXED (2026-02-01)
+
+**Fix commits**:
+- `46bfa72` - Context variables now take precedence over date expression keywords in template rendering
+- Updated `render_string()` in `crates/core/src/templates/engine.rs` to check context variables BEFORE evaluating date expressions
+
 ## Description
 
 When creating daily or weekly notes using date math expressions (e.g., `today + 7d`, `today + 2w`), the date expression is correctly evaluated for:

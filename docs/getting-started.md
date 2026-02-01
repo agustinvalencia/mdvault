@@ -168,6 +168,32 @@ mdv new --template daily
 mdv new project "New Project" --var status=active
 ```
 
+### Creating Journal Notes for Other Dates
+
+Daily and weekly notes accept date expressions as the title, allowing you to create notes for any date:
+
+```bash
+# Create tomorrow's daily note
+mdv new daily "today + 1d"
+
+# Create next week's weekly note
+mdv new weekly "today + 1w"
+
+# Create a daily note for a specific date
+mdv new daily "2025-03-15"
+
+# Create a weekly note for a specific ISO week
+mdv new weekly "2025-W12"
+
+# Create last week's weekly note (for catching up)
+mdv new weekly "today - 1w"
+```
+
+The date expression is evaluated and used for:
+- The note's frontmatter (`date` or `week` field)
+- The note title
+- The output file path
+
 ### Task and Project Management
 
 ```bash
