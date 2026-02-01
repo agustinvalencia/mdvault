@@ -90,3 +90,46 @@ due_date: {{due_date}}
     // Verify body variables were substituted
     assert!(rendered.contains("# Test Task"), "title in body should be substituted");
 }
+
+#[test]
+fn template_boolean_values_are_not_quoted() {
+    // Regression test: boolean values like true/false should NOT be quoted
+    // as strings. They should remain as valid YAML booleans.
+    let content = r#"---
+type: daily
+exercise: false
+meds: true
+closed: false
+intentions: true
+---
+# Daily note
+"#;
+
+    let (fm, raw_fm, body) = parse_template_frontmatter(content).expect("should parse");
+
+    let template = LoadedTemplate {
+        logical_name: "daily".into(),
+        path: PathBuf::from("daily.md"),
+        content: content.to_string(),
+        frontmatter: fm,
+        raw_frontmatter: raw_fm,
+        body,
+    };
+
+    let ctx = RenderContext::new();
+    let rendered = render(&template, &ctx).expect("should render");
+
+    // Boolean values should NOT be quoted - they should remain as YAML booleans
+    assert!(
+        rendered.contains("exercise: false"),
+        "exercise should be 'false' not '\"false\"', got: {}",
+        rendered
+    );
+    assert!(
+        rendered.contains("meds: true"),
+        "meds should be 'true' not '\"true\"', got: {}",
+        rendered
+    );
+    assert!(!rendered.contains("exercise: \"false\""), "exercise should NOT be quoted");
+    assert!(!rendered.contains("meds: \"true\""), "meds should NOT be quoted");
+}

@@ -121,11 +121,13 @@ fn remove_unreplaced_vars(content: &str) -> String {
 
 /// Check if a YAML value needs quoting to avoid parsing errors.
 ///
-/// Returns true for values that would be misinterpreted as:
-/// - List markers: `-`
-/// - Booleans: `true`, `false`, `yes`, `no`, `on`, `off`
-/// - Null: `null`, `~`
-/// - Numbers that should be strings
+/// Returns true for values that would be misinterpreted or cause parsing errors:
+/// - List markers: `-` (single dash starts a list item)
+/// - Empty string: becomes null without quotes
+///
+/// Note: YAML booleans (true/false/yes/no/on/off) and null values (null/~)
+/// are NOT quoted because they are valid YAML values. Templates with these
+/// values will have them parsed correctly as their respective types.
 fn needs_yaml_quoting(value: &str) -> bool {
     // Already quoted - no need to quote again
     if (value.starts_with('"') && value.ends_with('"'))
@@ -134,19 +136,13 @@ fn needs_yaml_quoting(value: &str) -> bool {
         return false;
     }
 
-    // Single dash is a list marker in YAML
+    // Single dash is a list marker in YAML - must be quoted
     if value == "-" {
         return true;
     }
 
-    // YAML booleans (case-insensitive)
-    let lower = value.to_lowercase();
-    if matches!(lower.as_str(), "true" | "false" | "yes" | "no" | "on" | "off") {
-        return true;
-    }
-
-    // YAML null values
-    if matches!(value, "null" | "~" | "") {
+    // Empty string becomes null in YAML - quote to preserve as empty string
+    if value.is_empty() {
         return true;
     }
 
@@ -483,20 +479,25 @@ mod tests {
     fn test_needs_yaml_quoting() {
         use super::needs_yaml_quoting;
 
-        // Should need quoting
-        assert!(needs_yaml_quoting("-"));
-        assert!(needs_yaml_quoting("true"));
-        assert!(needs_yaml_quoting("false"));
-        assert!(needs_yaml_quoting("yes"));
-        assert!(needs_yaml_quoting("no"));
-        assert!(needs_yaml_quoting("null"));
-        assert!(needs_yaml_quoting("~"));
+        // Should need quoting - only values that cause parsing errors
+        assert!(needs_yaml_quoting("-")); // List marker
+        assert!(needs_yaml_quoting("")); // Empty string becomes null
 
-        // Should NOT need quoting
+        // Should NOT need quoting - valid YAML values
         assert!(!needs_yaml_quoting("hello"));
         assert!(!needs_yaml_quoting("123"));
         assert!(!needs_yaml_quoting("\"already quoted\""));
         assert!(!needs_yaml_quoting("'already quoted'"));
         assert!(!needs_yaml_quoting("test@example.com"));
+
+        // YAML booleans should NOT be quoted (they're valid YAML)
+        assert!(!needs_yaml_quoting("true"));
+        assert!(!needs_yaml_quoting("false"));
+        assert!(!needs_yaml_quoting("yes"));
+        assert!(!needs_yaml_quoting("no"));
+
+        // YAML null values should NOT be quoted (they're valid YAML)
+        assert!(!needs_yaml_quoting("null"));
+        assert!(!needs_yaml_quoting("~"));
     }
 }
