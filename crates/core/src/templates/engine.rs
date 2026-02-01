@@ -241,30 +241,38 @@ pub fn render_string(
     let result = re.replace_all(template, |caps: &regex::Captures<'_>| {
         let expr = caps[1].trim();
 
-        // First, check if it's a date math expression
+        // Check for filter syntax first: "var_name | filter"
+        if let Some((var_name, filter)) = parse_filter_expr(expr) {
+            if let Some(value) = ctx.get(var_name) {
+                return apply_filter(value, filter);
+            }
+            // Variable not found, but might be a date expression with format
+            // (e.g., "today | %Y-%m-%d")
+            if is_date_expr(expr)
+                && let Ok(parsed) = parse_date_expr(expr)
+            {
+                return evaluate_date_expr(&parsed);
+            }
+            debug!("Template variable not found for filter: {}", var_name);
+            return caps[0].to_string();
+        }
+
+        // Check context variable FIRST - if explicitly set, use it
+        // This allows variables like "week" or "date" to override date expressions
+        if let Some(val) = ctx.get(expr) {
+            return val.clone();
+        }
+
+        // If no context variable, check if it's a date math expression
         if is_date_expr(expr)
             && let Ok(parsed) = parse_date_expr(expr)
         {
             return evaluate_date_expr(&parsed);
         }
 
-        // Check for filter syntax: "var_name | filter"
-        if let Some((var_name, filter)) = parse_filter_expr(expr) {
-            if let Some(value) = ctx.get(var_name) {
-                return apply_filter(value, filter);
-            }
-            debug!("Template variable not found for filter: {}", var_name);
-            // Variable not found, return original
-            return caps[0].to_string();
-        }
-
-        // Otherwise, try simple variable lookup
-        if let Some(val) = ctx.get(expr) {
-            val.clone()
-        } else {
-            debug!("Template variable not found: {}", expr);
-            caps[0].to_string()
-        }
+        // Not found anywhere
+        debug!("Template variable not found: {}", expr);
+        caps[0].to_string()
     });
 
     Ok(result.into_owned())
@@ -449,6 +457,30 @@ mod tests {
         // Should be a date, not "today" with filter "%Y-%m-%d"
         assert!(result.contains('-'));
         assert!(!result.contains("today"));
+    }
+
+    #[test]
+    fn test_context_variable_overrides_date_expression() {
+        // Regression test: context variables should take precedence over date expressions
+        // This is important for templates like "{{week}}" where a computed week value
+        // should be used instead of evaluating "week" as a date expression
+        let mut ctx = RenderContext::new();
+
+        // Set a "week" variable that should override the "week" date expression
+        ctx.insert("week".into(), "2026-W06".into());
+        let result = render_string("Journal/Weekly/{{week}}.md", &ctx).unwrap();
+        assert_eq!(result, "Journal/Weekly/2026-W06.md");
+
+        // Same for "date" - context variable should override date expression
+        ctx.insert("date".into(), "2026-02-15".into());
+        let result = render_string("Journal/Daily/{{date}}.md", &ctx).unwrap();
+        assert_eq!(result, "Journal/Daily/2026-02-15.md");
+
+        // Without context variable, date expression should still work
+        let empty_ctx = RenderContext::new();
+        let result = render_string("{{today}}", &empty_ctx).unwrap();
+        // Should be today's date, not "{{today}}"
+        assert!(result.contains('-') && result.len() == 10);
     }
 
     #[test]
