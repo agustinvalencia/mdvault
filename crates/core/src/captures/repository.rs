@@ -1,12 +1,8 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::discovery::discover_captures;
 use super::lua_loader::load_capture_from_lua;
-use super::types::{
-    CaptureDiscoveryError, CaptureFormat, CaptureInfo, CaptureRepoError, CaptureSpec,
-    LoadedCapture,
-};
+use super::types::{CaptureDiscoveryError, CaptureInfo, CaptureRepoError, LoadedCapture};
 
 /// Repository for discovering and loading capture specifications
 pub struct CaptureRepository {
@@ -34,24 +30,7 @@ impl CaptureRepository {
             .find(|c| c.logical_name == name)
             .ok_or_else(|| CaptureRepoError::NotFound(name.to_string()))?;
 
-        let spec = match info.format {
-            CaptureFormat::Lua => load_capture_from_lua(&info.path)?,
-            CaptureFormat::Yaml => {
-                // Emit deprecation warning for YAML captures
-                eprintln!(
-                    "warning: YAML captures are deprecated. Please migrate '{}' to Lua format.",
-                    info.path.display()
-                );
-
-                let content = fs::read_to_string(&info.path).map_err(|e| {
-                    CaptureRepoError::Io { path: info.path.clone(), source: e }
-                })?;
-
-                serde_yaml::from_str::<CaptureSpec>(&content).map_err(|e| {
-                    CaptureRepoError::Parse { path: info.path.clone(), source: e }
-                })?
-            }
-        };
+        let spec = load_capture_from_lua(&info.path)?;
 
         Ok(LoadedCapture {
             logical_name: info.logical_name.clone(),

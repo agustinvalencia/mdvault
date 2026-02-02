@@ -74,9 +74,7 @@ impl From<CapturePosition> for InsertPosition {
 /// Source format for a capture definition
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CaptureFormat {
-    /// YAML format (legacy, deprecated)
-    Yaml,
-    /// Lua format (preferred)
+    /// Lua format
     Lua,
 }
 
@@ -87,7 +85,7 @@ pub struct CaptureInfo {
     pub logical_name: String,
     /// Full path to the capture file
     pub path: PathBuf,
-    /// Source format (YAML or Lua)
+    /// Source format (always Lua)
     pub format: CaptureFormat,
 }
 
@@ -121,13 +119,6 @@ pub enum CaptureRepoError {
         path: PathBuf,
         #[source]
         source: std::io::Error,
-    },
-
-    #[error("failed to parse capture YAML {path}: {source}")]
-    Parse {
-        path: PathBuf,
-        #[source]
-        source: serde_yaml::Error,
     },
 
     #[error("failed to parse capture Lua {path}: {source}")]

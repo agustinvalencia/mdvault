@@ -2,7 +2,7 @@
 //!
 //! Note: Template `vars:` DSL was removed in v0.2.0 in favor of Lua-based schemas.
 //! Templates now use `lua:` frontmatter to reference Lua scripts that define schemas.
-//! These tests cover captures and macros which still support `vars:`.
+//! These tests cover captures and macros which still support `vars:` in Lua format.
 
 use assert_cmd::prelude::*;
 use std::fs;
@@ -52,26 +52,29 @@ fn capture_with_vars_metadata_uses_default() {
 
     write(
         root,
-        "vault/captures/inbox.yaml",
+        "vault/captures/inbox.lua",
         r#"
-name: inbox
-description: Add to inbox with priority
-
-vars:
-  text:
-    prompt: "What to add?"
-    required: true
-  priority:
-    prompt: "Priority level"
-    default: "normal"
-    description: "Can be low, normal, or high"
-
-target:
-  file: "notes.md"
-  section: Inbox
-  position: end
-
-content: "- [{{priority}}] {{text}}"
+return {
+    name = "inbox",
+    description = "Add to inbox with priority",
+    vars = {
+        text = {
+            prompt = "What to add?",
+            required = true,
+        },
+        priority = {
+            prompt = "Priority level",
+            default = "normal",
+            description = "Can be low, normal, or high",
+        },
+    },
+    target = {
+        file = "notes.md",
+        section = "Inbox",
+        position = "end",
+    },
+    content = "- [{{priority}}] {{text}}",
+}
 "#,
     );
 
@@ -115,20 +118,26 @@ Status: {{status}}
 
     write(
         root,
-        "vault/macros/new-project.yaml",
+        "vault/macros/new-project.lua",
         r#"
-name: new-project
-description: Create a new project
-vars:
-  name:
-    prompt: "Project name"
-    required: true
-  status:
-    prompt: "Initial status"
-    default: "planning"
-    description: "planning, active, or completed"
-steps:
-  - template: project
+return {
+    name = "new-project",
+    description = "Create a new project",
+    vars = {
+        name = {
+            prompt = "Project name",
+            required = true,
+        },
+        status = {
+            prompt = "Initial status",
+            default = "planning",
+            description = "planning, active, or completed",
+        },
+    },
+    steps = {
+        { template = "project" },
+    },
+}
 "#,
     );
 
@@ -164,16 +173,20 @@ fn simple_var_spec_as_prompt() {
     // Simple form: just the prompt string
     write(
         root,
-        "vault/captures/quick.yaml",
+        "vault/captures/quick.lua",
         r#"
-name: quick
-vars:
-  text: "Quick note text"
-target:
-  file: "notes.md"
-  section: Quick
-  position: end
-content: "- {{text}}"
+return {
+    name = "quick",
+    vars = {
+        text = "Quick note text",
+    },
+    target = {
+        file = "notes.md",
+        section = "Quick",
+        position = "end",
+    },
+    content = "- {{text}}",
+}
 "#,
     );
 

@@ -142,14 +142,17 @@ fn capture_with_date_math() {
 
     write(
         root,
-        "vault/captures/log.yaml",
+        "vault/captures/log.lua",
         r#"
-name: log
-target:
-  file: "notes.md"
-  section: Log
-  position: begin
-content: "- [{{today}}] {{text}} (due: {{today + 7d}})"
+return {
+    name = "log",
+    target = {
+        file = "notes.md",
+        section = "Log",
+        position = "begin",
+    },
+    content = "- [{{today}}] {{text}} (due: {{today + 7d}})",
+}
 "#,
     );
 

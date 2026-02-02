@@ -42,24 +42,30 @@ fn macro_list_shows_available_macros() {
 
     write(
         root,
-        "vault/macros/weekly-review.yaml",
+        "vault/macros/weekly-review.lua",
         r#"
-name: weekly-review
-description: Set up weekly review documents
-steps:
-  - template: summary
+return {
+    name = "weekly-review",
+    description = "Set up weekly review documents",
+    steps = {
+        { template = "summary" },
+    },
+}
 "#,
     );
 
     write(
         root,
-        "vault/macros/daily-setup.yaml",
+        "vault/macros/daily-setup.lua",
         r#"
-name: daily-setup
-description: Create daily note
-steps:
-  - template: daily
-  - capture: inbox-clear
+return {
+    name = "daily-setup",
+    description = "Create daily note",
+    steps = {
+        { template = "daily" },
+        { capture = "inbox-clear" },
+    },
+}
 "#,
     );
 
@@ -89,11 +95,14 @@ fn macro_not_found_shows_available() {
 
     write(
         root,
-        "vault/macros/existing.yaml",
+        "vault/macros/existing.lua",
         r#"
-name: existing
-steps:
-  - template: test
+return {
+    name = "existing",
+    steps = {
+        { template = "test" },
+    },
+}
 "#,
     );
 
@@ -119,15 +128,16 @@ fn macro_with_shell_requires_trust() {
 
     write(
         root,
-        "vault/macros/deploy.yaml",
+        "vault/macros/deploy.lua",
         r#"
-name: deploy
-description: Deploy with git
-steps:
-  - shell: "git add ."
-    description: Stage changes
-  - shell: "git commit -m 'deploy'"
-    description: Commit
+return {
+    name = "deploy",
+    description = "Deploy with git",
+    steps = {
+        { shell = "git add .", description = "Stage changes" },
+        { shell = "git commit -m 'deploy'", description = "Commit" },
+    },
+}
 "#,
     );
 
@@ -154,22 +164,28 @@ fn macro_list_shows_trust_required() {
 
     write(
         root,
-        "vault/macros/safe.yaml",
+        "vault/macros/safe.lua",
         r#"
-name: safe
-steps:
-  - template: note
+return {
+    name = "safe",
+    steps = {
+        { template = "note" },
+    },
+}
 "#,
     );
 
     write(
         root,
-        "vault/macros/dangerous.yaml",
+        "vault/macros/dangerous.lua",
         r#"
-name: dangerous
-steps:
-  - template: note
-  - shell: "echo hello"
+return {
+    name = "dangerous",
+    steps = {
+        { template = "note" },
+        { shell = "echo hello" },
+    },
+}
 "#,
     );
 
@@ -207,14 +223,18 @@ Created on {{date}}
 
     write(
         root,
-        "vault/macros/create-note.yaml",
+        "vault/macros/create-note.lua",
         r#"
-name: create-note
-description: Create a note
-vars:
-  title: "Note title"
-steps:
-  - template: note
+return {
+    name = "create-note",
+    description = "Create a note",
+    vars = {
+        title = "Note title",
+    },
+    steps = {
+        { template = "note" },
+    },
+}
 "#,
     );
 
@@ -265,27 +285,34 @@ fn macro_runs_capture_step() {
 
     write(
         root,
-        "vault/captures/add-item.yaml",
+        "vault/captures/add-item.lua",
         r#"
-name: add-item
-target:
-  file: "inbox.md"
-  section: Items
-  position: end
-content: "- {{text}}"
+return {
+    name = "add-item",
+    target = {
+        file = "inbox.md",
+        section = "Items",
+        position = "end",
+    },
+    content = "- {{text}}",
+}
 "#,
     );
 
     write(
         root,
-        "vault/macros/quick-add.yaml",
+        "vault/macros/quick-add.lua",
         r#"
-name: quick-add
-description: Add item to inbox
-vars:
-  text: "Item text"
-steps:
-  - capture: add-item
+return {
+    name = "quick-add",
+    description = "Add item to inbox",
+    vars = {
+        text = "Item text",
+    },
+    steps = {
+        { capture = "add-item" },
+    },
+}
 "#,
     );
 
@@ -343,28 +370,35 @@ output: "meetings/{{topic}}.md"
 
     write(
         root,
-        "vault/captures/log-meeting.yaml",
+        "vault/captures/log-meeting.lua",
         r#"
-name: log-meeting
-target:
-  file: "log.md"
-  section: Recent
-  position: begin
-content: "- [[meetings/{{topic}}]] - {{date}}"
+return {
+    name = "log-meeting",
+    target = {
+        file = "log.md",
+        section = "Recent",
+        position = "begin",
+    },
+    content = "- [[meetings/{{topic}}]] - {{date}}",
+}
 "#,
     );
 
     write(
         root,
-        "vault/macros/new-meeting.yaml",
+        "vault/macros/new-meeting.lua",
         r#"
-name: new-meeting
-description: Create meeting note and log it
-vars:
-  topic: "Meeting topic"
-steps:
-  - template: meeting
-  - capture: log-meeting
+return {
+    name = "new-meeting",
+    description = "Create meeting note and log it",
+    vars = {
+        topic = "Meeting topic",
+    },
+    steps = {
+        { template = "meeting" },
+        { capture = "log-meeting" },
+    },
+}
 "#,
     );
 
@@ -410,16 +444,18 @@ output: "notes/{{filename}}.md"
 
     write(
         root,
-        "vault/macros/fixed-output.yaml",
+        "vault/macros/fixed-output.lua",
         r#"
-name: fixed-output
-description: Create note with fixed filename
-vars:
-  title: "Note title"
-steps:
-  - template: note
-    with:
-      filename: "fixed-name"
+return {
+    name = "fixed-output",
+    description = "Create note with fixed filename",
+    vars = {
+        title = "Note title",
+    },
+    steps = {
+        { template = "note", ["with"] = { filename = "fixed-name" } },
+    },
+}
 "#,
     );
 

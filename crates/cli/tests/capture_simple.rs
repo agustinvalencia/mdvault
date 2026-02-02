@@ -37,17 +37,18 @@ fn capture_inserts_at_section_begin() {
 
     write(
         root,
-        "vault/captures/inbox.yaml",
+        "vault/captures/inbox.lua",
         r#"
-name: inbox
-description: Add to inbox
-
-target:
-  file: "notes.md"
-  section: "Inbox"
-  position: begin
-
-content: "- {{text}}"
+return {
+    name = "inbox",
+    description = "Add to inbox",
+    target = {
+        file = "notes.md",
+        section = "Inbox",
+        position = "begin",
+    },
+    content = "- {{text}}",
+}
 "#,
     );
 
@@ -99,17 +100,18 @@ fn capture_inserts_at_section_end() {
 
     write(
         root,
-        "vault/captures/todo.yaml",
+        "vault/captures/todo.lua",
         r#"
-name: todo
-description: Add to TODO
-
-target:
-  file: "tasks.md"
-  section: "TODO"
-  position: end
-
-content: "- [ ] {{task}}"
+return {
+    name = "todo",
+    description = "Add to TODO",
+    target = {
+        file = "tasks.md",
+        section = "TODO",
+        position = "end",
+    },
+    content = "- [ ] {{task}}",
+}
 "#,
     );
 
@@ -159,14 +161,17 @@ fn capture_fails_on_missing_section() {
 
     write(
         root,
-        "vault/captures/inbox.yaml",
+        "vault/captures/inbox.lua",
         r#"
-name: inbox
-target:
-  file: "notes.md"
-  section: "NonExistent"
-  position: begin
-content: "- {{text}}"
+return {
+    name = "inbox",
+    target = {
+        file = "notes.md",
+        section = "NonExistent",
+        position = "begin",
+    },
+    content = "- {{text}}",
+}
 "#,
     );
 
@@ -205,14 +210,17 @@ fn capture_fails_on_missing_file() {
 
     write(
         root,
-        "vault/captures/inbox.yaml",
+        "vault/captures/inbox.lua",
         r#"
-name: inbox
-target:
-  file: "missing.md"
-  section: "Inbox"
-  position: begin
-content: "- {{text}}"
+return {
+    name = "inbox",
+    target = {
+        file = "missing.md",
+        section = "Inbox",
+        position = "begin",
+    },
+    content = "- {{text}}",
+}
 "#,
     );
 
@@ -237,14 +245,17 @@ fn capture_not_found_shows_available() {
 
     write(
         root,
-        "vault/captures/inbox.yaml",
+        "vault/captures/inbox.lua",
         r#"
-name: inbox
-target:
-  file: "notes.md"
-  section: "Inbox"
-  position: begin
-content: "test"
+return {
+    name = "inbox",
+    target = {
+        file = "notes.md",
+        section = "Inbox",
+        position = "begin",
+    },
+    content = "test",
+}
 "#,
     );
 
@@ -267,40 +278,49 @@ fn capture_list_shows_variables() {
 
     write(
         root,
-        "vault/captures/inbox.yaml",
+        "vault/captures/inbox.lua",
         r#"
-name: inbox
-target:
-  file: "notes.md"
-  section: "Inbox"
-  position: begin
-content: "- {{text}}"
+return {
+    name = "inbox",
+    target = {
+        file = "notes.md",
+        section = "Inbox",
+        position = "begin",
+    },
+    content = "- {{text}}",
+}
 "#,
     );
 
     write(
         root,
-        "vault/captures/todo.yaml",
+        "vault/captures/todo.lua",
         r#"
-name: todo
-target:
-  file: "tasks.md"
-  section: "TODO"
-  position: end
-content: "- [ ] {{task}} ({{priority}})"
+return {
+    name = "todo",
+    target = {
+        file = "tasks.md",
+        section = "TODO",
+        position = "end",
+    },
+    content = "- [ ] {{task}} ({{priority}})",
+}
 "#,
     );
 
     write(
         root,
-        "vault/captures/simple.yaml",
+        "vault/captures/simple.lua",
         r#"
-name: simple
-target:
-  file: "log.md"
-  section: "Log"
-  position: end
-content: "Entry at {{date}}"
+return {
+    name = "simple",
+    target = {
+        file = "log.md",
+        section = "Log",
+        position = "end",
+    },
+    content = "Entry at {{date}}",
+}
 "#,
     );
 

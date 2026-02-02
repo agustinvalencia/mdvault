@@ -35,20 +35,22 @@ fn capture_sets_frontmatter_field() {
 
     write(root, "config.toml", make_config(&vault.to_string_lossy()));
 
-    // Capture that sets a frontmatter field
+    // Capture that sets a frontmatter field (Lua format)
     write(
         root,
-        "vault/captures/mark-done.yaml",
+        "vault/captures/mark-done.lua",
         r#"
-name: mark-done
-description: Mark daily note as completed
-
-target:
-  file: "daily/today.md"
-
-frontmatter:
-  completed: true
-  reviewed_at: "{{datetime}}"
+return {
+    name = "mark-done",
+    description = "Mark daily note as completed",
+    target = {
+        file = "daily/today.md",
+    },
+    frontmatter = {
+        completed = true,
+        reviewed_at = "{{datetime}}",
+    },
+}
 "#,
     );
 
@@ -89,20 +91,21 @@ fn capture_toggles_frontmatter_boolean() {
 
     write(root, "config.toml", make_config(&vault.to_string_lossy()));
 
-    // Capture that toggles a boolean field
+    // Capture that toggles a boolean field (Lua format)
     write(
         root,
-        "vault/captures/toggle-flag.yaml",
+        "vault/captures/toggle-flag.lua",
         r#"
-name: toggle-flag
-description: Toggle a flag
-
-target:
-  file: "notes.md"
-
-frontmatter:
-  - field: active
-    op: toggle
+return {
+    name = "toggle-flag",
+    description = "Toggle a flag",
+    target = {
+        file = "notes.md",
+    },
+    frontmatter = {
+        { field = "active", op = "toggle" },
+    },
+}
 "#,
     );
 
@@ -138,20 +141,21 @@ fn capture_increments_frontmatter_counter() {
 
     write(root, "config.toml", make_config(&vault.to_string_lossy()));
 
-    // Capture that increments a counter
+    // Capture that increments a counter (Lua format)
     write(
         root,
-        "vault/captures/increment-views.yaml",
+        "vault/captures/increment-views.lua",
         r#"
-name: increment-views
-description: Increment view count
-
-target:
-  file: "article.md"
-
-frontmatter:
-  - field: views
-    op: increment
+return {
+    name = "increment-views",
+    description = "Increment view count",
+    target = {
+        file = "article.md",
+    },
+    frontmatter = {
+        { field = "views", op = "increment" },
+    },
+}
 "#,
     );
 
@@ -190,21 +194,21 @@ fn capture_appends_to_frontmatter_list() {
 
     write(root, "config.toml", make_config(&vault.to_string_lossy()));
 
-    // Capture that appends to a list
+    // Capture that appends to a list (Lua format)
     write(
         root,
-        "vault/captures/add-tag.yaml",
+        "vault/captures/add-tag.lua",
         r#"
-name: add-tag
-description: Add a tag
-
-target:
-  file: "note.md"
-
-frontmatter:
-  - field: tags
-    op: append
-    value: "{{tag}}"
+return {
+    name = "add-tag",
+    description = "Add a tag",
+    target = {
+        file = "note.md",
+    },
+    frontmatter = {
+        { field = "tags", op = "append", value = "{{tag}}" },
+    },
+}
 "#,
     );
 
@@ -247,24 +251,25 @@ fn capture_combines_content_and_frontmatter() {
 
     write(root, "config.toml", make_config(&vault.to_string_lossy()));
 
-    // Capture that does both content insertion and frontmatter modification
+    // Capture that does both content insertion and frontmatter modification (Lua format)
     write(
         root,
-        "vault/captures/add-task.yaml",
+        "vault/captures/add-task.lua",
         r#"
-name: add-task
-description: Add a task and update frontmatter
-
-target:
-  file: "tasks.md"
-  section: "TODO"
-  position: end
-
-content: "- [ ] {{task}}"
-
-frontmatter:
-  has_tasks: true
-  last_updated: "{{date}}"
+return {
+    name = "add-task",
+    description = "Add a task and update frontmatter",
+    target = {
+        file = "tasks.md",
+        section = "TODO",
+        position = "end",
+    },
+    content = "- [ ] {{task}}",
+    frontmatter = {
+        has_tasks = true,
+        last_updated = "{{date}}",
+    },
+}
 "#,
     );
 
@@ -319,20 +324,22 @@ fn capture_creates_frontmatter_if_missing() {
 
     write(root, "config.toml", make_config(&vault.to_string_lossy()));
 
-    // Capture that sets frontmatter
+    // Capture that sets frontmatter (Lua format)
     write(
         root,
-        "vault/captures/add-metadata.yaml",
+        "vault/captures/add-metadata.lua",
         r#"
-name: add-metadata
-description: Add metadata to file
-
-target:
-  file: "plain.md"
-
-frontmatter:
-  created: "{{date}}"
-  status: draft
+return {
+    name = "add-metadata",
+    description = "Add metadata to file",
+    target = {
+        file = "plain.md",
+    },
+    frontmatter = {
+        created = "{{date}}",
+        status = "draft",
+    },
+}
 "#,
     );
 

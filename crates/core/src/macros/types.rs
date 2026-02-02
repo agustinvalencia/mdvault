@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use crate::vars::VarsMap;
 
-/// A macro specification loaded from a YAML file.
+/// A macro specification loaded from a Lua file.
 ///
 /// Macros are multi-step workflows that can execute templates, captures,
 /// and (with trust) shell commands.
@@ -94,9 +94,7 @@ pub enum ErrorPolicy {
 /// Source format for a macro definition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MacroFormat {
-    /// YAML format (legacy, deprecated).
-    Yaml,
-    /// Lua format (preferred).
+    /// Lua format.
     Lua,
 }
 
@@ -107,7 +105,7 @@ pub struct MacroInfo {
     pub logical_name: String,
     /// Full path to the macro file.
     pub path: PathBuf,
-    /// Source format (YAML or Lua).
+    /// Source format (always Lua).
     pub format: MacroFormat,
 }
 
