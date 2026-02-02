@@ -6,7 +6,7 @@ use crate::frontmatter::FrontmatterOps;
 use crate::markdown_ast::InsertPosition;
 use crate::vars::VarsMap;
 
-/// A capture specification loaded from a YAML file
+/// A capture specification loaded from a Lua file
 #[derive(Debug, Clone, Deserialize)]
 pub struct CaptureSpec {
     /// Logical name of the capture
@@ -31,6 +31,26 @@ pub struct CaptureSpec {
     /// Frontmatter operations to apply to the target file
     #[serde(default)]
     pub frontmatter: Option<FrontmatterOps>,
+
+    /// Lua source code for before_insert hook (receives content, vars, target; returns modified content)
+    #[serde(skip)]
+    pub before_insert_source: Option<String>,
+
+    /// Lua source code for after_insert hook (receives content, vars, target, result; for side effects)
+    #[serde(skip)]
+    pub after_insert_source: Option<String>,
+
+    /// Full Lua source for re-execution of hooks
+    #[serde(skip)]
+    pub lua_source: Option<String>,
+
+    /// Whether before_insert hook is defined
+    #[serde(skip)]
+    pub has_before_insert: bool,
+
+    /// Whether after_insert hook is defined
+    #[serde(skip)]
+    pub has_after_insert: bool,
 }
 
 /// Target configuration for where to insert captured content

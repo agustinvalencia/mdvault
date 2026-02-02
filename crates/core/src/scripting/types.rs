@@ -20,6 +20,10 @@ pub enum ScriptingError {
     /// Sandbox security violation.
     #[error("sandbox violation: {0}")]
     SandboxViolation(String),
+
+    /// Other scripting error.
+    #[error("{0}")]
+    Other(String),
 }
 
 /// Configuration for the Lua sandbox.

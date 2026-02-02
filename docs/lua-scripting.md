@@ -900,6 +900,51 @@ return {
 }
 ```
 
+### Capture Lifecycle Hooks
+
+Captures support optional lifecycle hooks for advanced customization:
+
+| Hook | Signature | Purpose |
+|------|-----------|---------|
+| `before_insert` | `(content, vars, target) → string` | Modify content before insertion |
+| `after_insert` | `(content, vars, target, result) → nil` | Run side effects after insertion |
+
+**before_insert**: Called before content is inserted. Receives the rendered content, variables table, and target table. Returns modified content (or `nil` to use original).
+
+**after_insert**: Called after successful insertion. Receives the inserted content, variables, target info, and result table (with `target_file`, `success`, `section_title`, `section_level`). Return value is ignored.
+
+**Example with hooks**:
+```lua
+-- captures/task-with-logging.lua
+return {
+    name = "task-with-logging",
+    description = "Add task with automatic logging",
+    vars = {
+        task = "Task description?",
+    },
+    target = {
+        file = "tasks.md",
+        section = "TODO",
+        position = "end",
+    },
+    content = "- [ ] {{task}}",
+
+    -- Modify content before insertion (e.g., add timestamp)
+    before_insert = function(content, vars, target)
+        local timestamp = os.date("%Y-%m-%d %H:%M")
+        return content .. " (added: " .. timestamp .. ")"
+    end,
+
+    -- Log after insertion (side effect only)
+    after_insert = function(content, vars, target, result)
+        print("Task added to " .. result.target_file)
+        print("Section: " .. (result.section_title or "none"))
+    end,
+}
+```
+
+> **Note**: Hooks run in a sandboxed Lua environment. Dangerous operations (file I/O, shell execution) are disabled. Use hooks for content transformation and logging, not for complex side effects.
+
 ## Macro Definitions
 
 Macros are multi-step workflows that execute sequences of templates, captures, and shell commands. Macros are defined as Lua files in your `macros_dir` (default: `~/.config/mdvault/macros/`).

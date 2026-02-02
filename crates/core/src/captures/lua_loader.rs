@@ -69,6 +69,10 @@ fn parse_capture_lua(
     // Extract frontmatter operations (optional)
     let frontmatter = extract_frontmatter(&table, path)?;
 
+    // Check for lifecycle hooks
+    let has_before_insert: bool = table.get::<mlua::Function>("before_insert").is_ok();
+    let has_after_insert: bool = table.get::<mlua::Function>("after_insert").is_ok();
+
     Ok(CaptureSpec {
         name: capture_name,
         description,
@@ -76,6 +80,11 @@ fn parse_capture_lua(
         target,
         content,
         frontmatter,
+        before_insert_source: None, // Set when needed for execution
+        after_insert_source: None,
+        lua_source: Some(source.to_string()),
+        has_before_insert,
+        has_after_insert,
     })
 }
 

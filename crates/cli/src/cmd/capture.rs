@@ -5,7 +5,10 @@ use std::sync::Arc;
 
 use crate::prompt::{collect_variables, create_fuzzy_selector_callback, PromptOptions};
 use mdvault_core::activity::ActivityLogService;
-use mdvault_core::captures::{CaptureRepoError, CaptureRepository, CaptureSpec};
+use mdvault_core::captures::{
+    run_after_insert_hook, run_before_insert_hook, CaptureRepoError, CaptureRepository,
+    CaptureSpec,
+};
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::{apply_ops, parse, serialize};
@@ -266,6 +269,23 @@ pub fn run(
         std::process::exit(1);
     }
 
+    // 8.5. Run after_insert hook if defined
+    if loaded.spec.has_after_insert {
+        let inserted_content = loaded.spec.content.as_ref().map(|t| render_string(t, &ctx));
+        if let Some(content) = inserted_content {
+            let section_ref = section_info.as_ref().map(|(t, l)| (t.as_str(), *l));
+            if let Err(e) = run_after_insert_hook(
+                &loaded.spec,
+                &content,
+                &ctx,
+                &target_file,
+                section_ref,
+            ) {
+                eprintln!("Warning: after_insert hook failed: {e}");
+            }
+        }
+    }
+
     // 9. Run on_update hook if defined for this note type
     run_on_update_hook_if_needed(&cfg, &target_file, &result_content);
 
@@ -436,13 +456,27 @@ fn execute_capture_operations(
         })?;
 
         let rendered_content = render_string(content_template, ctx);
+
+        // Run before_insert hook if defined
+        let final_content_to_insert = if spec.has_before_insert {
+            match run_before_insert_hook(spec, &rendered_content, ctx) {
+                Ok(result) => result.content,
+                Err(e) => {
+                    eprintln!("Warning: before_insert hook failed: {e}");
+                    rendered_content
+                }
+            }
+        } else {
+            rendered_content
+        };
+
         let section_match = SectionMatch::new(section);
         let position = spec.target.position.clone().into();
 
         let result = MarkdownEditor::insert_into_section(
             &parsed.body,
             &section_match,
-            &rendered_content,
+            &final_content_to_insert,
             position,
         )
         .map_err(|e| match &e {

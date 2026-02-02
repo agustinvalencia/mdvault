@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Logged to daily note on creation
   - Usage: `mdv new meeting "Team Sync" --var attendees="Alice, Bob"`
 
+- **Capture lifecycle hooks**: Lua hooks for captures
+  - `before_insert(content, vars, target)`: Modify content before insertion
+  - `after_insert(content, vars, target, result)`: Run side effects after insertion
+  - Hooks are optional and defined in capture Lua files
+
 ### Removed
 
 - **BREAKING**: Removed deprecated YAML support for captures and macros
