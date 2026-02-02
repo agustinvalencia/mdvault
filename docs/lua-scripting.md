@@ -718,11 +718,7 @@ tasks/my-task.md  [type: task]
 
 ## Capture Definitions
 
-Captures are quick append workflows that add content to a target file/section. Captures can be defined in Lua (preferred) or YAML (deprecated).
-
-### Lua Capture Format
-
-Create a `.lua` file in your `captures_dir` (default: `~/.config/mdvault/captures/`):
+Captures are quick append workflows that add content to a target file/section. Captures are defined as Lua files in your `captures_dir` (default: `~/.config/mdvault/captures/`).
 
 ```lua
 -- captures/inbox.lua
@@ -839,38 +835,6 @@ mdv capture inbox --var text="Buy groceries" --var priority=high
 mdv capture --list
 ```
 
-### Migration from YAML
-
-YAML captures are deprecated and will show a warning. To migrate:
-
-**Before (YAML)**:
-```yaml
-name: inbox
-description: Add to inbox
-target:
-  file: "daily/{{date}}.md"
-  section: "Inbox"
-  position: begin
-content: "- [ ] {{text}}"
-```
-
-**After (Lua)**:
-```lua
-return {
-    name = "inbox",
-    description = "Add to inbox",
-    vars = {
-        text = "What to capture?",
-    },
-    target = {
-        file = "daily/{{date}}.md",
-        section = "Inbox",
-        position = "begin",
-    },
-    content = "- [ ] {{text}}",
-}
-```
-
 ### Capture Examples
 
 **Quick todo to daily note**:
@@ -938,11 +902,7 @@ return {
 
 ## Macro Definitions
 
-Macros are multi-step workflows that execute sequences of templates, captures, and shell commands. Macros can be defined in Lua (preferred) or YAML (deprecated).
-
-### Lua Macro Format
-
-Create a `.lua` file in your `macros_dir` (default: `~/.config/mdvault/macros/`):
+Macros are multi-step workflows that execute sequences of templates, captures, and shell commands. Macros are defined as Lua files in your `macros_dir` (default: `~/.config/mdvault/macros/`).
 
 ```lua
 -- macros/weekly-review.lua
@@ -1061,44 +1021,6 @@ mdv macro --list
 
 # Run macro with shell steps (requires trust)
 mdv macro deploy --trust
-```
-
-### Migration from YAML
-
-YAML macros are deprecated and will show a warning. To migrate:
-
-**Before (YAML)**:
-```yaml
-name: weekly-review
-description: Set up weekly review
-vars:
-  focus:
-    prompt: "Focus?"
-steps:
-  - template: weekly-summary
-    with:
-      title: "{{focus}}"
-  - capture: archive-tasks
-```
-
-**After (Lua)**:
-```lua
-return {
-    name = "weekly-review",
-    description = "Set up weekly review",
-    vars = {
-        focus = "Focus?",
-    },
-    steps = {
-        {
-            template = "weekly-summary",
-            with = {
-                title = "{{focus}}",
-            },
-        },
-        { capture = "archive-tasks" },
-    },
-}
 ```
 
 ### Macro Examples
@@ -1292,18 +1214,19 @@ Hooks should check for errors but failures are non-fatal—the CLI logs a warnin
 
 This example shows how to automatically log note creation to the daily note. First, create a capture that targets the daily note:
 
-```yaml
-# ~/.config/mdvault/captures/log-to-daily.yaml
-name: log-to-daily
-description: Log a note link to today's daily note
-
-target:
-  file: "daily/{{date}}.md"
-  section: "Created"
-  position: end
-  create_if_missing: true  # Creates daily note if it doesn't exist
-
-content: "- [[{{note_path}}]] {{note_title}}"
+```lua
+-- ~/.config/mdvault/captures/log-to-daily.lua
+return {
+    name = "log-to-daily",
+    description = "Log a note link to today's daily note",
+    target = {
+        file = "daily/{{date}}.md",
+        section = "Created",
+        position = "end",
+        create_if_missing = true,  -- Creates daily note if it doesn't exist
+    },
+    content = "- [[{{note_path}}]] {{note_title}}",
+}
 ```
 
 Then create a type definition with an `on_create` hook:
