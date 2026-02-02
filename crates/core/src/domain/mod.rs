@@ -29,7 +29,7 @@ pub mod services;
 pub mod traits;
 
 pub use behaviors::{
-    CustomBehavior, DailyBehavior, ProjectBehavior, TaskBehavior, WeeklyBehavior,
+    CustomBehavior, DailyBehavior, MeetingBehavior, ProjectBehavior, TaskBehavior, WeeklyBehavior,
     ZettelBehavior,
 };
 pub use context::{
@@ -49,6 +49,7 @@ pub enum NoteType {
     Project(ProjectBehavior),
     Daily(DailyBehavior),
     Weekly(WeeklyBehavior),
+    Meeting(MeetingBehavior),
     Zettel(ZettelBehavior),
     Custom(CustomBehavior),
 }
@@ -63,6 +64,7 @@ impl NoteType {
             "project" => Ok(NoteType::Project(ProjectBehavior::new(typedef))),
             "daily" => Ok(NoteType::Daily(DailyBehavior::new(typedef))),
             "weekly" => Ok(NoteType::Weekly(WeeklyBehavior::new(typedef))),
+            "meeting" => Ok(NoteType::Meeting(MeetingBehavior::new(typedef))),
             "zettel" | "knowledge" => Ok(NoteType::Zettel(ZettelBehavior::new(typedef))),
             _ => {
                 // Custom type - must have a typedef
@@ -84,6 +86,7 @@ impl NoteType {
             NoteType::Project(b) => b,
             NoteType::Daily(b) => b,
             NoteType::Weekly(b) => b,
+            NoteType::Meeting(b) => b,
             NoteType::Zettel(b) => b,
             NoteType::Custom(b) => b,
         }
@@ -96,6 +99,7 @@ impl NoteType {
             NoteType::Project(b) => b,
             NoteType::Daily(b) => b,
             NoteType::Weekly(b) => b,
+            NoteType::Meeting(b) => b,
             NoteType::Zettel(b) => b,
             NoteType::Custom(b) => b,
         }
@@ -108,6 +112,7 @@ impl NoteType {
             NoteType::Project(_) => "project",
             NoteType::Daily(_) => "daily",
             NoteType::Weekly(_) => "weekly",
+            NoteType::Meeting(_) => "meeting",
             NoteType::Zettel(_) => "zettel",
             NoteType::Custom(b) => &b.typedef().name,
         }
@@ -137,6 +142,10 @@ mod tests {
         assert!(matches!(
             NoteType::from_name("weekly", &registry).unwrap(),
             NoteType::Weekly(_)
+        ));
+        assert!(matches!(
+            NoteType::from_name("meeting", &registry).unwrap(),
+            NoteType::Meeting(_)
         ));
         assert!(matches!(
             NoteType::from_name("zettel", &registry).unwrap(),

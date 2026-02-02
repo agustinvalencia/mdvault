@@ -18,9 +18,10 @@ pub struct CoreMetadata {
     pub title: Option<String>,
     pub project_id: Option<String>,
     pub task_id: Option<String>,
+    pub meeting_id: Option<String>,
     pub task_counter: Option<u32>,
     pub project: Option<String>, // Parent project for tasks
-    pub date: Option<String>,    // For daily notes
+    pub date: Option<String>,    // For daily/meeting notes
     pub week: Option<String>,    // For weekly notes
 }
 
@@ -39,6 +40,9 @@ impl CoreMetadata {
         }
         if let Some(ref id) = self.task_id {
             map.insert("task-id".into(), serde_yaml::Value::String(id.clone()));
+        }
+        if let Some(ref id) = self.meeting_id {
+            map.insert("meeting-id".into(), serde_yaml::Value::String(id.clone()));
         }
         if let Some(counter) = self.task_counter {
             map.insert("task_counter".into(), serde_yaml::Value::Number(counter.into()));

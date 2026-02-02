@@ -25,24 +25,24 @@ fn lua_hook_can_modify_variables_and_rerender() {
 
     // Type definitions
     let typedefs_dir = vault.join(".mdvault/types");
-    let lua_path = typedefs_dir.join("meeting.lua");
+    let lua_path = typedefs_dir.join("standup.lua");
 
     // Templates
     let tpl_root = vault.join(".mdvault/templates");
-    let tpl_meeting = tpl_root.join("meeting.md");
+    let tpl_standup = tpl_root.join("standup.md");
 
     // 1. Create Template
-    write(&tpl_meeting, "---\ntype: meeting\n---\n# Meeting with {{ host }}\n");
+    write(&tpl_standup, "---\ntype: standup\n---\n# Standup with {{ host }}\n");
 
     // Create captures and macros dirs to satisfy VaultContext
     fs::create_dir_all(vault.join(".mdvault/captures")).unwrap();
     fs::create_dir_all(vault.join(".mdvault/macros")).unwrap();
 
     // 2. Create Lua Type Definition with Hook
-    let lua_source = r#" 
+    let lua_source = r#"
 return {
-    name = "meeting",
-    description = "Meeting notes",
+    name = "standup",
+    description = "Standup notes",
     on_create = function(note)
         -- Override the 'host' variable
         note.variables.host = "LuaHost"
@@ -71,7 +71,7 @@ macros_dir    = "{{{{vault_root}}}}/.mdvault/macros"
     );
     fs::write(&cfg_path, toml).unwrap();
 
-    let output = vault.join("meeting-note.md");
+    let output = vault.join("standup-note.md");
 
     // 4. Run mdv new
     let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
@@ -81,8 +81,8 @@ macros_dir    = "{{{{vault_root}}}}/.mdvault/macros"
         "--config",
         cfg_path.to_str().unwrap(),
         "new",
-        "meeting",
-        "My Meeting",
+        "standup",
+        "My Standup",
         "--var",
         "host=OriginalHost",
         "--output",
@@ -94,10 +94,10 @@ macros_dir    = "{{{{vault_root}}}}/.mdvault/macros"
     // 5. Verify Output
     let rendered = fs::read_to_string(&output).unwrap();
 
-    // Should contain "Meeting with LuaHost" not "Meeting with OriginalHost"
+    // Should contain "Standup with LuaHost" not "Standup with OriginalHost"
     assert!(
-        rendered.contains("Meeting with LuaHost"),
-        "Expected 'Meeting with LuaHost', found:\n{}",
+        rendered.contains("Standup with LuaHost"),
+        "Expected 'Standup with LuaHost', found:\n{}",
         rendered
     );
     assert!(!rendered.contains("OriginalHost"), "Should not contain 'OriginalHost'");

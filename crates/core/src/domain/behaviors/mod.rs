@@ -2,6 +2,7 @@
 
 mod custom;
 mod daily;
+mod meeting;
 mod project;
 mod task;
 mod weekly;
@@ -9,6 +10,7 @@ mod zettel;
 
 pub use custom::CustomBehavior;
 pub use daily::DailyBehavior;
+pub use meeting::MeetingBehavior;
 pub use project::ProjectBehavior;
 pub use task::TaskBehavior;
 pub use weekly::WeeklyBehavior;
@@ -56,6 +58,9 @@ pub fn render_output_template(
     }
     if let Some(ref id) = ctx.core_metadata.task_id {
         render_ctx.insert("task-id".into(), id.clone());
+    }
+    if let Some(ref id) = ctx.core_metadata.meeting_id {
+        render_ctx.insert("meeting-id".into(), id.clone());
     }
     if let Some(ref project) = ctx.core_metadata.project {
         render_ctx.insert("project".into(), project.clone());

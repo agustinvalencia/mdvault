@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - v0.3.0
 
+### Added
+
+- **New built-in "meeting" note type**: First-class support for meeting notes
+  - Auto-generated IDs: `MTG-2025-01-15-001` (date-based with counter)
+  - Prompts for date (defaults to today) and attendees
+  - Output path: `Meetings/{meeting-id}.md`
+  - Logged to daily note on creation
+  - Usage: `mdv new meeting "Team Sync" --var attendees="Alice, Bob"`
+
 ### Removed
 
 - **BREAKING**: Removed deprecated YAML support for captures and macros

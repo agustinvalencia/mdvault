@@ -25,12 +25,12 @@ fn new_custom_type_respects_output_path() {
     let templates_dir = vault.join(".mdvault").join("templates");
 
     // Create custom typedef
-    let typedef_path = typedefs_dir.join("meeting.lua");
+    let typedef_path = typedefs_dir.join("briefing.lua");
     write(
         &typedef_path,
         r#"return {
-    name = "meeting",
-    output = "meetings/{{title | slugify}}.md",
+    name = "briefing",
+    output = "briefings/{{title | slugify}}.md",
     schema = {
         title = { type = "string", required = true },
     }
@@ -38,10 +38,10 @@ fn new_custom_type_respects_output_path() {
     );
 
     // Create template (optional but good practice)
-    let template_path = templates_dir.join("meeting.md");
+    let template_path = templates_dir.join("briefing.md");
     write(
         &template_path,
-        "---\ntype: meeting\ntitle: {{title}}\n---\n# Meeting: {{title}}",
+        "---\ntype: briefing\ntitle: {{title}}\n---\n# Meeting: {{title}}",
     );
 
     let toml = format!(
@@ -61,7 +61,7 @@ fn new_custom_type_respects_output_path() {
     fs::write(&cfg_path, toml).unwrap();
 
     // Expected output path based on typedef
-    let expected_output = vault.join("meetings").join("team-sync.md");
+    let expected_output = vault.join("briefings").join("team-sync.md");
 
     let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
     cmd.env("XDG_CONFIG_HOME", &xdg);
@@ -72,7 +72,7 @@ fn new_custom_type_respects_output_path() {
         "--profile",
         "default",
         "new",
-        "meeting",
+        "briefing",
         "Team Sync",
     ]);
 
