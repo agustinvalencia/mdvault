@@ -5,7 +5,17 @@ All notable changes to mdvault will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - v0.3.0
+## [0.3.0] - 2026-02-03
+
+This release completes the Lua-first architecture with a breaking change: YAML capture/macro files are no longer supported. All automation must now use Lua. In return, you get powerful lifecycle hooks, a new built-in meeting type, and comprehensive activity tracking.
+
+### Highlights
+
+- **Lua-only captures and macros**: Clean, consistent scripting
+- **Built-in meeting type**: First-class meeting note management
+- **Capture hooks**: Transform content before/after insertion
+- **Focus mode**: Set active project for frictionless task creation
+- **Activity tracking**: Daily dashboard, progress reports, context queries
 
 ### Added
 
@@ -21,17 +31,124 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `after_insert(content, vars, target, result)`: Run side effects after insertion
   - Hooks are optional and defined in capture Lua files
 
+- **Progress tracking**: `mdv project progress [PROJECT]` shows completion percentage, task breakdown by status, and velocity metrics
+
+- **Activity reporting**: `mdv report --month YYYY-MM` or `--week YYYY-Wxx` generates activity summaries with heatmaps
+
+- **Daily planning dashboard**: `mdv today` shows daily context at a glance
+  - Open tasks by status (in-progress, due today, blocked)
+  - Yesterday's completions
+  - Suggested focus based on priorities
+
+- **Focus mode**: `mdv focus PROJECT` sets active project context
+  - New tasks automatically use focused project (no prompt)
+  - Override with `--var project=OTHER`
+  - Persistent across sessions (stored in `.mdvault/state/context.toml`)
+  - `mdv focus --clear` to remove focus
+  - `mdv focus --json` for integrations
+
+- **Context commands**: Rich context queries for AI/MCP integration
+  - `mdv context day [DATE]` - Activity for a specific day
+  - `mdv context week [WEEK]` - Activity for a specific week
+  - `mdv context note PATH` - Full context for a note
+  - `mdv context focus` - Current focus project with task counts
+
+- **Activity logging infrastructure**: Automatic logging of task/project creation to daily notes
+
+- **Interactive Lua selectors**: Schema fields with `enum` show interactive selector menus
+
+- **Excluded folders**: `excluded_folders` config option to filter vault operations
+
+- **Future journal notes**: Create daily/weekly notes for any date
+  - `mdv new daily "today + 1d"` creates tomorrow's daily
+  - `mdv new weekly "today + 1w"` creates next week's weekly
+
+- **Lua-based captures**: Captures defined in `.lua` files with full Lua power
+
+- **Lua-based macros**: Macros defined in `.lua` files with simplified syntax
+
 ### Removed
 
 - **BREAKING**: Removed deprecated YAML support for captures and macros
   - YAML capture (`.yaml`) files are no longer recognized
   - YAML macro (`.yaml`) files are no longer recognized
   - All captures and macros must now be defined in Lua (`.lua`) format
-  - Migration: Convert YAML files to Lua format (see examples in `docs/lua-scripting.md`)
+  - Migration: Convert YAML files to Lua format (see `docs/lua-scripting.md`)
 
 ### Changed
 
-- Documentation updated to remove YAML migration sections (YAML is no longer supported)
+- **Architecture**: Replaced scattered type checks with trait-based polymorphic dispatch
+  - New `domain` module with `NoteType` enum and `NoteBehavior` traits
+  - Behaviors for Task, Project, Daily, Weekly, Meeting, Zettel, and Custom types
+  - `NoteCreator` provides unified creation flow with lifecycle hooks
+
+- Documentation fully updated for Lua-only captures and macros
+
+### Fixed
+
+- Template variables in frontmatter now properly substitute
+- Boolean values no longer incorrectly quoted as strings in YAML frontmatter
+- Context variables take precedence over date expressions in templates
+- Date expressions in note titles correctly evaluate for headings and output paths
+- Schema fields with `prompt` attribute properly prompt in template mode
+- Template variables from Lua typedef `variables` section collected correctly
+- Schema defaults used for title instead of prompting when available
+- Lua output templates and schema prompts respected in all creation flows
+
+### Migration Guide
+
+**Converting YAML captures to Lua:**
+
+Before (`inbox.yaml`):
+```yaml
+name: inbox
+target:
+  file: "inbox.md"
+  section: "Inbox"
+content: "- [ ] {{text}}"
+vars:
+  text:
+    required: true
+    prompt: "What to capture?"
+```
+
+After (`inbox.lua`):
+```lua
+return {
+    name = "inbox",
+    target = {
+        file = "inbox.md",
+        section = "Inbox",
+    },
+    content = "- [ ] {{text}}",
+    vars = {
+        text = {
+            required = true,
+            prompt = "What to capture?",
+        },
+    },
+}
+```
+
+**Converting YAML macros to Lua:**
+
+Before (`weekly-review.yaml`):
+```yaml
+name: weekly-review
+steps:
+  - type: template
+    template: weekly
+```
+
+After (`weekly-review.lua`):
+```lua
+return {
+    name = "weekly-review",
+    steps = {
+        { template = "weekly" },
+    },
+}
+```
 
 ## [0.2.5] - 2026-02-01
 

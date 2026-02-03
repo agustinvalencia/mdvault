@@ -1,12 +1,10 @@
 # Domain Types Architecture: Rust Core + Lua Extensions
 
-> **Note**: This document provides detailed design for Phase 2 of [PLAN-v0.2.0.md](./PLAN-v0.2.0.md). See that document for the overall roadmap.
-
 ## Overview
 
-This document defines the architectural approach for **first-class note types** (task, project, daily, weekly) in mdvault. It clarifies the boundary between Rust core logic and Lua extensibility.
+This document defines the architectural approach for **first-class note types** (task, project, daily, weekly, meeting) in mdvault. It clarifies the boundary between Rust core logic and Lua extensibility.
 
-**Related**: [Lua-First Architecture Plan](./PLAN-lua-first.md)
+> **Status**: This architecture was implemented in v0.2.0 and refined in v0.3.0 with the addition of the meeting type.
 
 ## Design Principle
 
@@ -203,6 +201,7 @@ pub enum NoteType {
     Project(ProjectBehavior),
     Daily(DailyBehavior),
     Weekly(WeeklyBehavior),
+    Meeting(MeetingBehavior),
     Zettel(ZettelBehavior),
     Custom(LuaCustomBehavior),
 }
@@ -331,7 +330,7 @@ crates/core/src/
 | `if template_name == "task"` scattered in 6+ places | Single dispatch via `NoteType` enum |
 | Core metadata preserved 3 times | `before_create` sets metadata once, correctly |
 | Template mode vs Scaffolding mode duplication | Both call the same trait methods |
-| Hard to add "Meeting" as first-class later | Just add `MeetingBehavior` struct |
+| Adding new first-class types | Just add a new behavior struct (e.g., `MeetingBehavior` added in v0.3.0) |
 | Lua can corrupt task IDs | Rust owns `generate_id`, Lua can only extend schema |
 
 ## What Stays in Lua
@@ -386,7 +385,7 @@ Critical behaviors that must be predictable:
 - Add trait-specific unit tests
 - Verify Lua extensions still work
 
-> **Status:** Migration completed in PR #81 (2026-01-18). See `docs/refactoring/2026-01-16-new-command-refactor.md` for details.
+> **Status:** Migration completed in v0.2.0 (2026-01-18). Extended in v0.3.0 with MeetingBehavior.
 
 ## Open Questions
 

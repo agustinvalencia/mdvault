@@ -61,7 +61,7 @@ project: my-project
 ---
 ```
 
-Built-in types: `daily`, `weekly`, `task`, `project`, `zettel`, `none`
+Built-in types: `daily`, `weekly`, `task`, `project`, `meeting`, `zettel`, `none`
 
 ### Templates
 
@@ -100,26 +100,31 @@ The `lua:` field references a type definition (relative to `types_dir`) that pro
 
 ### Captures
 
-Captures append content to existing files. Example `~/.config/mdvault/captures/inbox.yaml`:
+Captures append content to existing files. Example `~/.config/mdvault/captures/inbox.lua`:
 
-```yaml
-name: inbox
-description: Quick capture to inbox
+```lua
+return {
+    name = "inbox",
+    description = "Quick capture to inbox",
 
-target:
-  file: "inbox.md"
-  section: "Inbox"
-  position: end
+    target = {
+        file = "inbox.md",
+        section = "Inbox",
+        position = "end",
+    },
 
-content: "- [ ] {{text}} ({{time}})"
+    content = "- [ ] {{text}} ({{time}})",
 
-vars:
-  text:
-    required: true
-    prompt: "What to capture?"
+    vars = {
+        text = {
+            required = true,
+            prompt = "What to capture?",
+        },
+    },
+}
 ```
 
-Use `create_if_missing: true` in the target to auto-create the file if it doesn't exist (useful for daily notes).
+Use `create_if_missing = true` in the target to auto-create the file if it doesn't exist (useful for daily notes).
 
 ## Common Workflows
 
@@ -166,6 +171,9 @@ mdv new --template daily
 
 # Create a project
 mdv new project "New Project" --var status=active
+
+# Create a meeting note
+mdv new meeting "Team Sync" --var attendees="Alice, Bob"
 ```
 
 ### Creating Journal Notes for Other Dates
@@ -596,5 +604,4 @@ mdv
 ## Next Steps
 
 - Read the [Architecture Guide](architecture.md) for design details
-- Check [PLAN.md](PLAN.md) for the development roadmap
 - Explore [Lua Scripting](lua-scripting.md) for advanced customization

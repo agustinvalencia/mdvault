@@ -42,6 +42,7 @@ Notes use an explicit `type:` field in frontmatter:
 - **weekly**: Broad overview notes, link to that week's dailies
 - **task**: Individual tasks with required `status` and `project` fields
 - **project**: Collections of related tasks with `status` field
+- **meeting**: Meeting notes with auto-generated IDs and date-based organization
 - **zettel**: Knowledge notes (Zettelkasten-style) with required tags
 - **none**: Uncategorised notes awaiting triage
 
@@ -300,28 +301,43 @@ mdv list-templates              # Show available templates
 mdv                             # Launch TUI (no subcommand)
 ```
 
-### Planned Commands (Not Yet Implemented)
-
 **Workflow Commands**:
 ```bash
-mdv workon MyProject            # Open project, show tasks, log session
-mdv done tasks/impl.md "Done"   # Complete task, update daily
+mdv focus MyProject             # Set active project context
+mdv focus --clear               # Clear project focus
+mdv task done tasks/impl.md     # Complete task, log to daily
 mdv today                       # Show due tasks, recent activity
-mdv review                      # Interactive triage
-mdv weekly-planning             # Create/open weekly note
 ```
 
-**Advanced Search**:
+**Context Commands**:
 ```bash
-mdv timeline "Project" --since "2 weeks ago"
-mdv related-to notes/mcp.md --depth 2
-mdv stuck                       # Tasks in-progress >14 days
+mdv context day                 # Today's activity
+mdv context week                # This week's activity
+mdv context note path/to/note   # Full context for a note
+mdv context focus               # Current focus project
+```
+
+**Reporting**:
+```bash
+mdv project progress            # Progress bars for all projects
+mdv project progress MyProject  # Detailed progress for one
+mdv report --month 2025-01     # Monthly activity report
+mdv report --week 2025-W05     # Weekly activity report
 ```
 
 **Rename and Reference Management**:
 ```bash
 mdv rename old.md new.md        # Rename with reference updates
 mdv rename old.md new.md --dry-run
+```
+
+### Planned Commands (Not Yet Implemented)
+
+**Advanced Search**:
+```bash
+mdv timeline "Project" --since "2 weeks ago"
+mdv related-to notes/mcp.md --depth 2
+mdv stuck                       # Tasks in-progress >14 days
 ```
 
 ### Configuration
