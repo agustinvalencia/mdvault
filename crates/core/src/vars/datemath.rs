@@ -450,18 +450,42 @@ fn find_relative_weekday(
 }
 
 fn format_date(date: NaiveDate, format: Option<&str>) -> String {
+    use std::fmt::Write;
     let fmt = format.unwrap_or("%Y-%m-%d");
-    date.format(fmt).to_string()
+    let mut buf = String::new();
+    match write!(buf, "{}", date.format(fmt)) {
+        Ok(_) => buf,
+        Err(_) => {
+            tracing::warn!("Invalid date format '{}', falling back to default", fmt);
+            date.format("%Y-%m-%d").to_string()
+        }
+    }
 }
 
 fn format_datetime(dt: NaiveDateTime, format: Option<&str>) -> String {
+    use std::fmt::Write;
     let fmt = format.unwrap_or("%Y-%m-%dT%H:%M:%S");
-    dt.format(fmt).to_string()
+    let mut buf = String::new();
+    match write!(buf, "{}", dt.format(fmt)) {
+        Ok(_) => buf,
+        Err(_) => {
+            tracing::warn!("Invalid datetime format '{}', falling back to default", fmt);
+            dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+        }
+    }
 }
 
 fn format_time(time: NaiveTime, format: Option<&str>) -> String {
+    use std::fmt::Write;
     let fmt = format.unwrap_or("%H:%M");
-    time.format(fmt).to_string()
+    let mut buf = String::new();
+    match write!(buf, "{}", time.format(fmt)) {
+        Ok(_) => buf,
+        Err(_) => {
+            tracing::warn!("Invalid time format '{}', falling back to default", fmt);
+            time.format("%H:%M").to_string()
+        }
+    }
 }
 
 fn format_week(week: IsoWeek, format: Option<&str>) -> String {
