@@ -20,7 +20,7 @@ use std::path::PathBuf;
 
 use chrono::Local;
 
-use crate::templates::engine::render_string;
+use crate::templates::engine::render_string_with_ref_date;
 
 use super::context::CreationContext;
 use super::traits::{DomainError, DomainResult};
@@ -72,9 +72,10 @@ pub fn render_output_template(
         render_ctx.insert("week".into(), week.clone());
     }
 
-    let rendered = render_string(template, &render_ctx).map_err(|e| {
-        DomainError::Other(format!("Failed to render output path: {}", e))
-    })?;
+    let rendered =
+        render_string_with_ref_date(template, &render_ctx, ctx.reference_date).map_err(
+            |e| DomainError::Other(format!("Failed to render output path: {}", e)),
+        )?;
 
     let path = PathBuf::from(&rendered);
     if path.is_absolute() { Ok(path) } else { Ok(ctx.config.vault_root.join(path)) }

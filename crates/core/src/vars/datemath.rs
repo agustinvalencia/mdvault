@@ -246,8 +246,18 @@ fn parse_weekday(s: &str) -> Result<Weekday, DateMathError> {
 
 /// Evaluate a date expression and return the formatted result.
 pub fn evaluate_date_expr(expr: &DateExpr) -> String {
+    evaluate_date_expr_with_ref(expr, None)
+}
+
+/// Evaluate a date expression with an optional reference date.
+/// When `ref_date` is Some, it overrides `Local::now()` as the base for
+/// relative expressions (today, date, tomorrow, yesterday, week, etc.).
+pub fn evaluate_date_expr_with_ref(
+    expr: &DateExpr,
+    ref_date: Option<NaiveDate>,
+) -> String {
     let now = Local::now();
-    let today = now.date_naive();
+    let today = ref_date.unwrap_or_else(|| now.date_naive());
     let current_time = now.time();
 
     match expr.base {
@@ -256,7 +266,12 @@ pub fn evaluate_date_expr(expr: &DateExpr) -> String {
             format_date(date, expr.format.as_deref())
         }
         DateBase::Now => {
-            let datetime = apply_datetime_offset(now.naive_local(), &expr.offset);
+            let datetime = if let Some(rd) = ref_date {
+                rd.and_hms_opt(0, 0, 0).unwrap_or(now.naive_local())
+            } else {
+                now.naive_local()
+            };
+            let datetime = apply_datetime_offset(datetime, &expr.offset);
             format_datetime(datetime, expr.format.as_deref())
         }
         DateBase::Time => {

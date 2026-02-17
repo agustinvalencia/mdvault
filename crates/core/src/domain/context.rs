@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use chrono::NaiveDate;
+
 use crate::config::types::ResolvedConfig;
 use crate::templates::repository::LoadedTemplate;
 use crate::types::{TypeDefinition, TypeRegistry};
@@ -83,6 +85,9 @@ pub struct CreationContext<'a> {
 
     // Mode flags
     pub batch_mode: bool,
+
+    // Reference date for date expressions (overrides "today" in templates)
+    pub reference_date: Option<NaiveDate>,
 }
 
 impl<'a> CreationContext<'a> {
@@ -117,6 +122,7 @@ impl<'a> CreationContext<'a> {
             output_path: None,
             template: None,
             batch_mode: false,
+            reference_date: None,
         }
     }
 

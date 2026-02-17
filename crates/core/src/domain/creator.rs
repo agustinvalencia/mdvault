@@ -13,7 +13,7 @@ use super::NoteType;
 use super::context::CreationContext;
 use super::traits::{DomainError, DomainResult, NoteBehavior};
 use crate::frontmatter::{Frontmatter, ParsedDocument, serialize_with_order};
-use crate::templates::engine::render as render_template;
+use crate::templates::engine::render_with_ref_date as render_template;
 use crate::types::scaffolding::generate_scaffolding;
 
 /// Result of a successful note creation.
@@ -120,7 +120,7 @@ impl NoteCreator {
         if let Some(ref template) = ctx.template {
             // Build render context with standard variables
             let render_ctx = self.build_render_context(ctx);
-            render_template(template, &render_ctx).map_err(|e| {
+            render_template(template, &render_ctx, ctx.reference_date).map_err(|e| {
                 DomainError::Other(format!("Failed to render template: {}", e))
             })
         } else {
@@ -142,16 +142,16 @@ impl NoteCreator {
     fn build_render_context(&self, ctx: &CreationContext) -> HashMap<String, String> {
         let mut render_ctx = HashMap::new();
 
-        // Start with user-provided variables
-        render_ctx.extend(ctx.vars.clone());
-
-        // Add date/time variables
+        // Add date/time defaults FIRST (behaviours can override these)
         let now = Local::now();
         render_ctx.insert("date".into(), now.format("%Y-%m-%d").to_string());
         render_ctx.insert("time".into(), now.format("%H:%M").to_string());
         render_ctx.insert("datetime".into(), now.to_rfc3339());
         render_ctx.insert("today".into(), now.format("%Y-%m-%d").to_string());
         render_ctx.insert("now".into(), now.to_rfc3339());
+
+        // Overlay user/behaviour vars — these WIN over defaults
+        render_ctx.extend(ctx.vars.clone());
 
         // Add config paths
         render_ctx.insert(

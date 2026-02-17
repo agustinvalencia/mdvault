@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use chrono::Local;
+use chrono::{Datelike, Local, NaiveDate};
 
 use crate::types::TypeDefinition;
 use crate::vars::datemath::try_evaluate_date_expr;
@@ -73,6 +73,14 @@ impl NoteLifecycle for DailyBehavior {
         ctx.core_metadata.date = Some(date.clone());
         ctx.core_metadata.title = Some(date.clone());
         ctx.set_var("date", &date);
+
+        // Parse target date and set as reference for all date expressions
+        if let Ok(target) = NaiveDate::parse_from_str(&date, "%Y-%m-%d") {
+            ctx.reference_date = Some(target);
+            // Set week var to override schema default (which was evaluated at load time)
+            let week = format!("[[{}-W{:02}]]", target.iso_week().year(), target.iso_week().week());
+            ctx.set_var("week", &week);
+        }
 
         Ok(())
     }

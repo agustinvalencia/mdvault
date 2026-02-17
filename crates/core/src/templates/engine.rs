@@ -2,12 +2,12 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use chrono::Local;
+use chrono::{Local, NaiveDate};
 use thiserror::Error;
 use tracing::debug;
 
 use crate::config::types::ResolvedConfig;
-use crate::vars::datemath::{evaluate_date_expr, is_date_expr, parse_date_expr};
+use crate::vars::datemath::{evaluate_date_expr_with_ref, is_date_expr, parse_date_expr};
 
 use super::discovery::TemplateInfo;
 use super::repository::LoadedTemplate;
@@ -153,8 +153,17 @@ pub fn render(
     template: &LoadedTemplate,
     ctx: &RenderContext,
 ) -> Result<String, TemplateRenderError> {
+    render_with_ref_date(template, ctx, None)
+}
+
+/// Render a template with an optional reference date for date expressions.
+pub fn render_with_ref_date(
+    template: &LoadedTemplate,
+    ctx: &RenderContext,
+    ref_date: Option<NaiveDate>,
+) -> Result<String, TemplateRenderError> {
     debug!("Rendering template '{}' with vars: {:?}", template.logical_name, ctx.keys());
-    let rendered_body = render_string(&template.body, ctx)?;
+    let rendered_body = render_string_with_ref_date(&template.body, ctx, ref_date)?;
 
     // Check if template has frontmatter to include in output.
     // We render from the RAW frontmatter text to avoid YAML parsing issues
@@ -164,7 +173,7 @@ pub fn render(
         let filtered_fm = filter_template_fields(raw_fm);
         if !filtered_fm.trim().is_empty() {
             // Render variables in the filtered frontmatter text
-            let rendered_fm = render_string(&filtered_fm, ctx)?;
+            let rendered_fm = render_string_with_ref_date(&filtered_fm, ctx, ref_date)?;
             // Remove lines with unreplaced template variables (optional fields)
             let cleaned_fm = remove_unreplaced_vars(&rendered_fm);
             return Ok(format!("---\n{}---\n\n{}", cleaned_fm, rendered_body));
@@ -233,6 +242,17 @@ pub fn render_string(
     template: &str,
     ctx: &RenderContext,
 ) -> Result<String, TemplateRenderError> {
+    render_string_with_ref_date(template, ctx, None)
+}
+
+/// Render a string template with an optional reference date for date expressions.
+/// When `ref_date` is Some, relative date expressions (today, date, week, etc.)
+/// evaluate relative to that date instead of system time.
+pub fn render_string_with_ref_date(
+    template: &str,
+    ctx: &RenderContext,
+    ref_date: Option<NaiveDate>,
+) -> Result<String, TemplateRenderError> {
     // Match both simple vars and date math expressions
     // Captures everything between {{ and }} that looks like a valid expression
     let re = Regex::new(r"\{\{([^{}]+)\}\}")
@@ -251,7 +271,7 @@ pub fn render_string(
             if is_date_expr(expr)
                 && let Ok(parsed) = parse_date_expr(expr)
             {
-                return evaluate_date_expr(&parsed);
+                return evaluate_date_expr_with_ref(&parsed, ref_date);
             }
             debug!("Template variable not found for filter: {}", var_name);
             return caps[0].to_string();
@@ -267,7 +287,7 @@ pub fn render_string(
         if is_date_expr(expr)
             && let Ok(parsed) = parse_date_expr(expr)
         {
-            return evaluate_date_expr(&parsed);
+            return evaluate_date_expr_with_ref(&parsed, ref_date);
         }
 
         // Not found anywhere
