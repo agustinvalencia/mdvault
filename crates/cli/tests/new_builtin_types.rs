@@ -572,3 +572,52 @@ fn weekly_with_date_expression_evaluates_title_and_path() {
         content
     );
 }
+
+#[test]
+fn on_create_hook_preserves_schema_defaults_when_returning_new_note() {
+    let (_tmp, vault, cfg_path) = setup_vault();
+
+    // Setup: Type with schema defaults and an on_create hook that returns a NEW note object
+    // with only partial frontmatter (simulating the MDV-010 bug scenario)
+    let typedef_path = vault.join(".mdvault/typedefs/custom.lua");
+    write(
+        &typedef_path,
+        r###"return {
+    schema = {
+        priority = { type = "string", default = "low" },
+        status = { type = "string", default = "open" },
+        tags = { type = "string", default = "default-tag" },
+    },
+    on_create = function(note)
+        -- Return a NEW table with only partial frontmatter
+        -- Schema defaults should still be preserved via merge
+        return {
+            frontmatter = {
+                added_by_hook = "yes",
+                priority = "high",
+            },
+            content = note.content,
+        }
+    end
+}
+"###,
+    );
+
+    let output = run_mdv(&cfg_path, &["new", "custom", "Schema Test", "--batch"]);
+    assert!(output.status.success(), "mdv new failed: {}", String::from_utf8_lossy(&output.stderr));
+
+    let out_path = vault.join("customs/schema-test.md");
+    assert!(out_path.exists());
+    let content = fs::read_to_string(&out_path).unwrap();
+
+    // Hook's field should be present
+    assert!(content.contains("added_by_hook: yes"), "Hook field missing. Content:\n{content}");
+    // Hook's override should win
+    assert!(content.contains("priority: high"), "Hook override missing. Content:\n{content}");
+    // Schema defaults NOT set by hook should be preserved
+    assert!(content.contains("status: open"), "Schema default 'status' lost. Content:\n{content}");
+    assert!(
+        content.contains("tags: default-tag"),
+        "Schema default 'tags' lost. Content:\n{content}"
+    );
+}

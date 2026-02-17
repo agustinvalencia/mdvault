@@ -1022,24 +1022,23 @@ fn apply_hook_modifications(
     let original_parsed =
         parse_frontmatter(original_content).map_err(|e| e.to_string())?;
 
-    // Determine final frontmatter
-    let final_fields = if let Some(ref new_fm) = hook_result.frontmatter {
-        if let serde_yaml::Value::Mapping(map) = new_fm {
-            let mut fields = HashMap::new();
-            for (k, v) in map {
-                if let serde_yaml::Value::String(ks) = k {
-                    fields.insert(ks.clone(), v.clone());
-                }
-            }
-            fields
-        } else {
-            HashMap::new()
-        }
-    } else if let Some(fm) = original_parsed.frontmatter {
+    // Start with original frontmatter (includes schema defaults)
+    let mut final_fields = if let Some(fm) = original_parsed.frontmatter {
         fm.fields
     } else {
         HashMap::new()
     };
+
+    // Merge hook's frontmatter on top (hook values win on conflict)
+    if let Some(ref new_fm) = hook_result.frontmatter {
+        if let serde_yaml::Value::Mapping(map) = new_fm {
+            for (k, v) in map {
+                if let serde_yaml::Value::String(ks) = k {
+                    final_fields.insert(ks.clone(), v.clone());
+                }
+            }
+        }
+    }
 
     // Determine final content body
     let final_body = if let Some(ref new_content) = hook_result.content {
