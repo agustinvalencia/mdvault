@@ -50,11 +50,10 @@ impl NoteIdentity for MeetingBehavior {
         }
 
         // Default path: Meetings/{meeting-id}.md
-        let meeting_id = ctx
-            .core_metadata
-            .meeting_id
-            .as_ref()
-            .ok_or_else(|| DomainError::PathResolution("meeting-id not set".into()))?;
+        let meeting_id =
+            ctx.core_metadata.meeting_id.as_ref().ok_or_else(|| {
+                DomainError::PathResolution("meeting-id not set".into())
+            })?;
 
         Ok(ctx.config.vault_root.join(format!("Meetings/{}.md", meeting_id)))
     }

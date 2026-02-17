@@ -604,18 +604,31 @@ fn on_create_hook_preserves_schema_defaults_when_returning_new_note() {
     );
 
     let output = run_mdv(&cfg_path, &["new", "custom", "Schema Test", "--batch"]);
-    assert!(output.status.success(), "mdv new failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "mdv new failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let out_path = vault.join("customs/schema-test.md");
     assert!(out_path.exists());
     let content = fs::read_to_string(&out_path).unwrap();
 
     // Hook's field should be present
-    assert!(content.contains("added_by_hook: yes"), "Hook field missing. Content:\n{content}");
+    assert!(
+        content.contains("added_by_hook: yes"),
+        "Hook field missing. Content:\n{content}"
+    );
     // Hook's override should win
-    assert!(content.contains("priority: high"), "Hook override missing. Content:\n{content}");
+    assert!(
+        content.contains("priority: high"),
+        "Hook override missing. Content:\n{content}"
+    );
     // Schema defaults NOT set by hook should be preserved
-    assert!(content.contains("status: open"), "Schema default 'status' lost. Content:\n{content}");
+    assert!(
+        content.contains("status: open"),
+        "Schema default 'status' lost. Content:\n{content}"
+    );
     assert!(
         content.contains("tags: default-tag"),
         "Schema default 'tags' lost. Content:\n{content}"

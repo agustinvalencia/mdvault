@@ -49,9 +49,8 @@ pub fn run_before_insert_hook(
         lua.load(lua_source).eval().map_err(ScriptingError::Lua)?;
 
     // Get the before_insert function
-    let hook_fn: mlua::Function = capture_table
-        .get("before_insert")
-        .map_err(ScriptingError::Lua)?;
+    let hook_fn: mlua::Function =
+        capture_table.get("before_insert").map_err(ScriptingError::Lua)?;
 
     // Build vars table
     let vars_table = lua.create_table().map_err(ScriptingError::Lua)?;
@@ -61,9 +60,7 @@ pub fn run_before_insert_hook(
 
     // Build target table
     let target_table = lua.create_table().map_err(ScriptingError::Lua)?;
-    target_table
-        .set("file", spec.target.file.as_str())
-        .map_err(ScriptingError::Lua)?;
+    target_table.set("file", spec.target.file.as_str()).map_err(ScriptingError::Lua)?;
     if let Some(section) = &spec.target.section {
         target_table.set("section", section.as_str()).map_err(ScriptingError::Lua)?;
     }
@@ -74,9 +71,8 @@ pub fn run_before_insert_hook(
     target_table.set("position", position_str).map_err(ScriptingError::Lua)?;
 
     // Call the hook: before_insert(content, vars, target)
-    let result: mlua::Value = hook_fn
-        .call((content, vars_table, target_table))
-        .map_err(ScriptingError::Lua)?;
+    let result: mlua::Value =
+        hook_fn.call((content, vars_table, target_table)).map_err(ScriptingError::Lua)?;
 
     // Extract result - should be a string (modified content)
     let modified_content = match result {
@@ -135,9 +131,8 @@ pub fn run_after_insert_hook(
         lua.load(lua_source).eval().map_err(ScriptingError::Lua)?;
 
     // Get the after_insert function
-    let hook_fn: mlua::Function = capture_table
-        .get("after_insert")
-        .map_err(ScriptingError::Lua)?;
+    let hook_fn: mlua::Function =
+        capture_table.get("after_insert").map_err(ScriptingError::Lua)?;
 
     // Build vars table
     let vars_table = lua.create_table().map_err(ScriptingError::Lua)?;
@@ -147,9 +142,7 @@ pub fn run_after_insert_hook(
 
     // Build target table
     let target_table = lua.create_table().map_err(ScriptingError::Lua)?;
-    target_table
-        .set("file", spec.target.file.as_str())
-        .map_err(ScriptingError::Lua)?;
+    target_table.set("file", spec.target.file.as_str()).map_err(ScriptingError::Lua)?;
     if let Some(section) = &spec.target.section {
         target_table.set("section", section.as_str()).map_err(ScriptingError::Lua)?;
     }
@@ -185,7 +178,11 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn write_lua_capture(dir: &std::path::Path, name: &str, content: &str) -> std::path::PathBuf {
+    fn write_lua_capture(
+        dir: &std::path::Path,
+        name: &str,
+        content: &str,
+    ) -> std::path::PathBuf {
         let path = dir.join(format!("{}.lua", name));
         fs::write(&path, content).unwrap();
         path

@@ -271,7 +271,8 @@ pub fn run(
 
     // 8.5. Run after_insert hook if defined
     if loaded.spec.has_after_insert {
-        let inserted_content = loaded.spec.content.as_ref().map(|t| render_string(t, &ctx));
+        let inserted_content =
+            loaded.spec.content.as_ref().map(|t| render_string(t, &ctx));
         if let Some(content) = inserted_content {
             let section_ref = section_info.as_ref().map(|(t, l)| (t.as_str(), *l));
             if let Err(e) = run_after_insert_hook(

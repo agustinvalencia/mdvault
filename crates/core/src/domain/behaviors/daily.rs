@@ -78,7 +78,11 @@ impl NoteLifecycle for DailyBehavior {
         if let Ok(target) = NaiveDate::parse_from_str(&date, "%Y-%m-%d") {
             ctx.reference_date = Some(target);
             // Set week var to override schema default (which was evaluated at load time)
-            let week = format!("[[{}-W{:02}]]", target.iso_week().year(), target.iso_week().week());
+            let week = format!(
+                "[[{}-W{:02}]]",
+                target.iso_week().year(),
+                target.iso_week().week()
+            );
             ctx.set_var("week", &week);
         }
 

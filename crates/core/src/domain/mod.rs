@@ -29,8 +29,8 @@ pub mod services;
 pub mod traits;
 
 pub use behaviors::{
-    CustomBehavior, DailyBehavior, MeetingBehavior, ProjectBehavior, TaskBehavior, WeeklyBehavior,
-    ZettelBehavior,
+    CustomBehavior, DailyBehavior, MeetingBehavior, ProjectBehavior, TaskBehavior,
+    WeeklyBehavior, ZettelBehavior,
 };
 pub use context::{
     CoreMetadata, CreationContext, FieldPrompt, PromptContext, PromptType,

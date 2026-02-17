@@ -72,10 +72,10 @@ pub fn render_output_template(
         render_ctx.insert("week".into(), week.clone());
     }
 
-    let rendered =
-        render_string_with_ref_date(template, &render_ctx, ctx.reference_date).map_err(
-            |e| DomainError::Other(format!("Failed to render output path: {}", e)),
-        )?;
+    let rendered = render_string_with_ref_date(template, &render_ctx, ctx.reference_date)
+        .map_err(|e| {
+            DomainError::Other(format!("Failed to render output path: {}", e))
+        })?;
 
     let path = PathBuf::from(&rendered);
     if path.is_absolute() { Ok(path) } else { Ok(ctx.config.vault_root.join(path)) }
