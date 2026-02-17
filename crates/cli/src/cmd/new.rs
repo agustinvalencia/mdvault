@@ -1030,12 +1030,10 @@ fn apply_hook_modifications(
     };
 
     // Merge hook's frontmatter on top (hook values win on conflict)
-    if let Some(ref new_fm) = hook_result.frontmatter {
-        if let serde_yaml::Value::Mapping(map) = new_fm {
-            for (k, v) in map {
-                if let serde_yaml::Value::String(ks) = k {
-                    final_fields.insert(ks.clone(), v.clone());
-                }
+    if let Some(serde_yaml::Value::Mapping(map)) = hook_result.frontmatter.as_ref() {
+        for (k, v) in map {
+            if let serde_yaml::Value::String(ks) = k {
+                final_fields.insert(ks.clone(), v.clone());
             }
         }
     }
