@@ -2,7 +2,7 @@
 
 use mdvault_core::activity::ActivityLogService;
 use mdvault_core::config::loader::ConfigLoader;
-use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery, NoteType};
+use mdvault_core::index::{IndexBuilder, IndexDb, IndexedNote, NoteQuery, NoteType};
 use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
 
@@ -300,6 +300,15 @@ pub fn done(
     if let Err(e) = std::fs::write(&full_path, final_content) {
         eprintln!("Failed to write task: {e}");
         std::process::exit(1);
+    }
+
+    // Update index for this file
+    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    if let Ok(db) = IndexDb::open(&index_path) {
+        let builder = IndexBuilder::new(&db, &cfg.vault_root);
+        if let Err(e) = builder.reindex_file(task_path) {
+            eprintln!("Warning: failed to update index: {e}");
+        }
     }
 
     // Log to activity log

@@ -299,6 +299,24 @@ impl<'a> IndexBuilder<'a> {
 
         Ok(link_count)
     }
+
+    /// Reindex a single file by its path relative to the vault root.
+    pub fn reindex_file(&self, relative_path: &Path) -> Result<(), BuilderError> {
+        let absolute_path = self.vault_root.join(relative_path);
+        let metadata =
+            std::fs::metadata(&absolute_path).map_err(|e| BuilderError::FileRead {
+                path: absolute_path.display().to_string(),
+                source: e,
+            })?;
+        let file = WalkedFile {
+            absolute_path,
+            relative_path: relative_path.to_path_buf(),
+            modified: metadata.modified().unwrap_or(std::time::SystemTime::now()),
+            size: metadata.len(),
+        };
+        self.index_note(&file)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
