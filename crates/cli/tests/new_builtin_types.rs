@@ -450,7 +450,7 @@ fn weekly_creation_uses_week_path() {
     let (_tmp, vault, cfg_path) = setup_vault();
 
     let today = chrono::Local::now();
-    let week = today.format("%Y-W%W").to_string();
+    let week = today.format("%G-W%V").to_string();
 
     // Setup: Create weekly.lua typedef with proper output path
     let typedef_path = vault.join(".mdvault/typedefs/weekly.lua");
@@ -459,7 +459,7 @@ fn weekly_creation_uses_week_path() {
         r#"return {
     output = "Journal/Weekly/{{title}}.md",
     schema = {
-        week = { type = "string", default_expr = "os.date('%Y-W%W')" }
+        week = { type = "string", default_expr = "os.date('%G-W%V')" }
     }
 }"#,
     );
@@ -532,7 +532,7 @@ fn weekly_with_date_expression_evaluates_title_and_path() {
     // Calculate expected week (2 weeks from now)
     // Note: The weekly behavior uses %V (ISO week) for date expressions
     let expected_week =
-        (chrono::Local::now() + chrono::Duration::weeks(2)).format("%Y-W%V").to_string();
+        (chrono::Local::now() + chrono::Duration::weeks(2)).format("%G-W%V").to_string();
 
     // Setup: Create weekly.lua typedef with output using {{title}}
     let typedef_path = vault.join(".mdvault/typedefs/weekly.lua");
@@ -541,7 +541,7 @@ fn weekly_with_date_expression_evaluates_title_and_path() {
         r#"return {
     output = "Journal/Weekly/{{title}}.md",
     schema = {
-        week = { type = "string", default_expr = "os.date('%Y-W%W')" }
+        week = { type = "string", default_expr = "os.date('%G-W%V')" }
     }
 }"#,
     );

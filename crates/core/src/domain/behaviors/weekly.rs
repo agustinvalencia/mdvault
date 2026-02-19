@@ -67,7 +67,7 @@ impl NoteLifecycle for WeeklyBehavior {
         } else {
             // Try to evaluate as date expr, forcing ISO week format if not specified
             let expr_to_eval = if is_date_expr(&ctx.title) && !ctx.title.contains('|') {
-                format!("{} | %Y-W%V", ctx.title)
+                format!("{} | %G-W%V", ctx.title)
             } else {
                 ctx.title.clone()
             };
@@ -75,7 +75,7 @@ impl NoteLifecycle for WeeklyBehavior {
             if let Some(evaluated) = try_evaluate_date_expr(&expr_to_eval) {
                 evaluated
             } else {
-                Local::now().format("%Y-W%W").to_string()
+                Local::now().format("%G-W%V").to_string()
             }
         };
 
