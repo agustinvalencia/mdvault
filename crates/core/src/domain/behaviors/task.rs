@@ -121,6 +121,20 @@ impl NoteLifecycle for TaskBehavior {
             }
         }
 
+        // Log to project note
+        if project != "inbox"
+            && let Ok(project_file) = find_project_file(ctx.config, project)
+        {
+            let task_id = ctx.core_metadata.task_id.as_deref().unwrap_or("");
+            let message = format!("Created task [[{}]]: {}", task_id, ctx.title);
+            if let Err(e) = super::super::services::ProjectLogService::log_entry(
+                &project_file,
+                &message,
+            ) {
+                tracing::warn!("Failed to log to project note: {}", e);
+            }
+        }
+
         // TODO: Run Lua on_create hook if defined (requires VaultContext)
 
         Ok(())

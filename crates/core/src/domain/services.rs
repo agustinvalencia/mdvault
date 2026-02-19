@@ -99,6 +99,41 @@ impl DailyLogService {
     }
 }
 
+/// Service for logging events to project notes.
+pub struct ProjectLogService;
+
+impl ProjectLogService {
+    /// Append a log entry to a project note's "## Logs" section.
+    pub fn log_entry(project_file: &Path, message: &str) -> Result<(), String> {
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        let time = Local::now().format("%H:%M").to_string();
+
+        let content = fs::read_to_string(project_file)
+            .map_err(|e| format!("Could not read project note: {e}"))?;
+
+        let log_entry = format!("- [[{}]] - {}: {}\n", today, time, message);
+
+        let new_content = if let Some(log_pos) = content.find("## Logs") {
+            let after_log = &content[log_pos + 7..]; // Skip "## Logs"
+            let insert_pos = if let Some(next_section) = after_log.find("\n## ") {
+                log_pos + 7 + next_section
+            } else {
+                content.len()
+            };
+            let mut c = content.clone();
+            c.insert_str(insert_pos, &format!("\n{}", log_entry));
+            c
+        } else {
+            format!("{}\n## Logs\n{}", content, log_entry)
+        };
+
+        fs::write(project_file, &new_content)
+            .map_err(|e| format!("Could not write project note: {e}"))?;
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,5 +219,66 @@ mod tests {
         let content = fs::read_to_string(&daily_path).unwrap();
         assert!(content.contains("- Existing entry"));
         assert!(content.contains("Created project NEW"));
+    }
+
+    #[test]
+    fn test_project_log_appends_to_existing_logs_section() {
+        let tmp = tempdir().unwrap();
+        let project_file = tmp.path().join("project.md");
+        fs::write(&project_file, "---\ntitle: Test\n---\n\n## Logs\n- Existing log\n")
+            .unwrap();
+
+        let result = ProjectLogService::log_entry(
+            &project_file,
+            "Created task [[TST-001]]: Fix bug",
+        );
+        assert!(result.is_ok());
+
+        let content = fs::read_to_string(&project_file).unwrap();
+        assert!(content.contains("- Existing log"));
+        assert!(content.contains("Created task [[TST-001]]: Fix bug"));
+        // Should still have the Logs heading
+        assert!(content.contains("## Logs"));
+    }
+
+    #[test]
+    fn test_project_log_creates_logs_section_if_missing() {
+        let tmp = tempdir().unwrap();
+        let project_file = tmp.path().join("project.md");
+        fs::write(&project_file, "---\ntitle: Test\n---\n\nSome content\n").unwrap();
+
+        let result = ProjectLogService::log_entry(
+            &project_file,
+            "Created task [[TST-002]]: New feature",
+        );
+        assert!(result.is_ok());
+
+        let content = fs::read_to_string(&project_file).unwrap();
+        assert!(content.contains("## Logs"));
+        assert!(content.contains("Created task [[TST-002]]: New feature"));
+        assert!(content.contains("Some content"));
+    }
+
+    #[test]
+    fn test_project_log_preserves_sections_after_logs() {
+        let tmp = tempdir().unwrap();
+        let project_file = tmp.path().join("project.md");
+        fs::write(
+            &project_file,
+            "---\ntitle: Test\n---\n\n## Logs\n- Old entry\n\n## Notes\nSome notes\n",
+        )
+        .unwrap();
+
+        let result = ProjectLogService::log_entry(
+            &project_file,
+            "Created task [[TST-003]]: Refactor",
+        );
+        assert!(result.is_ok());
+
+        let content = fs::read_to_string(&project_file).unwrap();
+        assert!(content.contains("- Old entry"));
+        assert!(content.contains("Created task [[TST-003]]: Refactor"));
+        assert!(content.contains("## Notes"));
+        assert!(content.contains("Some notes"));
     }
 }
