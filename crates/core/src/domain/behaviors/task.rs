@@ -78,12 +78,12 @@ impl NoteLifecycle for TaskBehavior {
             .unwrap_or_else(|| "inbox".into());
 
         // Generate task ID based on project
-        let task_id = if project == "inbox" {
-            generate_inbox_task_id(&ctx.config.vault_root)?
+        let (task_id, project) = if project == "inbox" {
+            (generate_inbox_task_id(&ctx.config.vault_root)?, project)
         } else {
-            // Get project counter and generate ID
-            let (project_id, counter) = get_project_info(ctx.config, &project)?;
-            format!("{}-{:03}", project_id, counter + 1)
+            // Get project counter and canonical slug
+            let (project_id, counter, slug) = get_project_info(ctx.config, &project)?;
+            (format!("{}-{:03}", project_id, counter + 1), slug)
         };
 
         // Set core metadata
@@ -182,12 +182,13 @@ fn generate_inbox_task_id(vault_root: &std::path::Path) -> DomainResult<String> 
     Ok(format!("INB-{:03}", max_num + 1))
 }
 
-/// Get project info (project-id and task_counter) from project file.
+/// Get project info (project-id, task_counter, canonical slug) from project file.
 fn get_project_info(
     config: &ResolvedConfig,
     project: &str,
-) -> DomainResult<(String, u32)> {
+) -> DomainResult<(String, u32, String)> {
     let project_file = find_project_file(config, project)?;
+    let slug = extract_project_slug(&project_file, &config.vault_root);
 
     let content = fs::read_to_string(&project_file).map_err(DomainError::Io)?;
 
@@ -210,15 +211,15 @@ fn get_project_info(
         .map(|n| n as u32)
         .unwrap_or(0);
 
-    Ok((project_id, counter))
+    Ok((project_id, counter, slug))
 }
 
-/// Find the project file by project name/ID.
+/// Find the project file by project name/ID/title.
 ///
 /// Searches in the following order:
 /// 1. Direct path patterns (fast path)
 /// 2. File named {project}.md in any Projects subfolder
-/// 3. Any project file with matching project-id in frontmatter
+/// 3. Any project file with matching project-id or title in frontmatter
 fn find_project_file(config: &ResolvedConfig, project: &str) -> DomainResult<PathBuf> {
     // Try common patterns first (fast path)
     let patterns = [
@@ -256,8 +257,9 @@ fn find_project_file(config: &ResolvedConfig, project: &str) -> DomainResult<Pat
         }
     }
 
-    // Search by frontmatter project-id
+    // Search by frontmatter project-id or title
     // Handles structures where file is named differently (e.g., markdownvault-development.md with project-id: MDV)
+    // Also resolves by human-readable title (e.g., "SEB Account" matches title field)
     if let Ok(entries) = fs::read_dir(&projects_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -266,12 +268,12 @@ fn find_project_file(config: &ResolvedConfig, project: &str) -> DomainResult<Pat
                 if let Ok(files) = fs::read_dir(&path) {
                     for file_entry in files.flatten() {
                         let file_path = file_entry.path();
-                        if file_has_project_id(&file_path, project) {
+                        if file_matches_project(&file_path, project) {
                             return Ok(file_path);
                         }
                     }
                 }
-            } else if file_has_project_id(&path, project) {
+            } else if file_matches_project(&path, project) {
                 return Ok(path);
             }
         }
@@ -280,17 +282,46 @@ fn find_project_file(config: &ResolvedConfig, project: &str) -> DomainResult<Pat
     Err(DomainError::Other(format!("Project file not found for: {}", project)))
 }
 
-/// Check if a file has a matching project-id in its frontmatter.
-fn file_has_project_id(path: &Path, project_id: &str) -> bool {
+/// Check if a file matches a project by project-id (exact) or title (case-insensitive).
+fn file_matches_project(path: &Path, project: &str) -> bool {
     if path.extension().map(|e| e == "md").unwrap_or(false)
         && let Ok(content) = fs::read_to_string(path)
         && let Ok(parsed) = crate::frontmatter::parse(&content)
         && let Some(fm) = parsed.frontmatter
-        && let Some(pid) = fm.fields.get("project-id")
     {
-        return pid.as_str() == Some(project_id);
+        // Check project-id (exact match)
+        if let Some(pid) = fm.fields.get("project-id")
+            && pid.as_str() == Some(project)
+        {
+            return true;
+        }
+        // Check title (case-insensitive)
+        if let Some(title) = fm.fields.get("title")
+            && title.as_str().map(|s| s.eq_ignore_ascii_case(project)).unwrap_or(false)
+        {
+            return true;
+        }
     }
     false
+}
+
+/// Extract the canonical project directory slug from a resolved project file path.
+///
+/// Given `Projects/seb-account/seb-account.md`, returns `"seb-account"`.
+/// Given `Projects/seb-account.md`, returns `"seb-account"`.
+fn extract_project_slug(project_file: &Path, vault_root: &Path) -> String {
+    let rel = project_file.strip_prefix(vault_root).unwrap_or(project_file);
+    // Projects/seb-account/seb-account.md → parent dir name = "seb-account"
+    // Projects/seb-account.md → file stem = "seb-account"
+    if let Some(parent) = rel.parent()
+        && let Some(dir_name) = parent.file_name()
+    {
+        let name = dir_name.to_string_lossy();
+        if !name.eq_ignore_ascii_case("projects") {
+            return name.to_string();
+        }
+    }
+    project_file.file_stem().unwrap_or_default().to_string_lossy().to_string()
 }
 
 /// Increment the task_counter in a project file.
@@ -326,4 +357,140 @@ fn increment_project_counter(config: &ResolvedConfig, project: &str) -> DomainRe
     fs::write(&project_file, new_content).map_err(DomainError::Io)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_file_matches_project_by_project_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test-project.md");
+        fs::write(
+            &path,
+            "---\ntype: project\ntitle: Test Project\nproject-id: TST\ntask_counter: 0\n---\n",
+        )
+        .unwrap();
+
+        assert!(file_matches_project(&path, "TST"));
+        assert!(!file_matches_project(&path, "tst")); // project-id is exact match
+        assert!(!file_matches_project(&path, "NOPE"));
+    }
+
+    #[test]
+    fn test_file_matches_project_by_title() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test-project.md");
+        fs::write(
+            &path,
+            "---\ntype: project\ntitle: SEB Account\nproject-id: SAE\ntask_counter: 0\n---\n",
+        )
+        .unwrap();
+
+        assert!(file_matches_project(&path, "SEB Account"));
+        assert!(file_matches_project(&path, "seb account")); // case-insensitive
+        assert!(file_matches_project(&path, "SEB ACCOUNT")); // case-insensitive
+        assert!(!file_matches_project(&path, "Other Project"));
+    }
+
+    #[test]
+    fn test_file_matches_project_no_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test-project.md");
+        fs::write(&path, "---\ntype: project\ntitle: My Project\nproject-id: MPR\n---\n")
+            .unwrap();
+
+        assert!(!file_matches_project(&path, "Other"));
+        assert!(!file_matches_project(&path, ""));
+    }
+
+    #[test]
+    fn test_file_matches_project_non_md_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("readme.txt");
+        fs::write(&path, "---\ntitle: Test\nproject-id: TST\n---\n").unwrap();
+
+        assert!(!file_matches_project(&path, "TST"));
+    }
+
+    #[test]
+    fn test_extract_project_slug_subfolder() {
+        let vault_root = Path::new("/vault");
+        let project_file = Path::new("/vault/Projects/seb-account/seb-account.md");
+        assert_eq!(extract_project_slug(project_file, vault_root), "seb-account");
+    }
+
+    #[test]
+    fn test_extract_project_slug_flat() {
+        let vault_root = Path::new("/vault");
+        let project_file = Path::new("/vault/Projects/seb-account.md");
+        assert_eq!(extract_project_slug(project_file, vault_root), "seb-account");
+    }
+
+    #[test]
+    fn test_extract_project_slug_nested_deeply() {
+        // Edge case: Tasks subfolder shouldn't happen for project files, but test robustness
+        let vault_root = Path::new("/vault");
+        let project_file = Path::new("/vault/Projects/my-proj/my-proj.md");
+        assert_eq!(extract_project_slug(project_file, vault_root), "my-proj");
+    }
+
+    #[test]
+    fn test_find_project_file_by_title() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_root = dir.path();
+
+        // Create project structure: Projects/seb-account/seb-account.md
+        let project_dir = vault_root.join("Projects/seb-account");
+        fs::create_dir_all(&project_dir).unwrap();
+        let project_file = project_dir.join("seb-account.md");
+        fs::write(
+            &project_file,
+            "---\ntype: project\ntitle: SEB Account\nproject-id: SAE\ntask_counter: 3\n---\n",
+        )
+        .unwrap();
+
+        let config = ResolvedConfig {
+            vault_root: vault_root.to_path_buf(),
+            ..make_test_config(vault_root)
+        };
+
+        // Should resolve by slug (fast path)
+        let result = find_project_file(&config, "seb-account");
+        assert!(result.is_ok(), "Should resolve by slug");
+
+        // Should resolve by title
+        let result = find_project_file(&config, "SEB Account");
+        assert!(result.is_ok(), "Should resolve by title");
+        assert_eq!(result.unwrap(), project_file);
+
+        // Should resolve by title case-insensitively
+        let result = find_project_file(&config, "seb account");
+        assert!(result.is_ok(), "Should resolve by title case-insensitively");
+
+        // Should resolve by project-id
+        let result = find_project_file(&config, "SAE");
+        assert!(result.is_ok(), "Should resolve by project-id");
+
+        // Should fail for unknown
+        let result = find_project_file(&config, "Unknown Project");
+        assert!(result.is_err(), "Should fail for unknown project");
+    }
+
+    fn make_test_config(vault_root: &Path) -> ResolvedConfig {
+        ResolvedConfig {
+            active_profile: "test".into(),
+            vault_root: vault_root.to_path_buf(),
+            templates_dir: vault_root.join(".mdvault/templates"),
+            captures_dir: vault_root.join(".mdvault/captures"),
+            macros_dir: vault_root.join(".mdvault/macros"),
+            typedefs_dir: vault_root.join(".mdvault/typedefs"),
+            excluded_folders: vec![],
+            security: Default::default(),
+            logging: Default::default(),
+            activity: Default::default(),
+        }
+    }
 }
