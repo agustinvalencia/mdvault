@@ -115,6 +115,17 @@ fn task_done_logs_to_project_note() {
         "Project note should contain completion log entry. Content:\n{}",
         project_content
     );
+
+    // Check daily note has completion log entry
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let daily_path = vault.join(format!("Journal/Daily/{}.md", today));
+    assert!(daily_path.exists(), "Daily note should be created");
+    let daily_content = fs::read_to_string(&daily_path).unwrap();
+    assert!(
+        daily_content.contains("Completed task TST-001"),
+        "Daily note should contain completion entry. Content:\n{}",
+        daily_content
+    );
 }
 
 #[test]
@@ -170,6 +181,17 @@ fn task_cancel_sets_status_and_logs() {
         project_content.contains("Cancelled task [[TST-002]]"),
         "Project note should contain cancellation log entry. Content:\n{}",
         project_content
+    );
+
+    // Check daily note has cancellation log entry
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let daily_path = vault.join(format!("Journal/Daily/{}.md", today));
+    assert!(daily_path.exists(), "Daily note should be created");
+    let daily_content = fs::read_to_string(&daily_path).unwrap();
+    assert!(
+        daily_content.contains("Cancelled task TST-002"),
+        "Daily note should contain cancellation entry. Content:\n{}",
+        daily_content
     );
 }
 

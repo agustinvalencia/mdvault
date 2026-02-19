@@ -99,6 +99,82 @@ impl DailyLogService {
     }
 }
 
+impl DailyLogService {
+    /// Log a generic event to today's daily note.
+    ///
+    /// Used for task completion, cancellation, and other lifecycle events
+    /// that should appear in the daily journal.
+    ///
+    /// # Arguments
+    /// * `config` - Resolved vault configuration
+    /// * `action` - Action verb (e.g., "Completed", "Cancelled")
+    /// * `note_type` - Type of note (e.g., "task")
+    /// * `title` - Title of the note
+    /// * `note_id` - ID of the note (e.g., "TST-001"), can be empty
+    /// * `output_path` - Path to the note file
+    pub fn log_event(
+        config: &ResolvedConfig,
+        action: &str,
+        note_type: &str,
+        title: &str,
+        note_id: &str,
+        output_path: &Path,
+    ) -> Result<(), String> {
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        let time = Local::now().format("%H:%M").to_string();
+
+        let daily_path = config.vault_root.join(format!("Journal/Daily/{}.md", today));
+
+        if let Some(parent) = daily_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Could not create daily directory: {e}"))?;
+        }
+
+        let mut content = match fs::read_to_string(&daily_path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let content = format!(
+                    "---\ntype: daily\ndate: {}\n---\n\n# {}\n\n## Log\n",
+                    today, today
+                );
+                fs::write(&daily_path, &content)
+                    .map_err(|e| format!("Could not create daily note: {e}"))?;
+                content
+            }
+            Err(e) => return Err(format!("Could not read daily note: {e}")),
+        };
+
+        let rel_path =
+            output_path.strip_prefix(&config.vault_root).unwrap_or(output_path);
+        let link = rel_path.file_stem().and_then(|s| s.to_str()).unwrap_or("note");
+
+        let id_display =
+            if note_id.is_empty() { String::new() } else { format!(" {}", note_id) };
+
+        let log_entry = format!(
+            "- **{}**: {} {}{}: [[{}|{}]]\n",
+            time, action, note_type, id_display, link, title
+        );
+
+        if let Some(log_pos) = content.find("## Log") {
+            let after_log = &content[log_pos + 6..];
+            let insert_pos = if let Some(next_section) = after_log.find("\n## ") {
+                log_pos + 6 + next_section
+            } else {
+                content.len()
+            };
+            content.insert_str(insert_pos, &format!("\n{}", log_entry));
+        } else {
+            content.push_str(&format!("\n## Log\n{}", log_entry));
+        }
+
+        fs::write(&daily_path, &content)
+            .map_err(|e| format!("Could not write daily note: {e}"))?;
+
+        Ok(())
+    }
+}
+
 /// Service for logging events to project notes.
 pub struct ProjectLogService;
 
@@ -257,6 +333,62 @@ mod tests {
         assert!(content.contains("## Logs"));
         assert!(content.contains("Created task [[TST-002]]: New feature"));
         assert!(content.contains("Some content"));
+    }
+
+    #[test]
+    fn test_log_event_completed_task() {
+        let tmp = tempdir().unwrap();
+        let config = make_test_config(tmp.path().to_path_buf());
+        let output_path = tmp.path().join("Projects/TST/Tasks/TST-001.md");
+
+        fs::create_dir_all(output_path.parent().unwrap()).unwrap();
+        fs::write(&output_path, "test").unwrap();
+
+        let result = DailyLogService::log_event(
+            &config,
+            "Completed",
+            "task",
+            "Fix the bug",
+            "TST-001",
+            &output_path,
+        );
+
+        assert!(result.is_ok());
+
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        let daily_path = tmp.path().join(format!("Journal/Daily/{}.md", today));
+        assert!(daily_path.exists());
+
+        let content = fs::read_to_string(&daily_path).unwrap();
+        assert!(content.contains("Completed task TST-001"));
+        assert!(content.contains("[[TST-001|Fix the bug]]"));
+    }
+
+    #[test]
+    fn test_log_event_cancelled_task() {
+        let tmp = tempdir().unwrap();
+        let config = make_test_config(tmp.path().to_path_buf());
+        let output_path = tmp.path().join("Projects/TST/Tasks/TST-002.md");
+
+        fs::create_dir_all(output_path.parent().unwrap()).unwrap();
+        fs::write(&output_path, "test").unwrap();
+
+        let result = DailyLogService::log_event(
+            &config,
+            "Cancelled",
+            "task",
+            "Old feature",
+            "TST-002",
+            &output_path,
+        );
+
+        assert!(result.is_ok());
+
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        let daily_path = tmp.path().join(format!("Journal/Daily/{}.md", today));
+        let content = fs::read_to_string(&daily_path).unwrap();
+        assert!(content.contains("Cancelled task TST-002"));
+        assert!(content.contains("[[TST-002|Old feature]]"));
     }
 
     #[test]

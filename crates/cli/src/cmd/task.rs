@@ -2,7 +2,7 @@
 
 use mdvault_core::activity::ActivityLogService;
 use mdvault_core::config::loader::ConfigLoader;
-use mdvault_core::domain::{find_project_file, services::ProjectLogService};
+use mdvault_core::domain::{find_project_file, services::ProjectLogService, DailyLogService};
 use mdvault_core::index::{IndexBuilder, IndexDb, IndexedNote, NoteQuery, NoteType};
 use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
@@ -333,6 +333,9 @@ pub fn done(
         let _ = activity.log_complete("task", &task_id, &full_path, summary);
     }
 
+    // Log to daily note
+    let _ = DailyLogService::log_event(&cfg, "Completed", "task", &task_title, &task_id, &full_path);
+
     // Log to parent project note
     if let Some(ref project) = project_name {
         if let Ok(project_file) = find_project_file(&cfg, project) {
@@ -487,6 +490,9 @@ pub fn cancel(
     if let Some(activity) = ActivityLogService::try_from_config(&cfg) {
         let _ = activity.log_cancel("task", &task_id, &full_path, reason);
     }
+
+    // Log to daily note
+    let _ = DailyLogService::log_event(&cfg, "Cancelled", "task", &task_title, &task_id, &full_path);
 
     // Log to parent project note
     if let Some(ref project) = project_name {
