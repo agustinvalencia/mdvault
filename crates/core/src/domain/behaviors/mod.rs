@@ -12,7 +12,7 @@ pub use custom::CustomBehavior;
 pub use daily::DailyBehavior;
 pub use meeting::MeetingBehavior;
 pub use project::ProjectBehavior;
-pub use task::TaskBehavior;
+pub use task::{TaskBehavior, find_project_file};
 pub use weekly::WeeklyBehavior;
 pub use zettel::ZettelBehavior;
 

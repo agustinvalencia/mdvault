@@ -234,7 +234,10 @@ fn get_project_info(
 /// 1. Direct path patterns (fast path)
 /// 2. File named {project}.md in any Projects subfolder
 /// 3. Any project file with matching project-id or title in frontmatter
-fn find_project_file(config: &ResolvedConfig, project: &str) -> DomainResult<PathBuf> {
+pub fn find_project_file(
+    config: &ResolvedConfig,
+    project: &str,
+) -> DomainResult<PathBuf> {
     // Try common patterns first (fast path)
     let patterns = [
         format!("Projects/{}/{}.md", project, project),

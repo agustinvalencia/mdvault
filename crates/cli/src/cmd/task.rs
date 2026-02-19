@@ -2,6 +2,7 @@
 
 use mdvault_core::activity::ActivityLogService;
 use mdvault_core::config::loader::ConfigLoader;
+use mdvault_core::domain::{find_project_file, services::ProjectLogService};
 use mdvault_core::index::{IndexBuilder, IndexDb, IndexedNote, NoteQuery, NoteType};
 use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
@@ -266,6 +267,22 @@ pub fn done(
             full_path.file_stem().and_then(|s| s.to_str()).unwrap_or("task").to_string()
         });
 
+    // Extract project and title for project logging (before fields are consumed)
+    let project_name = fm.fields.get("project").and_then(|v| match v {
+        serde_yaml::Value::String(s) => Some(s.clone()),
+        _ => None,
+    });
+    let task_title = fm
+        .fields
+        .get("title")
+        .and_then(|v| match v {
+            serde_yaml::Value::String(s) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            full_path.file_stem().and_then(|s| s.to_str()).unwrap_or("task").to_string()
+        });
+
     // Rebuild the document
     let mut mapping = serde_yaml::Mapping::new();
     for (k, v) in fm.fields {
@@ -316,11 +333,174 @@ pub fn done(
         let _ = activity.log_complete("task", &task_id, &full_path, summary);
     }
 
+    // Log to parent project note
+    if let Some(ref project) = project_name {
+        if let Ok(project_file) = find_project_file(&cfg, project) {
+            let msg = format!("Completed task [[{}]]: {}", task_id, task_title);
+            let _ = ProjectLogService::log_entry(&project_file, &msg);
+        }
+    }
+
     println!("OK   mdv task done");
     println!("task:   {}", task_id);
     println!("status: done");
     if summary.is_some() {
         println!("summary: logged to task");
+    }
+}
+
+/// Cancel a task.
+pub fn cancel(
+    config: Option<&Path>,
+    profile: Option<&str>,
+    task_path: &Path,
+    reason: Option<&str>,
+) {
+    let cfg = match ConfigLoader::load(config, profile) {
+        Ok(rc) => rc,
+        Err(e) => {
+            eprintln!("Failed to load config: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    // Resolve task path relative to vault root
+    let full_path = if task_path.is_absolute() {
+        task_path.to_path_buf()
+    } else {
+        cfg.vault_root.join(task_path)
+    };
+
+    if !full_path.exists() {
+        eprintln!("Task not found: {}", full_path.display());
+        std::process::exit(1);
+    }
+
+    // Read the task file
+    let content = match std::fs::read_to_string(&full_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Failed to read task: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    // Parse and update frontmatter
+    let parsed = match mdvault_core::frontmatter::parse(&content) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to parse task frontmatter: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let mut fm = match parsed.frontmatter {
+        Some(fm) => fm,
+        None => {
+            eprintln!("Task has no frontmatter");
+            std::process::exit(1);
+        }
+    };
+
+    // Update status to cancelled
+    fm.fields
+        .insert("status".to_string(), serde_yaml::Value::String("cancelled".to_string()));
+
+    // Set cancelled_at timestamp
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+    fm.fields.insert("cancelled_at".to_string(), serde_yaml::Value::String(now.clone()));
+
+    // Get task ID for output
+    let task_id = fm
+        .fields
+        .get("task-id")
+        .and_then(|v| match v {
+            serde_yaml::Value::String(s) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            full_path.file_stem().and_then(|s| s.to_str()).unwrap_or("task").to_string()
+        });
+
+    // Extract project and title for project logging (before fields are consumed)
+    let project_name = fm.fields.get("project").and_then(|v| match v {
+        serde_yaml::Value::String(s) => Some(s.clone()),
+        _ => None,
+    });
+    let task_title = fm
+        .fields
+        .get("title")
+        .and_then(|v| match v {
+            serde_yaml::Value::String(s) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            full_path.file_stem().and_then(|s| s.to_str()).unwrap_or("task").to_string()
+        });
+
+    // Rebuild the document
+    let mut mapping = serde_yaml::Mapping::new();
+    for (k, v) in fm.fields {
+        mapping.insert(serde_yaml::Value::String(k), v);
+    }
+    let yaml_str = match serde_yaml::to_string(&serde_yaml::Value::Mapping(mapping)) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to serialize frontmatter: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    // Append reason to body if provided
+    let body = if let Some(r) = reason {
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let time = chrono::Local::now().format("%H:%M").to_string();
+        format!(
+            "{}\n- **[[{}]] {}** : Cancelled - {}\n",
+            parsed.body.trim_end(),
+            today,
+            time,
+            r
+        )
+    } else {
+        parsed.body
+    };
+
+    let final_content = format!("---\n{}---\n{}", yaml_str, body);
+
+    // Write back
+    if let Err(e) = std::fs::write(&full_path, final_content) {
+        eprintln!("Failed to write task: {e}");
+        std::process::exit(1);
+    }
+
+    // Update index for this file
+    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    if let Ok(db) = IndexDb::open(&index_path) {
+        let builder = IndexBuilder::new(&db, &cfg.vault_root);
+        if let Err(e) = builder.reindex_file(task_path) {
+            eprintln!("Warning: failed to update index: {e}");
+        }
+    }
+
+    // Log to activity log
+    if let Some(activity) = ActivityLogService::try_from_config(&cfg) {
+        let _ = activity.log_cancel("task", &task_id, &full_path, reason);
+    }
+
+    // Log to parent project note
+    if let Some(ref project) = project_name {
+        if let Ok(project_file) = find_project_file(&cfg, project) {
+            let msg = format!("Cancelled task [[{}]]: {}", task_id, task_title);
+            let _ = ProjectLogService::log_entry(&project_file, &msg);
+        }
+    }
+
+    println!("OK   mdv task cancel");
+    println!("task:   {}", task_id);
+    println!("status: cancelled");
+    if reason.is_some() {
+        println!("reason: logged to task");
     }
 }
 

@@ -184,8 +184,8 @@ fn gather_dashboard_data(
 
         // Check status
         match info.status.as_str() {
-            "done" => {
-                // Skip completed tasks not from today
+            "done" | "cancelled" | "canceled" => {
+                // Skip completed/cancelled tasks (not actionable)
             }
             "in-progress" => {
                 // Check if overdue
@@ -207,7 +207,7 @@ fn gather_dashboard_data(
                         }
                     }
                 }
-                if info.status != "done" && info.status != "blocked" {
+                if info.status != "blocked" {
                     pending_tasks.push(info);
                 }
             }

@@ -123,7 +123,15 @@ pub fn list(config: Option<&Path>, profile: Option<&str>, status_filter: Option<
                     .unwrap_or(false)
             })
             .count();
-        let open = total - done;
+        let cancelled = project_tasks
+            .iter()
+            .filter(|t| {
+                get_task_status(t)
+                    .map(|s| s == "cancelled" || s == "canceled")
+                    .unwrap_or(false)
+            })
+            .count();
+        let open = total - done - cancelled;
 
         rows.push(ProjectRow {
             id: project_id,
@@ -224,6 +232,7 @@ pub fn status(config: Option<&Path>, profile: Option<&str>, project_name: &str) 
     let mut in_progress: Vec<&IndexedNote> = vec![];
     let mut blocked: Vec<&IndexedNote> = vec![];
     let mut done: Vec<&IndexedNote> = vec![];
+    let mut cancelled: Vec<&IndexedNote> = vec![];
 
     for task in &project_tasks {
         let status = get_task_status(task).unwrap_or_else(|| "todo".to_string());
@@ -233,6 +242,7 @@ pub fn status(config: Option<&Path>, profile: Option<&str>, project_name: &str) 
             "in-progress" | "in_progress" | "doing" => in_progress.push(task),
             "blocked" | "waiting" => blocked.push(task),
             "done" | "completed" => done.push(task),
+            "cancelled" | "canceled" => cancelled.push(task),
             _ => todo.push(task),
         }
     }
@@ -243,6 +253,9 @@ pub fn status(config: Option<&Path>, profile: Option<&str>, project_name: &str) 
     println!("  In Progress: {}", in_progress.len());
     println!("  Blocked:     {}", blocked.len());
     println!("  Done:        {}", done.len());
+    if !cancelled.is_empty() {
+        println!("  Cancelled:   {}", cancelled.len());
+    }
     println!("  Total:       {}", project_tasks.len());
     println!();
 
@@ -268,6 +281,12 @@ pub fn status(config: Option<&Path>, profile: Option<&str>, project_name: &str) 
     if !done.is_empty() {
         println!("DONE:");
         print_task_table(&done);
+        println!();
+    }
+
+    if !cancelled.is_empty() {
+        println!("CANCELLED:");
+        print_task_table(&cancelled);
         println!();
     }
 }
@@ -386,6 +405,7 @@ struct TaskCounts {
     in_progress: usize,
     todo: usize,
     blocked: usize,
+    cancelled: usize,
 }
 
 #[derive(Serialize)]
@@ -530,6 +550,7 @@ fn calculate_project_progress(
     let mut in_progress = 0;
     let mut blocked = 0;
     let mut done = 0;
+    let mut cancelled = 0;
 
     for task in &project_tasks {
         let status = get_task_status(task).unwrap_or_else(|| "todo".to_string());
@@ -538,13 +559,16 @@ fn calculate_project_progress(
             "in-progress" | "in_progress" | "doing" => in_progress += 1,
             "blocked" | "waiting" => blocked += 1,
             "done" | "completed" => done += 1,
+            "cancelled" | "canceled" => cancelled += 1,
             _ => todo += 1,
         }
     }
 
     let total = project_tasks.len();
+    // Exclude cancelled tasks from progress denominator
+    let active_total = total - cancelled;
     let progress_percent =
-        if total > 0 { (done as f64 / total as f64) * 100.0 } else { 0.0 };
+        if active_total > 0 { (done as f64 / active_total as f64) * 100.0 } else { 0.0 };
 
     // Recent completions (last 7 days)
     let now = Utc::now();
@@ -591,7 +615,7 @@ fn calculate_project_progress(
         id: project_id,
         title: project_title,
         status: project_status,
-        tasks: TaskCounts { total, done, in_progress, todo, blocked },
+        tasks: TaskCounts { total, done, in_progress, todo, blocked, cancelled },
         progress_percent,
         recent_completions,
         velocity,
@@ -617,6 +641,9 @@ fn print_single_project_progress(data: &ProjectProgress) {
     println!("  → In Progress: {}", data.tasks.in_progress);
     println!("  ○ Todo:        {}", data.tasks.todo);
     println!("  ⊘ Blocked:     {}", data.tasks.blocked);
+    if data.tasks.cancelled > 0 {
+        println!("  ✗ Cancelled:   {}", data.tasks.cancelled);
+    }
     println!();
 
     // Recent activity

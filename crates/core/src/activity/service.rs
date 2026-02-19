@@ -135,6 +135,25 @@ impl ActivityLogService {
         self.log(entry)
     }
 
+    /// Log a "cancel" operation (task cancelled).
+    pub fn log_cancel(
+        &self,
+        note_type: &str,
+        id: &str,
+        path: &Path,
+        reason: Option<&str>,
+    ) -> Result<()> {
+        let rel_path = self.relativize(path);
+        let mut entry =
+            ActivityEntry::new(Operation::Cancel, note_type, rel_path).with_id(id);
+
+        if let Some(r) = reason {
+            entry = entry.with_meta("reason", r);
+        }
+
+        self.log(entry)
+    }
+
     /// Log a "capture" operation.
     pub fn log_capture(
         &self,

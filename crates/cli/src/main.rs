@@ -174,6 +174,9 @@ enum TaskCommands {
     /// Mark a task as done
     Done(TaskDoneArgs),
 
+    /// Cancel a task
+    Cancel(TaskCancelArgs),
+
     /// Show detailed status for a task
     Status(TaskStatusArgs),
 }
@@ -211,6 +214,17 @@ pub struct TaskDoneArgs {
     /// Summary of what was done (logged to task)
     #[arg(long, short)]
     pub summary: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct TaskCancelArgs {
+    /// Path to the task note (relative to vault root)
+    #[arg(add = ArgValueCompleter::new(completions::complete_notes))]
+    pub task: PathBuf,
+
+    /// Reason for cancellation (logged to task)
+    #[arg(long, short)]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -877,6 +891,14 @@ fn main() {
                     cli.profile.as_deref(),
                     &args.task,
                     args.summary.as_deref(),
+                );
+            }
+            TaskCommands::Cancel(args) => {
+                cmd::task::cancel(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    &args.task,
+                    args.reason.as_deref(),
                 );
             }
             TaskCommands::Status(args) => {

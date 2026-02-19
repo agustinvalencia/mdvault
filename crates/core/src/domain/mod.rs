@@ -30,7 +30,7 @@ pub mod traits;
 
 pub use behaviors::{
     CustomBehavior, DailyBehavior, MeetingBehavior, ProjectBehavior, TaskBehavior,
-    WeeklyBehavior, ZettelBehavior,
+    WeeklyBehavior, ZettelBehavior, find_project_file,
 };
 pub use context::{
     CoreMetadata, CreationContext, FieldPrompt, PromptContext, PromptType,
