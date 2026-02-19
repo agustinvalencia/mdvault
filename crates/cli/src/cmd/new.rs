@@ -777,6 +777,9 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                 let _ = activity.log_new(type_name, note_id, &result.path, title);
             }
 
+            // Force reindex so the new note appears in queries
+            reindex_vault(cfg);
+
             println!("OK   mdv new");
             println!("type:   {}", result.type_name);
             if let Some(ref id) = result.generated_id {

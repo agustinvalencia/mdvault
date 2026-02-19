@@ -10,6 +10,7 @@ use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::{apply_ops, parse, serialize};
+use mdvault_core::index::{IndexBuilder, IndexDb};
 use mdvault_core::macros::{
     get_shell_commands, requires_trust, run_macro, CaptureStep, MacroRepoError,
     MacroRepository, MacroRunError, MacroSpec, RunContext, RunOptions, ShellStep,
@@ -205,7 +206,30 @@ pub fn run(
     // 8. Run the macro
     let result = run_macro(&loaded, &executor, run_ctx);
 
-    // 9. Print results
+    // 9. Reindex vault so any created/modified notes appear in queries
+    if result.success {
+        let index_path = cfg.vault_root.join(".mdvault/index.db");
+        if let Some(parent) = index_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        match IndexDb::open(&index_path) {
+            Ok(db) => {
+                let builder = IndexBuilder::with_exclusions(
+                    &db,
+                    &cfg.vault_root,
+                    cfg.excluded_folders.clone(),
+                );
+                if let Err(e) = builder.incremental_reindex(None) {
+                    eprintln!("Warning: reindex failed: {e}");
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: could not open index for reindex: {e}");
+            }
+        }
+    }
+
+    // 10. Print results
     if result.success {
         println!("OK   mdv macro");
         println!("macro: {}", macro_name);

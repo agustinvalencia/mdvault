@@ -12,6 +12,7 @@ use mdvault_core::captures::{
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::{apply_ops, parse, serialize};
+use mdvault_core::index::{IndexBuilder, IndexDb};
 use mdvault_core::macros::MacroRepository;
 use mdvault_core::markdown_ast::{MarkdownAstError, MarkdownEditor, SectionMatch};
 use mdvault_core::scripting::{run_on_update_hook, NoteContext, VaultContext};
@@ -294,6 +295,16 @@ pub fn run(
     if let Some(activity) = ActivityLogService::try_from_config(&cfg) {
         let section_name = section_info.as_ref().map(|(title, _)| title.as_str());
         let _ = activity.log_capture(capture_name, &target_file, section_name);
+    }
+
+    // 11. Reindex the target file so it appears in queries immediately
+    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    if let Ok(db) = IndexDb::open(&index_path) {
+        let builder = IndexBuilder::new(&db, &cfg.vault_root);
+        let rel = target_file.strip_prefix(&cfg.vault_root).unwrap_or(&target_file);
+        if let Err(e) = builder.reindex_file(rel) {
+            eprintln!("Warning: failed to update index: {e}");
+        }
     }
 
     println!("OK   mdv capture");
