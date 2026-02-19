@@ -1,6 +1,6 @@
 [package]
 name = "mdvault"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 description = "CLI tool for managing markdown vaults with structured notes, validation, and search"
 license = "MIT"
@@ -21,7 +21,7 @@ clap_complete = { version = "4.5", features = ["unstable-dynamic"] }
 color-eyre = "0.6"
 crossterm = "0.28"
 dialoguer = { version = "0.11", features = ["fuzzy-select"] }
-mdvault-core = { version = "0.3.3", path = "../core" }
+mdvault-core = { version = "0.3.4", path = "../core" }
 ratatui = "0.29"
 regex = "1.12.2"
 serde = { version = "1.0", features = ["derive"] }
