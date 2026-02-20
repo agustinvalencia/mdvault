@@ -5,6 +5,30 @@ All notable changes to mdvault will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2026-02-20
+
+### Added
+
+- **Project archiving**: `mdv project archive <project>` moves completed projects to `Projects/_archive/`
+  - Only projects with `status: done` can be archived
+  - Remaining open tasks are automatically cancelled
+  - Project frontmatter updated with `status: archived` and `archived_at` timestamp
+  - Focus is cleared if the archived project was focused
+  - All wikilinks and index entries updated to new paths
+  - Logged to both daily and project notes
+  - `--yes` flag to skip confirmation prompt
+
+- **Archive-aware path matching**: All task/project lookups now search both `Projects/` and `Projects/_archive/`
+  - `find_project_file`, `extract_project_from_path`, task listing, and context queries all handle archived paths
+
+- **Task creation guard**: Cannot create tasks in archived projects — returns a clear error message
+
+- **Year-based journal paths**: Daily notes now stored in `Journal/{year}/Daily/`, meetings in `Meetings/{year}/`
+
+### Changed
+
+- Task completion and cancellation now automatically log to the daily note
+
 ## [0.3.0] - 2026-02-03
 
 This release completes the Lua-first architecture with a breaking change: YAML capture/macro files are no longer supported. All automation must now use Lua. In return, you get powerful lifecycle hooks, a new built-in meeting type, and comprehensive activity tracking.

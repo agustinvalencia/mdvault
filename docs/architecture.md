@@ -162,13 +162,14 @@ Search queries should return:
 ### Required Fields by Type
 
 **Tasks**:
-- `status`: enum [open, in-progress, blocked, done, cancelled]
+- `status`: enum [todo, doing, blocked, done, cancelled]
 - `project`: reference to project note
 - Must be linked from at least one daily (within 30 days)
 
 **Projects**:
-- `status`: enum [planning, active, paused, completed, archived]
-- `created_date`: timestamp
+- `status`: enum [open, in-progress, done, archived]
+- `created_at`: timestamp
+- `archived_at`: timestamp (set by `mdv project archive`)
 - Should have at least one linked task
 
 **Zettels**:
@@ -317,10 +318,16 @@ mdv context note path/to/note   # Full context for a note
 mdv context focus               # Current focus project
 ```
 
-**Reporting**:
+**Project Lifecycle**:
 ```bash
 mdv project progress            # Progress bars for all projects
 mdv project progress MyProject  # Detailed progress for one
+mdv project archive MyProject   # Archive a completed project
+mdv project archive MyProject --yes  # Skip confirmation
+```
+
+**Reporting**:
+```bash
 mdv report --month 2025-01     # Monthly activity report
 mdv report --week 2025-W05     # Weekly activity report
 ```
@@ -754,17 +761,19 @@ normalize_note_names(
 - Temporal boosting for recent notes
 - Staleness detection (`mdv stale`)
 
-### Phase 4: Rename & Reference Management (Planned)
+### Phase 4: Rename & Reference Management ✓ Complete
 - Reference detection (wikilinks, markdown, frontmatter)
 - Format-preserving updates
 - Atomic rename operations
 - Index consistency maintenance
 
-### Phase 5: MCP Integration (Planned)
-- Task management tools (search, create, complete)
-- Project context retrieval
-- Knowledge search tools
-- Maintenance and health tools
+### Phase 5: MCP Integration ✓ Complete
+- Task management tools (create, complete, cancel, list)
+- Project management (create, status, progress, archive)
+- Meeting note creation with auto-generated IDs
+- Focus mode and context queries
+- Activity reporting and daily dashboard
+- Vault validation and maintenance
 
 ### Phase 6: Advanced Features (Future)
 - Semantic search (embeddings)
@@ -830,7 +839,5 @@ normalize_note_names(
 1. **Semantic search priority**: How important is semantic similarity vs graph/temporal signals?
 2. **Batch operations**: How often are bulk renames/updates needed?
 3. **Real-time sync**: Should mdvault watch filesystem or assume static vault?
-4. **Template system**: Should there be customisable templates for note types?
-5. **Archive strategy**: How to handle completed/old notes (separate folder, frontmatter flag, deletion)?
-6. **Multi-vault support**: Single tool managing multiple vaults or one instance per vault?
-7. **Export/backup**: Built-in backup system or rely on external tools (git, rsync)?
+4. **Multi-vault support**: Single tool managing multiple vaults or one instance per vault?
+5. **Export/backup**: Built-in backup system or rely on external tools (git, rsync)?

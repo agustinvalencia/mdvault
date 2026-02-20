@@ -1091,7 +1091,7 @@ dependencies = [
 
 [[package]]
 name = "mdvault"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -1118,7 +1118,7 @@ dependencies = [
 
 [[package]]
 name = "mdvault-core"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "chrono",
  "comrak",

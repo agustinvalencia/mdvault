@@ -221,6 +221,9 @@ mdv task done Projects/myproject/Tasks/my-task.md
 # Mark done with a summary (logged to the task)
 mdv task done Projects/myproject/Tasks/my-task.md --summary "Completed implementation"
 
+# Cancel a task
+mdv task cancel Projects/myproject/Tasks/my-task.md
+
 # List all projects with task counts
 mdv project list
 
@@ -232,6 +235,9 @@ mdv project status MCP
 
 # Show detailed task status
 mdv task status MCP-001
+
+# Archive a completed project (moves to Projects/_archive/)
+mdv project archive MCP --yes
 ```
 
 ### Querying Notes

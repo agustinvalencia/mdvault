@@ -31,16 +31,22 @@ vault/
 │   │       ├── MCP-001.md      # Task notes
 │   │       ├── MCP-002.md
 │   │       └── MCP-003.md
-│   └── HAU/
-│       ├── HAU.md
-│       └── Tasks/
-│           └── HAU-001.md
+│   ├── HAU/
+│   │   ├── HAU.md
+│   │   └── Tasks/
+│   │       └── HAU-001.md
+│   └── _archive/               # Archived projects
+│       └── OLD/
+│           ├── OLD.md
+│           └── Tasks/
+│               └── OLD-001.md
 ├── Inbox/
 │   ├── INB-001.md              # Tasks without a project
 │   └── INB-002.md
 └── Journal/
-    └── Daily/
-        └── 2025-01-15.md       # Daily notes with activity log
+    └── 2025/
+        └── Daily/
+            └── 2025-01-15.md   # Daily notes with activity log
 ```
 
 ## Creating Projects
@@ -75,7 +81,8 @@ created: 2025-01-15
 | `title` | Project name |
 | `project-id` | Auto-generated 3-letter ID |
 | `task_counter` | Current task count (auto-incremented) |
-| `status` | `planning`, `active`, `paused`, `completed`, `archived` |
+| `status` | `open`, `in-progress`, `done`, `archived` |
+| `archived_at` | Timestamp set when project is archived |
 | `created` | Creation date |
 
 ## Creating Tasks
@@ -113,9 +120,10 @@ created: 2025-01-15
 | `title` | Task description |
 | `task-id` | Auto-generated ID (project-id + counter) |
 | `project` | Parent project ID or `inbox` |
-| `status` | `todo`, `in-progress`, `blocked`, `done` |
+| `status` | `todo`, `doing`, `blocked`, `done`, `cancelled` |
 | `created` | Creation date |
 | `completed_at` | Completion timestamp (set by `task done`) |
+| `cancelled_at` | Cancellation timestamp (set by `task cancel` or project archive) |
 
 ## Listing Projects
 
@@ -380,6 +388,49 @@ return {
         return true
     end,
 }
+```
+
+## Archiving Projects
+
+When a project is complete, archive it to move files out of the active `Projects/` folder:
+
+```bash
+# Archive a completed project
+mdv project archive my-cool-project
+
+# Skip confirmation prompt
+mdv project archive my-cool-project --yes
+```
+
+### What Archiving Does
+
+1. **Validates** the project has `status: done` — rejects otherwise
+2. **Cancels** any remaining open tasks (todo, doing, blocked)
+3. **Updates** project frontmatter: `status: archived`, `archived_at: <timestamp>`
+4. **Clears focus** if the archived project was the active focus
+5. **Moves** all files from `Projects/{slug}/` to `Projects/_archive/{slug}/`
+6. **Updates** all wikilinks and index entries to the new paths
+7. **Logs** the archival to both the daily note and the project note
+
+### Archived Project Behaviour
+
+- Archived projects are excluded from `mdv project list` by default
+- Task and project lookups still find archived items (for backlink resolution)
+- **Cannot create new tasks** in an archived project — returns an error
+- Archived files are safe in `_archive/` and can be browsed or searched
+
+### Workflow
+
+```bash
+# 1. Mark project as done
+mdv task done Projects/MCP/Tasks/MCP-003.md
+# ... complete remaining tasks ...
+
+# 2. Verify project is ready
+mdv project status MCP
+
+# 3. Archive
+mdv project archive MCP --yes
 ```
 
 ## Tips

@@ -44,7 +44,6 @@ mdvault is undergoing a significant expansion. The core templating and capture s
 
 ### In Development
 - Contextual search (graph neighbourhood + temporal signals)
-- Daily logging integration for task completion
 
 ## Installation
 
@@ -141,6 +140,13 @@ mdv
 | `mdv task done <task>` | Mark a task as done |
 | `mdv project list` | List projects with task counts |
 | `mdv project status <id>` | Show project status with tasks |
+| `mdv project archive <id>` | Archive a completed project |
+| `mdv project progress [id]` | Show project progress metrics |
+| `mdv task cancel <path>` | Cancel a task |
+| `mdv focus <project>` | Set active project focus |
+| `mdv today` | Daily planning dashboard |
+| `mdv context day\|week\|note\|focus` | Activity context queries |
+| `mdv report --month\|--week` | Activity reporting |
 
 See `mdv --help` for full options.
 
@@ -153,7 +159,8 @@ mdvault enforces note types via frontmatter. Types can be customized with Lua de
 | `daily` | Daily notes, temporal backbone | `date` |
 | `weekly` | Weekly overviews | `week_start_date` |
 | `task` | Individual tasks | `status`, `project` |
-| `project` | Task collections | `status`, `created_date` |
+| `project` | Task collections | `status`, `created_at` |
+| `meeting` | Meeting notes | `date`, `attendees` |
 | `zettel` | Knowledge notes | `tags` |
 | `none` | Uncategorised (triage queue) | — |
 
@@ -169,13 +176,10 @@ This enables Claude and other MCP clients to:
 
 ## Documentation
 
+- [Getting Started](./docs/getting-started.md) — Installation and common workflows
 - [Architecture and Design](./docs/architecture.md) — Full design philosophy and technical details
-- [Development Plan](./docs/PLAN.md) — Implementation phases and roadmap
 - [Lua Scripting](./docs/lua-scripting.md) — Using the Lua scripting layer
-
-### Legacy Documentation
-
-The original markadd documentation (templates, captures, macros, configuration) is preserved in [`docs/markadd-legacy/`](./docs/markadd-legacy/).
+- [Project & Task Management](./docs/project-task-management.md) — Projects, tasks, and archiving
 
 ## Compatibility
 
