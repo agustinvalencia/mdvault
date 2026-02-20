@@ -43,7 +43,7 @@ impl ContextQueryService {
             activity_service,
             index_db,
             // TODO: Make configurable
-            daily_note_pattern: "Journal/Daily/{date}.md".to_string(),
+            daily_note_pattern: "Journal/{year}/Daily/{date}.md".to_string(),
         }
     }
 
@@ -303,7 +303,11 @@ impl ContextQueryService {
     /// Parse daily note for sections and log count.
     fn parse_daily_note(&self, date: NaiveDate) -> Option<DailyNoteInfo> {
         let date_str = date.format("%Y-%m-%d").to_string();
-        let rel_path = self.daily_note_pattern.replace("{date}", &date_str);
+        let year_str = date.format("%Y").to_string();
+        let rel_path = self
+            .daily_note_pattern
+            .replace("{year}", &year_str)
+            .replace("{date}", &date_str);
         let path = self.vault_root.join(&rel_path);
 
         let exists = path.exists();

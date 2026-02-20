@@ -301,20 +301,26 @@ pub fn render_string_with_ref_date(
 /// Parse a filter expression like "var_name | filter_name".
 /// Returns (var_name, filter_name) if valid, None otherwise.
 fn parse_filter_expr(expr: &str) -> Option<(&str, &str)> {
-    // Don't parse date expressions with format as filters (e.g., "today | %Y-%m-%d")
-    if is_date_expr(expr) {
+    let parts: Vec<&str> = expr.splitn(2, '|').collect();
+    if parts.len() != 2 {
         return None;
     }
 
-    let parts: Vec<&str> = expr.splitn(2, '|').collect();
-    if parts.len() == 2 {
-        let var_name = parts[0].trim();
-        let filter = parts[1].trim();
-        if !var_name.is_empty() && !filter.is_empty() {
-            return Some((var_name, filter));
-        }
+    let var_name = parts[0].trim();
+    let filter = parts[1].trim();
+    if var_name.is_empty() || filter.is_empty() {
+        return None;
     }
-    None
+
+    // Date format specifiers start with '%' (e.g., "today | %Y-%m-%d").
+    // These are date expressions, not variable filters.
+    if filter.starts_with('%') {
+        return None;
+    }
+
+    // Named filters (slugify, year, etc.) are always variable filters,
+    // even when the variable name happens to be a date keyword like "date".
+    Some((var_name, filter))
 }
 
 /// Apply a filter to a value.
@@ -324,6 +330,7 @@ fn apply_filter(value: &str, filter: &str) -> String {
         "lowercase" | "lower" => value.to_lowercase(),
         "uppercase" | "upper" => value.to_uppercase(),
         "trim" => value.trim().to_string(),
+        "year" => value.chars().take(4).collect(),
         _ => value.to_string(), // Unknown filter, return unchanged
     }
 }
@@ -447,6 +454,27 @@ mod tests {
         let result =
             render_string("{{vault_root}}/tasks/{{title | slugify}}.md", &ctx).unwrap();
         assert_eq!(result, "/vault/tasks/my-new-task.md");
+    }
+
+    #[test]
+    fn test_render_string_with_year_filter() {
+        let mut ctx = RenderContext::new();
+        ctx.insert("period".into(), "2026-02".into());
+
+        let result =
+            render_string("Journal/{{period | year}}/Monthly/{{period}}.md", &ctx)
+                .unwrap();
+        assert_eq!(result, "Journal/2026/Monthly/2026-02.md");
+
+        // Also works with YYYY-MM-DD
+        ctx.insert("date".into(), "2026-02-20".into());
+        let result = render_string("{{date | year}}", &ctx).unwrap();
+        assert_eq!(result, "2026");
+
+        // And YYYY-Www
+        ctx.insert("week".into(), "2026-W08".into());
+        let result = render_string("{{week | year}}", &ctx).unwrap();
+        assert_eq!(result, "2026");
     }
 
     #[test]

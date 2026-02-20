@@ -108,8 +108,12 @@ fn open_daily_note(config: Option<&Path>, profile: Option<&str>) {
     };
 
     let today = Local::now().date_naive();
-    let daily_path =
-        cfg.vault_root.join(format!("Journal/Daily/{}.md", today.format("%Y-%m-%d")));
+    let year = today.format("%Y");
+    let daily_path = cfg.vault_root.join(format!(
+        "Journal/{}/Daily/{}.md",
+        year,
+        today.format("%Y-%m-%d")
+    ));
 
     if !daily_path.exists() {
         error!(
@@ -150,8 +154,12 @@ fn gather_dashboard_data(
     let all_notes = db.query_notes(&NoteQuery::default()).unwrap_or_default();
 
     // Check if today's daily note exists
-    let daily_path =
-        vault_root.join(format!("Journal/Daily/{}.md", today.format("%Y-%m-%d")));
+    let year = today.format("%Y");
+    let daily_path = vault_root.join(format!(
+        "Journal/{}/Daily/{}.md",
+        year,
+        today.format("%Y-%m-%d")
+    ));
     let daily_note_exists = daily_path.exists();
     let daily_note_path = if daily_note_exists {
         Some(daily_path.to_string_lossy().to_string())

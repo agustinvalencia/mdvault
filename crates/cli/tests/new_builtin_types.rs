@@ -106,7 +106,8 @@ task_counter: 5
 
     // Verify daily note contains link
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let daily_path = vault.join(format!("Journal/Daily/{}.md", today));
+    let year = &today[..4];
+    let daily_path = vault.join(format!("Journal/{}/Daily/{}.md", year, today));
     assert!(daily_path.exists());
     let daily_content = fs::read_to_string(&daily_path).unwrap();
     assert!(daily_content.contains("[[TST-006|My Task]]"));
@@ -424,7 +425,7 @@ fn daily_creation_uses_date_path() {
     write(
         &typedef_path,
         r#"return {
-    output = "Journal/Daily/{{title}}.md",
+    output = "Journal/{{date | %Y}}/Daily/{{title}}.md",
     schema = {
         date = { type = "string", default_expr = "os.date('%Y-%m-%d')" }
     }
@@ -437,7 +438,8 @@ fn daily_creation_uses_date_path() {
     assert!(output.status.success(), "Command failed: {:?}", output);
 
     // Assertions
-    let daily_path = vault.join(format!("Journal/Daily/{}.md", today));
+    let year = &today[..4];
+    let daily_path = vault.join(format!("Journal/{}/Daily/{}.md", year, today));
     assert!(daily_path.exists(), "Daily note not found at {:?}", daily_path);
 
     let content = fs::read_to_string(&daily_path).unwrap();
@@ -457,7 +459,7 @@ fn weekly_creation_uses_week_path() {
     write(
         &typedef_path,
         r#"return {
-    output = "Journal/Weekly/{{title}}.md",
+    output = "Journal/{{week | %G}}/Weekly/{{title}}.md",
     schema = {
         week = { type = "string", default_expr = "os.date('%G-W%V')" }
     }
@@ -470,7 +472,8 @@ fn weekly_creation_uses_week_path() {
     assert!(output.status.success(), "Command failed: {:?}", output);
 
     // Assertions
-    let weekly_path = vault.join(format!("Journal/Weekly/{}.md", week));
+    let year = &week[..4];
+    let weekly_path = vault.join(format!("Journal/{}/Weekly/{}.md", year, week));
     assert!(weekly_path.exists(), "Weekly note not found at {:?}", weekly_path);
 
     let content = fs::read_to_string(&weekly_path).unwrap();
@@ -491,7 +494,7 @@ fn daily_with_date_expression_evaluates_title_and_path() {
     write(
         &typedef_path,
         r#"return {
-    output = "Journal/Daily/{{title}}.md",
+    output = "Journal/{{date | %Y}}/Daily/{{title}}.md",
     schema = {
         date = { type = "string", default_expr = "os.date('%Y-%m-%d')" }
     }
@@ -505,7 +508,8 @@ fn daily_with_date_expression_evaluates_title_and_path() {
     assert!(output.status.success(), "Command failed: {:?}", output);
 
     // Assertions: File should be created with evaluated date, not literal "today + 7d"
-    let daily_path = vault.join(format!("Journal/Daily/{}.md", expected_date));
+    let year = &expected_date[..4];
+    let daily_path = vault.join(format!("Journal/{}/Daily/{}.md", year, expected_date));
     assert!(
         daily_path.exists(),
         "Daily note not found at {:?} (should use evaluated date, not 'today + 7d')",
@@ -539,7 +543,7 @@ fn weekly_with_date_expression_evaluates_title_and_path() {
     write(
         &typedef_path,
         r#"return {
-    output = "Journal/Weekly/{{title}}.md",
+    output = "Journal/{{week | %G}}/Weekly/{{title}}.md",
     schema = {
         week = { type = "string", default_expr = "os.date('%G-W%V')" }
     }
@@ -553,7 +557,8 @@ fn weekly_with_date_expression_evaluates_title_and_path() {
     assert!(output.status.success(), "Command failed: {:?}", output);
 
     // Assertions: File should be created with evaluated week, not literal "today + 2w"
-    let weekly_path = vault.join(format!("Journal/Weekly/{}.md", expected_week));
+    let year = &expected_week[..4];
+    let weekly_path = vault.join(format!("Journal/{}/Weekly/{}.md", year, expected_week));
     assert!(
         weekly_path.exists(),
         "Weekly note not found at {:?} (should use evaluated week, not 'today + 2w')",

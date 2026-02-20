@@ -2,13 +2,13 @@
 //!
 //! Weekly notes have:
 //! - Week-based identity (no ID, uses week)
-//! - Output path: Journal/Weekly/{week}.md
+//! - Output path: Journal/{year}/Weekly/{week}.md
 //! - week field in frontmatter (YYYY-WXX format)
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use chrono::Local;
+use chrono::{Local, NaiveDate, Weekday};
 
 use crate::types::TypeDefinition;
 use crate::vars::datemath::{is_date_expr, try_evaluate_date_expr};
@@ -44,14 +44,15 @@ impl NoteIdentity for WeeklyBehavior {
             return super::render_output_template(output, ctx);
         }
 
-        // Default: Journal/Weekly/YYYY-WXX.md
+        // Default: Journal/{year}/Weekly/YYYY-WXX.md
         let week = ctx
             .core_metadata
             .week
             .as_ref()
             .ok_or_else(|| DomainError::PathResolution("week not set".into()))?;
+        let year = &week[..4];
 
-        Ok(ctx.config.vault_root.join(format!("Journal/Weekly/{}.md", week)))
+        Ok(ctx.config.vault_root.join(format!("Journal/{}/Weekly/{}.md", year, week)))
     }
 
     fn core_fields(&self) -> Vec<&'static str> {
@@ -82,6 +83,17 @@ impl NoteLifecycle for WeeklyBehavior {
         ctx.core_metadata.week = Some(week.clone());
         ctx.core_metadata.title = Some(week.clone());
         ctx.set_var("week", &week);
+
+        // Set reference_date to the Monday of this week so that date format
+        // filters like {{week | %G}} evaluate relative to the correct week.
+        if week.len() >= 7
+            && week.contains("-W")
+            && let Ok(year) = week[..4].parse::<i32>()
+            && let Ok(wk) = week[6..].parse::<u32>()
+            && let Some(monday) = NaiveDate::from_isoywd_opt(year, wk, Weekday::Mon)
+        {
+            ctx.reference_date = Some(monday);
+        }
 
         Ok(())
     }

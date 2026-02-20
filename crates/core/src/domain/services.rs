@@ -34,9 +34,11 @@ impl DailyLogService {
     ) -> Result<(), String> {
         let today = Local::now().format("%Y-%m-%d").to_string();
         let time = Local::now().format("%H:%M").to_string();
+        let year = &today[..4];
 
-        // Build daily note path (default pattern: Journal/Daily/YYYY-MM-DD.md)
-        let daily_path = config.vault_root.join(format!("Journal/Daily/{}.md", today));
+        // Build daily note path (default pattern: Journal/{year}/Daily/YYYY-MM-DD.md)
+        let daily_path =
+            config.vault_root.join(format!("Journal/{}/Daily/{}.md", year, today));
 
         // Ensure parent directory exists
         if let Some(parent) = daily_path.parent() {
@@ -122,8 +124,10 @@ impl DailyLogService {
     ) -> Result<(), String> {
         let today = Local::now().format("%Y-%m-%d").to_string();
         let time = Local::now().format("%H:%M").to_string();
+        let year = &today[..4];
 
-        let daily_path = config.vault_root.join(format!("Journal/Daily/{}.md", today));
+        let daily_path =
+            config.vault_root.join(format!("Journal/{}/Daily/{}.md", year, today));
 
         if let Some(parent) = daily_path.parent() {
             fs::create_dir_all(parent)
@@ -253,7 +257,8 @@ mod tests {
 
         // Check daily note was created
         let today = Local::now().format("%Y-%m-%d").to_string();
-        let daily_path = tmp.path().join(format!("Journal/Daily/{}.md", today));
+        let year = &today[..4];
+        let daily_path = tmp.path().join(format!("Journal/{}/Daily/{}.md", year, today));
         assert!(daily_path.exists());
 
         let content = fs::read_to_string(&daily_path).unwrap();
@@ -270,7 +275,8 @@ mod tests {
 
         // Create existing daily note
         let today = Local::now().format("%Y-%m-%d").to_string();
-        let daily_path = tmp.path().join(format!("Journal/Daily/{}.md", today));
+        let year = &today[..4];
+        let daily_path = tmp.path().join(format!("Journal/{}/Daily/{}.md", year, today));
         fs::create_dir_all(daily_path.parent().unwrap()).unwrap();
         fs::write(
             &daily_path,
@@ -356,7 +362,8 @@ mod tests {
         assert!(result.is_ok());
 
         let today = Local::now().format("%Y-%m-%d").to_string();
-        let daily_path = tmp.path().join(format!("Journal/Daily/{}.md", today));
+        let year = &today[..4];
+        let daily_path = tmp.path().join(format!("Journal/{}/Daily/{}.md", year, today));
         assert!(daily_path.exists());
 
         let content = fs::read_to_string(&daily_path).unwrap();
@@ -385,7 +392,8 @@ mod tests {
         assert!(result.is_ok());
 
         let today = Local::now().format("%Y-%m-%d").to_string();
-        let daily_path = tmp.path().join(format!("Journal/Daily/{}.md", today));
+        let year = &today[..4];
+        let daily_path = tmp.path().join(format!("Journal/{}/Daily/{}.md", year, today));
         let content = fs::read_to_string(&daily_path).unwrap();
         assert!(content.contains("Cancelled task TST-002"));
         assert!(content.contains("[[TST-002|Old feature]]"));

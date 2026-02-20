@@ -5,7 +5,7 @@
 //! - Date prompt (defaults to today)
 //! - Attendees prompt
 //! - Logging to daily note
-//! - Output path: Meetings/{id}.md
+//! - Output path: Meetings/{year}/{id}.md
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -49,13 +49,19 @@ impl NoteIdentity for MeetingBehavior {
             return super::render_output_template(output, ctx);
         }
 
-        // Default path: Meetings/{meeting-id}.md
+        // Default path: Meetings/{year}/{meeting-id}.md
         let meeting_id =
             ctx.core_metadata.meeting_id.as_ref().ok_or_else(|| {
                 DomainError::PathResolution("meeting-id not set".into())
             })?;
+        let date = ctx
+            .core_metadata
+            .date
+            .as_ref()
+            .ok_or_else(|| DomainError::PathResolution("date not set".into()))?;
+        let year = &date[..4];
 
-        Ok(ctx.config.vault_root.join(format!("Meetings/{}.md", meeting_id)))
+        Ok(ctx.config.vault_root.join(format!("Meetings/{}/{}.md", year, meeting_id)))
     }
 
     fn core_fields(&self) -> Vec<&'static str> {
@@ -145,7 +151,8 @@ use std::fs;
 
 /// Generate a meeting ID by scanning the Meetings directory for the given date.
 fn generate_meeting_id(vault_root: &std::path::Path, date: &str) -> DomainResult<String> {
-    let meetings_dir = vault_root.join("Meetings");
+    let year = &date[..4];
+    let meetings_dir = vault_root.join("Meetings").join(year);
     let prefix = format!("MTG-{}-", date);
 
     let mut max_num = 0u32;

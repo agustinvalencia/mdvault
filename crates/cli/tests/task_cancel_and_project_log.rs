@@ -118,7 +118,8 @@ fn task_done_logs_to_project_note() {
 
     // Check daily note has completion log entry
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let daily_path = vault.join(format!("Journal/Daily/{}.md", today));
+    let year = &today[..4];
+    let daily_path = vault.join(format!("Journal/{}/Daily/{}.md", year, today));
     assert!(daily_path.exists(), "Daily note should be created");
     let daily_content = fs::read_to_string(&daily_path).unwrap();
     assert!(
@@ -185,7 +186,8 @@ fn task_cancel_sets_status_and_logs() {
 
     // Check daily note has cancellation log entry
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let daily_path = vault.join(format!("Journal/Daily/{}.md", today));
+    let year = &today[..4];
+    let daily_path = vault.join(format!("Journal/{}/Daily/{}.md", year, today));
     assert!(daily_path.exists(), "Daily note should be created");
     let daily_content = fs::read_to_string(&daily_path).unwrap();
     assert!(

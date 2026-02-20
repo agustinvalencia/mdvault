@@ -2,7 +2,7 @@
 //!
 //! Daily notes have:
 //! - Date-based identity (no ID, uses date)
-//! - Output path: Journal/Daily/{date}.md
+//! - Output path: Journal/{year}/Daily/{date}.md
 //! - date field in frontmatter
 
 use std::path::PathBuf;
@@ -44,14 +44,15 @@ impl NoteIdentity for DailyBehavior {
             return super::render_output_template(output, ctx);
         }
 
-        // Default: Journal/Daily/YYYY-MM-DD.md
+        // Default: Journal/{year}/Daily/YYYY-MM-DD.md
         let date = ctx
             .core_metadata
             .date
             .as_ref()
             .ok_or_else(|| DomainError::PathResolution("date not set".into()))?;
+        let year = &date[..4];
 
-        Ok(ctx.config.vault_root.join(format!("Journal/Daily/{}.md", date)))
+        Ok(ctx.config.vault_root.join(format!("Journal/{}/Daily/{}.md", year, date)))
     }
 
     fn core_fields(&self) -> Vec<&'static str> {
