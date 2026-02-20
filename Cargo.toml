@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 license = "MIT"
-authors = ["Agustin Valencia <aguvalenciag@gmail.com>"]
+authors = ["The mdvault Authors"]
 repository = "https://github.com/agustinvalencia/mdvault"
 homepage = "https://github.com/agustinvalencia/mdvault"
 readme = "README.md"

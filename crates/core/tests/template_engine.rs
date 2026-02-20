@@ -17,18 +17,18 @@ fn loaded(contents: &str) -> LoadedTemplate {
 fn render_replaces_known_variables() {
     let tpl = loaded("Hello {{name}}!");
     let mut ctx = RenderContext::new();
-    ctx.insert("name".into(), "Agustin".into());
+    ctx.insert("name".into(), "Alice".into());
 
     let out = render(&tpl, &ctx).expect("render ok");
-    assert_eq!(out, "Hello Agustin!");
+    assert_eq!(out, "Hello Alice!");
 }
 
 #[test]
 fn render_leaves_unknown_variables_intact() {
     let tpl = loaded("Hello {{name}} and {{unknown}}!");
     let mut ctx = RenderContext::new();
-    ctx.insert("name".into(), "Agustin".into());
+    ctx.insert("name".into(), "Alice".into());
 
     let out = render(&tpl, &ctx).expect("render ok");
-    assert_eq!(out, "Hello Agustin and {{unknown}}!");
+    assert_eq!(out, "Hello Alice and {{unknown}}!");
 }
