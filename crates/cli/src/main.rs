@@ -192,6 +192,9 @@ enum ProjectCommands {
 
     /// Show project progress with completion metrics and velocity
     Progress(ProjectProgressArgs),
+
+    /// Archive a completed project
+    Archive(ProjectArchiveArgs),
 }
 
 #[derive(Debug, Args)]
@@ -254,6 +257,17 @@ pub struct ProjectProgressArgs {
     /// Include archived projects
     #[arg(long)]
     pub include_archived: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ProjectArchiveArgs {
+    /// Project ID or folder name
+    #[arg(add = ArgValueCompleter::new(completions::complete_projects))]
+    pub project: String,
+
+    /// Skip confirmation prompts
+    #[arg(long, short)]
+    pub yes: bool,
 }
 
 #[derive(Debug, Args)]
@@ -931,6 +945,14 @@ fn main() {
                     args.project.as_deref(),
                     args.json,
                     args.include_archived,
+                );
+            }
+            ProjectCommands::Archive(args) => {
+                cmd::project::archive(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    &args.project,
+                    args.yes,
                 );
             }
         },

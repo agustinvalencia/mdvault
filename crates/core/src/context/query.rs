@@ -476,11 +476,15 @@ impl ContextQueryService {
         result
     }
 
-    /// Extract project name from a path like "Projects/MyProject/Tasks/TST-001.md".
+    /// Extract project name from a path like "Projects/MyProject/Tasks/TST-001.md"
+    /// or "Projects/_archive/MyProject/Tasks/TST-001.md".
     fn extract_project_from_path(&self, path: &Path) -> Option<String> {
         let path_str = path.to_string_lossy();
         let parts: Vec<&str> = path_str.split('/').collect();
 
+        if parts.len() >= 4 && parts[0] == "Projects" && parts[1] == "_archive" {
+            return Some(parts[2].to_string());
+        }
         if parts.len() >= 2 && parts[0] == "Projects" {
             Some(parts[1].to_string())
         } else {
@@ -653,7 +657,7 @@ impl ContextQueryService {
         for task in tasks {
             // Check if task belongs to this project
             let task_path_str = task.path.to_string_lossy();
-            if !task_path_str.contains(&format!("Projects/{}/", project_folder)) {
+            if !crate::domain::task_belongs_to_project(&task_path_str, &project_folder) {
                 continue;
             }
 
@@ -708,7 +712,7 @@ impl ContextQueryService {
         for task in tasks {
             // Check if task belongs to this project
             let task_path_str = task.path.to_string_lossy();
-            if !task_path_str.contains(&format!("Projects/{}/", project_folder)) {
+            if !crate::domain::task_belongs_to_project(&task_path_str, &project_folder) {
                 continue;
             }
 

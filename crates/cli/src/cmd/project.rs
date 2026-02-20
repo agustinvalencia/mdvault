@@ -2,6 +2,9 @@
 
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use mdvault_core::config::loader::ConfigLoader;
+use mdvault_core::context::ContextManager;
+use mdvault_core::domain::task_belongs_to_project;
+use mdvault_core::domain::{services::ProjectLogService, DailyLogService};
 use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery, NoteType};
 use serde::Serialize;
 use std::path::Path;
@@ -110,7 +113,7 @@ pub fn list(config: Option<&Path>, profile: Option<&str>, status_filter: Option<
             .iter()
             .filter(|t| {
                 let path_str = t.path.to_string_lossy();
-                path_str.contains(&format!("Projects/{}/", project_folder))
+                task_belongs_to_project(&path_str, project_folder)
             })
             .collect();
 
@@ -216,8 +219,7 @@ pub fn status(config: Option<&Path>, profile: Option<&str>, project_name: &str) 
         .into_iter()
         .filter(|t| {
             let path_str = t.path.to_string_lossy();
-            path_str.contains(&format!("Projects/{}/", project_folder))
-                || path_str.contains(&format!("projects/{}/", project_folder))
+            task_belongs_to_project(&path_str, project_folder)
         })
         .collect();
 
@@ -540,8 +542,7 @@ fn calculate_project_progress(
         .iter()
         .filter(|t| {
             let path_str = t.path.to_string_lossy();
-            path_str.contains(&format!("Projects/{}/", project_folder))
-                || path_str.contains(&format!("projects/{}/", project_folder))
+            task_belongs_to_project(&path_str, project_folder)
         })
         .collect();
 
@@ -688,4 +689,401 @@ fn print_all_projects_progress(data: &[ProjectProgress]) {
     let table = Table::new(&rows).with(Style::rounded()).to_string();
     println!("{}", table);
     println!("\nTotal: {} projects", data.len());
+}
+
+/// Archive a completed project.
+///
+/// Moves project files to Projects/_archive/{slug}/, cancels open tasks,
+/// clears focus if set, and logs the event.
+pub fn archive(
+    config: Option<&Path>,
+    profile: Option<&str>,
+    project_name: &str,
+    skip_confirm: bool,
+) {
+    let cfg = match ConfigLoader::load(config, profile) {
+        Ok(rc) => rc,
+        Err(e) => {
+            eprintln!("Failed to load config: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let db = match IndexDb::open(&index_path) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("Failed to open index: {e}");
+            eprintln!("Run 'mdv reindex' first.");
+            std::process::exit(1);
+        }
+    };
+
+    // Find the project in the index
+    let project_query =
+        NoteQuery { note_type: Some(NoteType::Project), ..Default::default() };
+    let projects = db.query_notes(&project_query).unwrap_or_default();
+
+    let project = projects.iter().find(|p| {
+        let folder = p.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let (id, _) = extract_project_info(p);
+        folder.eq_ignore_ascii_case(project_name) || id.eq_ignore_ascii_case(project_name)
+    });
+
+    let project = match project {
+        Some(p) => p,
+        None => {
+            eprintln!("Project not found: {}", project_name);
+            eprintln!("Run 'mdv project list' to see available projects.");
+            std::process::exit(1);
+        }
+    };
+
+    let project_folder =
+        project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+    let (project_id, project_status) = extract_project_info(project);
+    let project_title = if project.title.is_empty() {
+        project_folder.clone()
+    } else {
+        project.title.clone()
+    };
+
+    // Validate: only done projects can be archived
+    if project_status != "done" {
+        eprintln!(
+            "Cannot archive project '{}': status is '{}', must be 'done'.",
+            project_title, project_status
+        );
+        eprintln!("Mark the project as done first, then archive it.");
+        std::process::exit(1);
+    }
+
+    // Check if already archived
+    let project_path_str = project.path.to_string_lossy();
+    if project_path_str.contains("Projects/_archive/") {
+        eprintln!("Project '{}' is already archived.", project_title);
+        std::process::exit(1);
+    }
+
+    // Find all tasks belonging to this project
+    let task_query = NoteQuery { note_type: Some(NoteType::Task), ..Default::default() };
+    let all_tasks = db.query_notes(&task_query).unwrap_or_default();
+
+    let project_tasks: Vec<&IndexedNote> = all_tasks
+        .iter()
+        .filter(|t| {
+            let path_str = t.path.to_string_lossy();
+            task_belongs_to_project(&path_str, &project_folder)
+        })
+        .collect();
+
+    // Identify open tasks (not done/cancelled)
+    let open_tasks: Vec<&IndexedNote> = project_tasks
+        .iter()
+        .filter(|t| {
+            let status = get_task_status(t).unwrap_or_else(|| "todo".to_string());
+            !matches!(status.as_str(), "done" | "completed" | "cancelled" | "canceled")
+        })
+        .copied()
+        .collect();
+
+    // Confirmation prompt
+    if !skip_confirm {
+        println!("Archive project: {} [{}]", project_title, project_id);
+        println!();
+        println!("This will:");
+        println!(
+            "  - Move {} files to Projects/_archive/{}/",
+            project_tasks.len() + 1,
+            project_folder
+        );
+        if !open_tasks.is_empty() {
+            println!("  - Cancel {} open task(s)", open_tasks.len());
+            for task in &open_tasks {
+                let tid = get_task_id(task).unwrap_or_else(|| "-".to_string());
+                println!("    - {}: {}", tid, task.title);
+            }
+        }
+        println!("  - Set status to 'archived'");
+        println!("  - Clear focus if set to this project");
+        println!();
+        eprint!("Continue? [y/N] ");
+
+        use std::io::Read;
+        let mut input = [0u8; 1];
+        let _ = std::io::stdin().read(&mut input);
+        if input[0] != b'y' && input[0] != b'Y' {
+            println!("Aborted.");
+            return;
+        }
+    }
+
+    // --- Execute the archive ---
+
+    let project_file_abs = cfg.vault_root.join(&project.path);
+
+    // 1. Cancel open tasks (before move, so paths are still valid)
+    let mut tasks_cancelled = 0;
+    for task in &open_tasks {
+        let task_abs = cfg.vault_root.join(&task.path);
+        if cancel_task_for_archive(&cfg, &db, &task_abs, &task.path) {
+            tasks_cancelled += 1;
+        }
+    }
+
+    // 2. Update project frontmatter: status -> archived, add archived_at
+    update_project_frontmatter_for_archive(&project_file_abs);
+
+    // 3. Log to project note (before move so path is valid)
+    let archive_msg = format!("Archived project. {} task(s) cancelled.", tasks_cancelled);
+    let _ = ProjectLogService::log_entry(&project_file_abs, &archive_msg);
+
+    // 4. Clear focus if this project is currently focused
+    if let Ok(mut mgr) = ContextManager::load(&cfg.vault_root) {
+        if let Some(focused) = mgr.active_project() {
+            if focused.eq_ignore_ascii_case(&project_folder)
+                || focused.eq_ignore_ascii_case(&project_id)
+            {
+                let _ = mgr.clear_focus();
+            }
+        }
+    }
+
+    // 5. Move files from Projects/{slug}/ to Projects/_archive/{slug}/
+    let source_dir = cfg.vault_root.join(format!("Projects/{}", project_folder));
+    let archive_dir =
+        cfg.vault_root.join(format!("Projects/_archive/{}", project_folder));
+
+    if source_dir.exists() {
+        // Move each .md file using execute_rename for reference updates
+        let md_files = collect_md_files(&source_dir);
+        let non_md_files = collect_non_md_files(&source_dir);
+
+        // Ensure archive directory structure exists
+        if let Err(e) = std::fs::create_dir_all(&archive_dir) {
+            eprintln!("Failed to create archive directory: {e}");
+            std::process::exit(1);
+        }
+
+        // Move .md files via execute_rename (updates backlinks and index)
+        for md_file in &md_files {
+            let rel_old = md_file.strip_prefix(&cfg.vault_root).unwrap_or(md_file);
+            let relative_to_source = md_file.strip_prefix(&source_dir).unwrap();
+            let new_abs = archive_dir.join(relative_to_source);
+
+            // Ensure parent dir exists
+            if let Some(parent) = new_abs.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+
+            let rel_new = new_abs.strip_prefix(&cfg.vault_root).unwrap_or(&new_abs);
+
+            match mdvault_core::rename::execute_rename(
+                &db,
+                &cfg.vault_root,
+                rel_old,
+                rel_new,
+            ) {
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("Warning: failed to rename {}: {e}", rel_old.display());
+                    // Fall back to direct move
+                    let _ = std::fs::rename(md_file, &new_abs);
+                }
+            }
+        }
+
+        // Move non-.md files directly
+        for file in &non_md_files {
+            let relative_to_source = file.strip_prefix(&source_dir).unwrap();
+            let new_path = archive_dir.join(relative_to_source);
+            if let Some(parent) = new_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::rename(file, &new_path);
+        }
+
+        // Remove the now-empty source directory tree
+        let _ = std::fs::remove_dir_all(&source_dir);
+    }
+
+    // 6. Log to daily note
+    let archived_project_file = archive_dir.join(format!("{}.md", project_folder));
+    let _ = DailyLogService::log_event(
+        &cfg,
+        "Archived",
+        "project",
+        &project_title,
+        &project_id,
+        &archived_project_file,
+    );
+
+    // Output
+    println!("OK   mdv project archive");
+    println!("project:  {} [{}]", project_title, project_id);
+    println!("status:   archived");
+    println!("moved to: Projects/_archive/{}/", project_folder);
+    if tasks_cancelled > 0 {
+        println!("tasks cancelled: {}", tasks_cancelled);
+    }
+}
+
+/// Cancel a single task as part of project archival.
+///
+/// Returns true if successfully cancelled.
+fn cancel_task_for_archive(
+    cfg: &mdvault_core::config::types::ResolvedConfig,
+    db: &IndexDb,
+    task_abs: &std::path::Path,
+    task_rel: &std::path::Path,
+) -> bool {
+    let content = match std::fs::read_to_string(task_abs) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    let parsed = match mdvault_core::frontmatter::parse(&content) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+
+    let mut fm = match parsed.frontmatter {
+        Some(fm) => fm,
+        None => return false,
+    };
+
+    // Update status to cancelled
+    fm.fields
+        .insert("status".to_string(), serde_yaml::Value::String("cancelled".to_string()));
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+    fm.fields.insert("cancelled_at".to_string(), serde_yaml::Value::String(now));
+
+    let task_id =
+        fm.fields.get("task-id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let task_title =
+        fm.fields.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+    // Rebuild YAML
+    let mut mapping = serde_yaml::Mapping::new();
+    for (k, v) in fm.fields {
+        mapping.insert(serde_yaml::Value::String(k), v);
+    }
+    let yaml_str = match serde_yaml::to_string(&serde_yaml::Value::Mapping(mapping)) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    // Append cancellation reason to body
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let time = chrono::Local::now().format("%H:%M").to_string();
+    let body = format!(
+        "{}\n- **[[{}]] {}** : Cancelled - Project archived\n",
+        parsed.body.trim_end(),
+        today,
+        time,
+    );
+
+    let final_content = format!("---\n{}---\n{}", yaml_str, body);
+
+    if std::fs::write(task_abs, final_content).is_err() {
+        return false;
+    }
+
+    // Update index
+    let builder = mdvault_core::index::IndexBuilder::new(db, &cfg.vault_root);
+    let _ = builder.reindex_file(task_rel);
+
+    // Log to daily note
+    let _ = DailyLogService::log_event(
+        cfg,
+        "Cancelled",
+        "task",
+        &task_title,
+        &task_id,
+        task_abs,
+    );
+
+    true
+}
+
+/// Update project frontmatter to set status=archived and archived_at timestamp.
+fn update_project_frontmatter_for_archive(project_file: &std::path::Path) {
+    let content = match std::fs::read_to_string(project_file) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Failed to read project file: {e}");
+            return;
+        }
+    };
+
+    let parsed = match mdvault_core::frontmatter::parse(&content) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to parse project frontmatter: {e}");
+            return;
+        }
+    };
+
+    let mut fm = match parsed.frontmatter {
+        Some(fm) => fm,
+        None => {
+            eprintln!("Project file has no frontmatter");
+            return;
+        }
+    };
+
+    fm.fields
+        .insert("status".to_string(), serde_yaml::Value::String("archived".to_string()));
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+    fm.fields.insert("archived_at".to_string(), serde_yaml::Value::String(now));
+
+    let mut mapping = serde_yaml::Mapping::new();
+    for (k, v) in fm.fields {
+        mapping.insert(serde_yaml::Value::String(k), v);
+    }
+    let yaml_str = match serde_yaml::to_string(&serde_yaml::Value::Mapping(mapping)) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to serialize frontmatter: {e}");
+            return;
+        }
+    };
+
+    let final_content = format!("---\n{}---\n{}", yaml_str, parsed.body);
+
+    if let Err(e) = std::fs::write(project_file, final_content) {
+        eprintln!("Failed to write project file: {e}");
+    }
+}
+
+/// Recursively collect all .md files under a directory.
+fn collect_md_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut result = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                result.extend(collect_md_files(&path));
+            } else if path.extension().map(|e| e == "md").unwrap_or(false) {
+                result.push(path);
+            }
+        }
+    }
+    result
+}
+
+/// Recursively collect all non-.md files under a directory.
+fn collect_non_md_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut result = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                result.extend(collect_non_md_files(&path));
+            } else if !path.extension().map(|e| e == "md").unwrap_or(false) {
+                result.push(path);
+            }
+        }
+    }
+    result
 }

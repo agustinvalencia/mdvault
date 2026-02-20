@@ -560,7 +560,11 @@ fn extract_task_info(task: &IndexedNote) -> (String, String, String) {
 /// Extract project name from a task path.
 fn extract_project_from_path(path: &str) -> String {
     // Expected format: Projects/<project>/Tasks/<task>.md
+    // or: Projects/_archive/<project>/Tasks/<task>.md
     let parts: Vec<&str> = path.split('/').collect();
+    if parts.len() >= 4 && parts[0] == "Projects" && parts[1] == "_archive" {
+        return parts[2].to_string();
+    }
     if parts.len() >= 3 && parts[0] == "Projects" {
         return parts[1].to_string();
     }

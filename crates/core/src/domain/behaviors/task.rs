@@ -81,6 +81,19 @@ impl NoteLifecycle for TaskBehavior {
         let (task_id, project) = if project == "inbox" {
             (generate_inbox_task_id(&ctx.config.vault_root)?, project)
         } else {
+            // Check if project is archived before allowing task creation
+            if let Ok(project_file) = find_project_file(ctx.config, &project)
+                && let Ok(content) = fs::read_to_string(&project_file)
+                && let Ok(parsed) = crate::frontmatter::parse(&content)
+                && let Some(ref fm) = parsed.frontmatter
+                && let Some(status) = fm.fields.get("status")
+                && status.as_str() == Some("archived")
+            {
+                return Err(DomainError::Other(format!(
+                    "Cannot create task in archived project '{}'",
+                    project
+                )));
+            }
             // Get project counter and canonical slug
             let (project_id, counter, slug) = get_project_info(ctx.config, &project)?;
             (format!("{}-{:03}", project_id, counter + 1), slug)
@@ -228,10 +241,16 @@ fn get_project_info(
     Ok((project_id, counter, slug))
 }
 
+/// Check if a task path belongs to a project (active or archived).
+pub fn task_belongs_to_project(task_path: &str, project_folder: &str) -> bool {
+    task_path.contains(&format!("Projects/{}/", project_folder))
+        || task_path.contains(&format!("Projects/_archive/{}/", project_folder))
+}
+
 /// Find the project file by project name/ID/title.
 ///
 /// Searches in the following order:
-/// 1. Direct path patterns (fast path)
+/// 1. Direct path patterns (fast path), including archive
 /// 2. File named {project}.md in any Projects subfolder
 /// 3. Any project file with matching project-id or title in frontmatter
 pub fn find_project_file(
@@ -243,6 +262,7 @@ pub fn find_project_file(
         format!("Projects/{}/{}.md", project, project),
         format!("Projects/{}.md", project),
         format!("projects/{}/{}.md", project.to_lowercase(), project.to_lowercase()),
+        format!("Projects/_archive/{}/{}.md", project, project),
     ];
 
     for pattern in &patterns {
@@ -260,15 +280,22 @@ pub fn find_project_file(
         )));
     }
 
-    // Search for project file by name in any Projects subfolder
+    // Directories to scan: Projects/ and Projects/_archive/
+    let archive_dir = config.vault_root.join("Projects/_archive");
+    let scan_dirs: Vec<&PathBuf> =
+        [&projects_dir, &archive_dir].into_iter().filter(|d| d.exists()).collect();
+
+    // Search for project file by name in any subfolder
     // Handles structures like: Projects/my-project-folder/MDV.md
-    if let Ok(entries) = fs::read_dir(&projects_dir) {
-        for entry in entries.flatten() {
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                // Look for {project}.md in this folder
-                let candidate = entry.path().join(format!("{}.md", project));
-                if candidate.exists() {
-                    return Ok(candidate);
+    for dir in &scan_dirs {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    // Look for {project}.md in this folder
+                    let candidate = entry.path().join(format!("{}.md", project));
+                    if candidate.exists() {
+                        return Ok(candidate);
+                    }
                 }
             }
         }
@@ -277,21 +304,23 @@ pub fn find_project_file(
     // Search by frontmatter project-id or title
     // Handles structures where file is named differently (e.g., markdownvault-development.md with project-id: MDV)
     // Also resolves by human-readable title (e.g., "SEB Account" matches title field)
-    if let Ok(entries) = fs::read_dir(&projects_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                // Look for any .md file in this folder
-                if let Ok(files) = fs::read_dir(&path) {
-                    for file_entry in files.flatten() {
-                        let file_path = file_entry.path();
-                        if file_matches_project(&file_path, project) {
-                            return Ok(file_path);
+    for dir in &scan_dirs {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    // Look for any .md file in this folder
+                    if let Ok(files) = fs::read_dir(&path) {
+                        for file_entry in files.flatten() {
+                            let file_path = file_entry.path();
+                            if file_matches_project(&file_path, project) {
+                                return Ok(file_path);
+                            }
                         }
                     }
+                } else if file_matches_project(&path, project) {
+                    return Ok(path);
                 }
-            } else if file_matches_project(&path, project) {
-                return Ok(path);
             }
         }
     }
@@ -325,16 +354,18 @@ fn file_matches_project(path: &Path, project: &str) -> bool {
 /// Extract the canonical project directory slug from a resolved project file path.
 ///
 /// Given `Projects/seb-account/seb-account.md`, returns `"seb-account"`.
+/// Given `Projects/_archive/seb-account/seb-account.md`, returns `"seb-account"`.
 /// Given `Projects/seb-account.md`, returns `"seb-account"`.
 fn extract_project_slug(project_file: &Path, vault_root: &Path) -> String {
     let rel = project_file.strip_prefix(vault_root).unwrap_or(project_file);
     // Projects/seb-account/seb-account.md → parent dir name = "seb-account"
+    // Projects/_archive/seb-account/seb-account.md → parent dir name = "seb-account"
     // Projects/seb-account.md → file stem = "seb-account"
     if let Some(parent) = rel.parent()
         && let Some(dir_name) = parent.file_name()
     {
         let name = dir_name.to_string_lossy();
-        if !name.eq_ignore_ascii_case("projects") {
+        if !name.eq_ignore_ascii_case("projects") && name != "_archive" {
             return name.to_string();
         }
     }
@@ -494,6 +525,73 @@ mod tests {
         // Should fail for unknown
         let result = find_project_file(&config, "Unknown Project");
         assert!(result.is_err(), "Should fail for unknown project");
+    }
+
+    #[test]
+    fn test_task_belongs_to_project_active_path() {
+        assert!(task_belongs_to_project(
+            "Projects/my-project/Tasks/TST-001.md",
+            "my-project"
+        ));
+    }
+
+    #[test]
+    fn test_task_belongs_to_project_archive_path() {
+        assert!(task_belongs_to_project(
+            "Projects/_archive/my-project/Tasks/TST-001.md",
+            "my-project"
+        ));
+    }
+
+    #[test]
+    fn test_task_belongs_to_project_wrong_project() {
+        assert!(!task_belongs_to_project(
+            "Projects/other-project/Tasks/TST-001.md",
+            "my-project"
+        ));
+    }
+
+    #[test]
+    fn test_task_belongs_to_project_inbox() {
+        assert!(!task_belongs_to_project("Inbox/INB-001.md", "my-project"));
+    }
+
+    #[test]
+    fn test_extract_project_slug_archive() {
+        let vault_root = Path::new("/vault");
+        let project_file =
+            Path::new("/vault/Projects/_archive/seb-account/seb-account.md");
+        assert_eq!(extract_project_slug(project_file, vault_root), "seb-account");
+    }
+
+    #[test]
+    fn test_find_project_file_in_archive() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_root = dir.path();
+
+        // Create archived project structure
+        let archive_dir = vault_root.join("Projects/_archive/old-proj");
+        fs::create_dir_all(&archive_dir).unwrap();
+        let project_file = archive_dir.join("old-proj.md");
+        fs::write(
+            &project_file,
+            "---\ntype: project\ntitle: Old Project\nproject-id: OLD\ntask_counter: 5\nstatus: archived\n---\n",
+        )
+        .unwrap();
+
+        // Also create Projects/ dir (required for the function)
+        fs::create_dir_all(vault_root.join("Projects")).unwrap();
+
+        let config = make_test_config(vault_root);
+
+        // Should resolve by slug (fast path for archive)
+        let result = find_project_file(&config, "old-proj");
+        assert!(result.is_ok(), "Should resolve archived project by slug");
+        assert_eq!(result.unwrap(), project_file);
+
+        // Should resolve by project-id
+        let result = find_project_file(&config, "OLD");
+        assert!(result.is_ok(), "Should resolve archived project by project-id");
     }
 
     fn make_test_config(vault_root: &Path) -> ResolvedConfig {
