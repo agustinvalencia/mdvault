@@ -6,7 +6,7 @@ use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::index::{IndexDb, IndexedNote};
 use serde::Serialize;
 
-use super::output::{print_notes_json, print_notes_quiet, print_notes_table};
+use super::output::{print_notes_json, print_notes_quiet, print_notes_table, truncate};
 use crate::{OutputFormat, StaleArgs};
 
 /// Stale note output for JSON.
@@ -197,16 +197,6 @@ fn print_stale_quiet(notes: &[StaleNote]) {
     }
 }
 
-/// Truncate string with ellipsis if needed.
-fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else if max_len > 3 {
-        format!("{}...", &s[..max_len - 3])
-    } else {
-        s[..max_len].to_string()
-    }
-}
 
 /// Resolve the output format from flags.
 fn resolve_format(output: OutputFormat, json: bool, quiet: bool) -> OutputFormat {

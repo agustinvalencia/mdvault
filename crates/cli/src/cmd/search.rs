@@ -8,6 +8,7 @@ use mdvault_core::index::{
 };
 use serde::Serialize;
 
+use super::output::truncate;
 use crate::{OutputFormat, SearchArgs, SearchModeArg};
 
 /// Search result for JSON output.
@@ -184,16 +185,6 @@ fn print_results_quiet(results: &[SearchResult]) {
     }
 }
 
-/// Truncate string with ellipsis if needed.
-fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else if max_len > 3 {
-        format!("{}...", &s[..max_len - 3])
-    } else {
-        s[..max_len].to_string()
-    }
-}
 
 /// Resolve the output format from flags.
 fn resolve_format(output: OutputFormat, json: bool, quiet: bool) -> OutputFormat {

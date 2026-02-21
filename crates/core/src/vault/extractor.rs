@@ -227,7 +227,13 @@ fn truncate_context(line: &str, max_len: usize) -> String {
     if line.len() <= max_len {
         line.to_string()
     } else {
-        format!("{}...", &line[..max_len])
+        // Find the last char boundary at or before max_len to avoid
+        // panicking on multi-byte characters (e.g. em-dash '—').
+        let mut end = max_len;
+        while end > 0 && !line.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}...", &line[..end])
     }
 }
 

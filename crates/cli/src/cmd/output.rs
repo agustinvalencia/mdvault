@@ -197,13 +197,21 @@ pub fn print_links_quiet(links: &[LinkOutput], use_source: bool) {
     }
 }
 
-/// Truncate string with ellipsis if needed.
-fn truncate(s: &str, max_len: usize) -> String {
+/// Truncate string with ellipsis if needed (multi-byte safe).
+pub fn truncate(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
     } else if max_len > 3 {
-        format!("{}...", &s[..max_len - 3])
+        let mut end = max_len - 3;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}...", &s[..end])
     } else {
-        s[..max_len].to_string()
+        let mut end = max_len;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        s[..end].to_string()
     }
 }
