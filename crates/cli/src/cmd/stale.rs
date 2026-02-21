@@ -197,7 +197,6 @@ fn print_stale_quiet(notes: &[StaleNote]) {
     }
 }
 
-
 /// Resolve the output format from flags.
 fn resolve_format(output: OutputFormat, json: bool, quiet: bool) -> OutputFormat {
     if json {
