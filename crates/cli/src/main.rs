@@ -89,20 +89,17 @@ enum Commands {
     /// Show links for a note (backlinks and/or outgoing)
     Links(LinksArgs),
 
-    /// Find orphan notes (no incoming links)
+    /// Find orphan notes (alias for stale --orphans)
+    #[command(hide = true)]
     Orphans(OrphansArgs),
 
     /// Validate notes against type definitions
     Validate(ValidateArgs),
 
-    /// Lint notes (alias for validate)
-    #[command(hide = true)]
-    Lint(ValidateArgs),
-
     /// Search notes with contextual expansion
     Search(SearchArgs),
 
-    /// Find stale notes (not referenced in recent dailies)
+    /// Find unused notes (stale or orphaned)
     Stale(StaleArgs),
 
     /// Rename a note and update all references to it
@@ -606,8 +603,13 @@ Examples:
   mdv stale --type task                  # Only stale tasks
   mdv stale --threshold 0.7              # Higher staleness threshold
   mdv stale --days 90                    # Notes not seen in 90 days
+  mdv stale --orphans                    # Find notes with no incoming links
 ")]
 pub struct StaleArgs {
+    /// Find orphan notes (no incoming links) instead of stale notes
+    #[arg(long)]
+    pub orphans: bool,
+
     /// Filter by note type
     #[arg(long)]
     pub r#type: Option<NoteTypeArg>,
@@ -868,9 +870,20 @@ fn main() {
             cmd::links::run(cli.config.as_deref(), cli.profile.as_deref(), args);
         }
         Some(Commands::Orphans(args)) => {
-            cmd::orphans::run(cli.config.as_deref(), cli.profile.as_deref(), args);
+            // Hidden alias: convert to stale --orphans
+            let stale_args = StaleArgs {
+                orphans: true,
+                r#type: None,
+                threshold: 0.5,
+                days: None,
+                limit: None,
+                output: args.output,
+                json: args.json,
+                quiet: args.quiet,
+            };
+            cmd::stale::run(cli.config.as_deref(), cli.profile.as_deref(), stale_args);
         }
-        Some(Commands::Validate(args)) | Some(Commands::Lint(args)) => {
+        Some(Commands::Validate(args)) => {
             cmd::validate::run(cli.config.as_deref(), cli.profile.as_deref(), args);
         }
         Some(Commands::Search(args)) => {

@@ -6,6 +6,7 @@ use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::index::{IndexDb, IndexedNote};
 use serde::Serialize;
 
+use super::output::{print_notes_json, print_notes_quiet, print_notes_table};
 use crate::{OutputFormat, StaleArgs};
 
 /// Stale note output for JSON.
@@ -39,6 +40,27 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: StaleArgs) {
             std::process::exit(1);
         }
     };
+
+    // Determine output format
+    let format = resolve_format(args.output, args.json, args.quiet);
+
+    // --orphans mode: find notes with no incoming links
+    if args.orphans {
+        let orphans = match db.find_orphans() {
+            Ok(notes) => notes,
+            Err(e) => {
+                eprintln!("Error finding orphans: {}", e);
+                std::process::exit(1);
+            }
+        };
+
+        match format {
+            OutputFormat::Table => print_notes_table(&orphans),
+            OutputFormat::Json => print_notes_json(&orphans),
+            OutputFormat::Quiet => print_notes_quiet(&orphans),
+        }
+        return;
+    }
 
     // Get note type filter
     let note_type_str = args.r#type.map(|t| {
@@ -81,9 +103,6 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: StaleArgs) {
             }
         }
     };
-
-    // Determine output format
-    let format = resolve_format(args.output, args.json, args.quiet);
 
     // Output results
     match format {
