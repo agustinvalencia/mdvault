@@ -5,6 +5,19 @@ All notable changes to mdvault will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] - 2026-02-22
+
+### Added
+
+- **Project vs area distinction**: New `kind` frontmatter field (`project` | `area`) to differentiate finite projects from ongoing responsibilities (e.g. Health, Finances)
+  - `mdv project list --kind <project|area>` filter and `Kind` column in output
+  - `mdv project archive` refuses areas with a clear error message
+  - `mdv project progress` shows active task count for areas instead of completion percentage
+
+### Fixed
+
+- **CI**: Removed `+nightly` from cargo-tarpaulin to fix `shellexpand` compilation on newer Rust toolchains
+
 ## [0.3.5] - 2026-02-20
 
 ### Added
