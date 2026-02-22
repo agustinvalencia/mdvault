@@ -17,6 +17,8 @@ struct ProjectRow {
     id: String,
     #[tabled(rename = "Title")]
     title: String,
+    #[tabled(rename = "Kind")]
+    kind: String,
     #[tabled(rename = "Status")]
     status: String,
     #[tabled(rename = "Open")]
@@ -39,7 +41,12 @@ struct TaskRow {
 }
 
 /// List all projects with task counts.
-pub fn list(config: Option<&Path>, profile: Option<&str>, status_filter: Option<&str>) {
+pub fn list(
+    config: Option<&Path>,
+    profile: Option<&str>,
+    status_filter: Option<&str>,
+    kind_filter: Option<&str>,
+) {
     let cfg = match ConfigLoader::load(config, profile) {
         Ok(rc) => rc,
         Err(e) => {
@@ -84,12 +91,19 @@ pub fn list(config: Option<&Path>, profile: Option<&str>, status_filter: Option<
     let mut rows: Vec<ProjectRow> = Vec::new();
 
     for project in &projects {
-        // Get project ID and status from frontmatter
-        let (project_id, project_status) = extract_project_info(project);
+        // Get project ID, status, and kind from frontmatter
+        let (project_id, project_status, project_kind) = extract_project_info(project);
 
         // Filter by status if specified
         if let Some(filter) = status_filter {
             if project_status != filter {
+                continue;
+            }
+        }
+
+        // Filter by kind if specified
+        if let Some(filter) = kind_filter {
+            if project_kind != filter {
                 continue;
             }
         }
@@ -139,6 +153,7 @@ pub fn list(config: Option<&Path>, profile: Option<&str>, status_filter: Option<
         rows.push(ProjectRow {
             id: project_id,
             title,
+            kind: project_kind,
             status: project_status,
             open,
             done,
@@ -184,7 +199,7 @@ pub fn status(config: Option<&Path>, profile: Option<&str>, project_name: &str) 
 
     let project = projects.iter().find(|p| {
         let folder = p.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        let (id, _) = extract_project_info(p);
+        let (id, _, _) = extract_project_info(p);
         folder.eq_ignore_ascii_case(project_name) || id.eq_ignore_ascii_case(project_name)
     });
 
@@ -198,7 +213,7 @@ pub fn status(config: Option<&Path>, profile: Option<&str>, project_name: &str) 
     };
 
     let project_folder = project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    let (project_id, project_status) = extract_project_info(project);
+    let (project_id, project_status, _) = extract_project_info(project);
     let project_title = if project.title.is_empty() {
         project_folder.to_string()
     } else {
@@ -319,8 +334,8 @@ fn print_task_table(tasks: &[&IndexedNote]) {
     println!("{}", table);
 }
 
-/// Extract project ID and status from frontmatter.
-fn extract_project_info(project: &IndexedNote) -> (String, String) {
+/// Extract project ID, status, and kind from frontmatter.
+fn extract_project_info(project: &IndexedNote) -> (String, String, String) {
     let fm = project
         .frontmatter_json
         .as_ref()
@@ -340,7 +355,13 @@ fn extract_project_info(project: &IndexedNote) -> (String, String) {
         .map(String::from)
         .unwrap_or_else(|| "unknown".to_string());
 
-    (id, status)
+    let kind = fm
+        .as_ref()
+        .and_then(|fm| fm.get("kind").and_then(|v| v.as_str()))
+        .map(String::from)
+        .unwrap_or_else(|| "project".to_string());
+
+    (id, status, kind)
 }
 
 /// Get task status from frontmatter.
@@ -393,6 +414,7 @@ struct ProgressRow {
 struct ProjectProgress {
     id: String,
     title: String,
+    kind: String,
     status: String,
     tasks: TaskCounts,
     progress_percent: f64,
@@ -476,7 +498,7 @@ pub fn progress(
     if let Some(name) = project_name {
         let project = projects.iter().find(|p| {
             let folder = p.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-            let (id, _) = extract_project_info(p);
+            let (id, _, _) = extract_project_info(p);
             folder.eq_ignore_ascii_case(name) || id.eq_ignore_ascii_case(name)
         });
 
@@ -501,7 +523,7 @@ pub fn progress(
         let mut progress_list: Vec<ProjectProgress> = Vec::new();
 
         for project in &projects {
-            let (_, project_status) = extract_project_info(project);
+            let (_, project_status, _) = extract_project_info(project);
 
             // Filter archived unless requested
             if !include_archived && project_status == "archived" {
@@ -530,7 +552,7 @@ fn calculate_project_progress(
     all_tasks: &[IndexedNote],
 ) -> ProjectProgress {
     let project_folder = project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    let (project_id, project_status) = extract_project_info(project);
+    let (project_id, project_status, project_kind) = extract_project_info(project);
     let project_title = if project.title.is_empty() {
         project_folder.to_string()
     } else {
@@ -615,6 +637,7 @@ fn calculate_project_progress(
     ProjectProgress {
         id: project_id,
         title: project_title,
+        kind: project_kind,
         status: project_status,
         tasks: TaskCounts { total, done, in_progress, todo, blocked, cancelled },
         progress_percent,
@@ -625,15 +648,25 @@ fn calculate_project_progress(
 
 /// Print detailed progress for a single project.
 fn print_single_project_progress(data: &ProjectProgress) {
-    println!("Project: {} [{}]", data.title, data.id);
+    let label = if data.kind == "area" { "Area" } else { "Project" };
+    println!("{}: {} [{}]", label, data.title, data.id);
     println!();
 
-    // Progress bar
-    let bar = progress_bar(data.progress_percent, 20);
-    println!(
-        "Progress: {} {:.0}% ({}/{} tasks done)",
-        bar, data.progress_percent, data.tasks.done, data.tasks.total
-    );
+    if data.kind == "area" {
+        // Areas show active tasks instead of completion percentage
+        let active = data.tasks.in_progress + data.tasks.todo;
+        println!(
+            "Active tasks: {} ({} in progress, {} todo, {} done)",
+            active, data.tasks.in_progress, data.tasks.todo, data.tasks.done
+        );
+    } else {
+        // Projects show progress bar with completion percentage
+        let bar = progress_bar(data.progress_percent, 20);
+        println!(
+            "Progress: {} {:.0}% ({}/{} tasks done)",
+            bar, data.progress_percent, data.tasks.done, data.tasks.total
+        );
+    }
     println!();
 
     // By status
@@ -672,16 +705,28 @@ fn print_all_projects_progress(data: &[ProjectProgress]) {
     let rows: Vec<ProgressRow> = data
         .iter()
         .map(|p| {
-            let bar = progress_bar(p.progress_percent, 20);
-            ProgressRow {
-                id: p.id.clone(),
-                title: if p.title.len() > 25 {
-                    format!("{}...", &p.title[..22])
-                } else {
-                    p.title.clone()
-                },
-                progress: format!("{:.0}%", p.progress_percent),
-                bar,
+            let title = if p.title.len() > 25 {
+                format!("{}...", &p.title[..22])
+            } else {
+                p.title.clone()
+            };
+
+            if p.kind == "area" {
+                let active = p.tasks.in_progress + p.tasks.todo;
+                ProgressRow {
+                    id: p.id.clone(),
+                    title,
+                    progress: format!("{} active", active),
+                    bar: String::new(),
+                }
+            } else {
+                let bar = progress_bar(p.progress_percent, 20);
+                ProgressRow {
+                    id: p.id.clone(),
+                    title,
+                    progress: format!("{:.0}%", p.progress_percent),
+                    bar,
+                }
             }
         })
         .collect();
@@ -726,7 +771,7 @@ pub fn archive(
 
     let project = projects.iter().find(|p| {
         let folder = p.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        let (id, _) = extract_project_info(p);
+        let (id, _, _) = extract_project_info(p);
         folder.eq_ignore_ascii_case(project_name) || id.eq_ignore_ascii_case(project_name)
     });
 
@@ -741,12 +786,21 @@ pub fn archive(
 
     let project_folder =
         project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
-    let (project_id, project_status) = extract_project_info(project);
+    let (project_id, project_status, project_kind) = extract_project_info(project);
     let project_title = if project.title.is_empty() {
         project_folder.clone()
     } else {
         project.title.clone()
     };
+
+    // Validate: areas cannot be archived
+    if project_kind == "area" {
+        eprintln!(
+            "Cannot archive area '{}': areas are ongoing and cannot be archived.",
+            project_title
+        );
+        std::process::exit(1);
+    }
 
     // Validate: only done projects can be archived
     if project_status != "done" {

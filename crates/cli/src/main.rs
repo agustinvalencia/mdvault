@@ -232,6 +232,10 @@ pub struct ProjectListArgs {
     /// Filter by status (active, completed, on-hold, archived)
     #[arg(long, short)]
     pub status: Option<String>,
+
+    /// Filter by kind (project, area)
+    #[arg(long, short)]
+    pub kind: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -942,6 +946,7 @@ fn main() {
                     cli.config.as_deref(),
                     cli.profile.as_deref(),
                     args.status.as_deref(),
+                    args.kind.as_deref(),
                 );
             }
             ProjectCommands::Status(args) => {
