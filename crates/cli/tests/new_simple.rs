@@ -66,7 +66,7 @@ macros_dir    = "{{{{vault_root}}}}/.mdvault/macros"
     cmd.assert()
         .success()
         .stdout(predicates::str::contains("OK   mdv new"))
-        .stdout(predicates::str::contains("template: daily"));
+        .stdout(predicates::str::contains("type: daily"));
 
     let rendered = fs::read_to_string(&output).unwrap();
 

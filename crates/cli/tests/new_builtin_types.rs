@@ -87,8 +87,8 @@ task_counter: 5
 
     assert!(output.status.success(), "Command failed: {:?}", output);
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("type:   task"));
-    assert!(stdout.contains("id:     TST-006"));
+    assert!(stdout.contains("type: task"));
+    assert!(stdout.contains("id:   TST-006"));
 
     // Assertions
     let task_path = vault.join("Projects/TST/Tasks/TST-006.md");
@@ -122,7 +122,7 @@ fn task_creation_inbox() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("id:     INB-001"));
+    assert!(stdout.contains("id:   INB-001"));
 
     // Assertions
     let task_path = vault.join("Inbox/INB-001.md");

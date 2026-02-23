@@ -62,7 +62,7 @@ output: daily/{{date}}.md
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("OK   mdv new"))
-        .stdout(predicate::str::contains("template: daily"))
+        .stdout(predicate::str::contains("type: daily"))
         .stdout(predicate::str::contains("daily/"));
 
     // Verify the file was created in the expected location
@@ -142,6 +142,9 @@ tags:
     );
 
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("mdv"));
+    // Isolate from host machine typedefs (e.g. daily.lua) that would inject
+    // schema variables and corrupt the simple template's frontmatter.
+    cmd.env("XDG_CONFIG_HOME", root.join("xdg"));
     cmd.arg("--config").arg(&config_path).arg("new").arg("--template").arg("daily");
 
     cmd.assert().success();

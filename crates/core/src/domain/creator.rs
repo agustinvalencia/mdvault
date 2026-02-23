@@ -24,6 +24,8 @@ pub struct CreationResult {
     pub generated_id: Option<String>,
     /// The type of note created.
     pub type_name: String,
+    /// The final rendered content that was written to disk.
+    pub content: String,
 }
 
 /// Orchestrates the note creation flow.
@@ -98,8 +100,7 @@ impl NoteCreator {
         }
         fs::write(&output_path, &content).map_err(DomainError::Io)?;
 
-        // Step 8: After create - logging, hooks, reindex
-        behavior.after_create(ctx, &content)?;
+        // Note: after_create is called by the CLI layer (after hooks)
 
         // Build result
         let generated_id = ctx
@@ -112,6 +113,7 @@ impl NoteCreator {
             path: output_path,
             generated_id,
             type_name: ctx.type_name.clone(),
+            content,
         })
     }
 
