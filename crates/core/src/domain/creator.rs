@@ -12,7 +12,6 @@ use chrono::Local;
 use super::NoteType;
 use super::context::CreationContext;
 use super::traits::{DomainError, DomainResult, NoteBehavior};
-use crate::frontmatter::{Frontmatter, ParsedDocument, serialize_with_order};
 use crate::templates::engine::render_with_ref_date as render_template;
 use crate::types::scaffolding::generate_scaffolding;
 
@@ -84,7 +83,11 @@ impl NoteCreator {
         let content = self.generate_content(ctx)?;
 
         // Step 5: Ensure core metadata is preserved
-        let content = ensure_core_metadata(&content, ctx)?;
+        let order = ctx.typedef.as_ref().and_then(|td| td.frontmatter_order.as_deref());
+        let content =
+            ctx.core_metadata.apply_to_content(&content, order).map_err(|e| {
+                DomainError::Other(format!("Failed to apply core metadata: {}", e))
+            })?;
 
         // Step 6: Validation would happen here
         // (Deferred to integration phase)
@@ -200,92 +203,24 @@ impl NoteCreator {
     }
 }
 
-/// Ensure core metadata fields are present in the content.
-///
-/// This function parses the frontmatter and ensures that core fields
-/// (type, title, task-id, project-id, etc.) are set correctly,
-/// overwriting any values that may have been modified by templates or hooks.
-fn ensure_core_metadata(content: &str, ctx: &CreationContext) -> DomainResult<String> {
-    use crate::frontmatter::parse;
-
-    let parsed = parse(content)
-        .map_err(|e| DomainError::Other(format!("Failed to parse frontmatter: {}", e)))?;
-
-    let mut fields = parsed.frontmatter.map(|fm| fm.fields).unwrap_or_default();
-
-    // Apply core metadata (these are authoritative)
-    let core = &ctx.core_metadata;
-
-    if let Some(ref t) = core.note_type {
-        fields.insert("type".into(), serde_yaml::Value::String(t.clone()));
-    }
-    if let Some(ref t) = core.title {
-        fields.insert("title".into(), serde_yaml::Value::String(t.clone()));
-    }
-    if let Some(ref id) = core.project_id {
-        fields.insert("project-id".into(), serde_yaml::Value::String(id.clone()));
-    }
-    if let Some(ref id) = core.task_id {
-        fields.insert("task-id".into(), serde_yaml::Value::String(id.clone()));
-    }
-    if let Some(counter) = core.task_counter {
-        fields.insert("task_counter".into(), serde_yaml::Value::Number(counter.into()));
-    }
-    if let Some(ref p) = core.project {
-        fields.insert("project".into(), serde_yaml::Value::String(p.clone()));
-    }
-    if let Some(ref d) = core.date {
-        fields.insert("date".into(), serde_yaml::Value::String(d.clone()));
-    }
-    if let Some(ref w) = core.week {
-        fields.insert("week".into(), serde_yaml::Value::String(w.clone()));
-    }
-
-    // Rebuild content using serializer with order
-    let doc =
-        ParsedDocument { frontmatter: Some(Frontmatter { fields }), body: parsed.body };
-
-    let order = ctx.typedef.as_ref().and_then(|td| td.frontmatter_order.as_deref());
-    Ok(serialize_with_order(&doc, order))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::config::types::ResolvedConfig;
-    use crate::types::TypeRegistry;
-    use std::path::PathBuf;
-    use tempfile::tempdir;
-
-    fn make_test_config(vault_root: PathBuf) -> ResolvedConfig {
-        ResolvedConfig {
-            active_profile: "test".into(),
-            vault_root: vault_root.clone(),
-            templates_dir: vault_root.join(".mdvault/templates"),
-            captures_dir: vault_root.join(".mdvault/captures"),
-            macros_dir: vault_root.join(".mdvault/macros"),
-            typedefs_dir: vault_root.join(".mdvault/typedefs"),
-            excluded_folders: vec![],
-            security: Default::default(),
-            logging: Default::default(),
-            activity: Default::default(),
-        }
-    }
+    use crate::domain::CoreMetadata;
 
     #[test]
-    fn test_ensure_core_metadata() {
+    fn test_apply_core_metadata() {
         let content =
             "---\ntype: wrong\ntitle: Wrong Title\ncustom: value\n---\n# Body\n";
 
-        let tmp = tempdir().unwrap();
-        let config = make_test_config(tmp.path().to_path_buf());
-        let registry = TypeRegistry::new();
+        let core = CoreMetadata {
+            note_type: Some("task".into()),
+            title: Some("Correct Title".into()),
+            task_id: Some("TST-001".into()),
+            project: Some("TST".into()),
+            ..Default::default()
+        };
 
-        let mut ctx = CreationContext::new("task", "Correct Title", &config, &registry);
-        ctx.core_metadata.task_id = Some("TST-001".into());
-        ctx.core_metadata.project = Some("TST".into());
-
-        let result = ensure_core_metadata(content, &ctx).unwrap();
+        let result = core.apply_to_content(content, None).unwrap();
 
         assert!(result.contains("type: task"));
         assert!(result.contains("title: Correct Title"));

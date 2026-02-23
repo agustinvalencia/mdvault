@@ -9,6 +9,7 @@ use std::sync::Arc;
 use chrono::NaiveDate;
 
 use crate::config::types::ResolvedConfig;
+use crate::frontmatter::{Frontmatter, ParsedDocument, parse, serialize_with_order};
 use crate::templates::repository::LoadedTemplate;
 use crate::types::{TypeDefinition, TypeRegistry};
 
@@ -59,6 +60,25 @@ impl CoreMetadata {
             map.insert("week".into(), serde_yaml::Value::String(w.clone()));
         }
         map
+    }
+
+    /// Apply core metadata fields to note content, overwriting any existing values.
+    ///
+    /// Parses frontmatter, merges core fields (which are authoritative),
+    /// then re-serializes with optional field ordering.
+    pub fn apply_to_content(
+        &self,
+        content: &str,
+        field_order: Option<&[String]>,
+    ) -> Result<String, String> {
+        let parsed = parse(content).map_err(|e| e.to_string())?;
+        let mut fields = parsed.frontmatter.map(|fm| fm.fields).unwrap_or_default();
+        fields.extend(self.to_yaml_map());
+        let doc = ParsedDocument {
+            frontmatter: Some(Frontmatter { fields }),
+            body: parsed.body,
+        };
+        Ok(serialize_with_order(&doc, field_order))
     }
 }
 

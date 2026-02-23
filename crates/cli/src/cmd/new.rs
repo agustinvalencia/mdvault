@@ -10,8 +10,7 @@ use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::context::ContextManager;
 use mdvault_core::domain::{
-    CoreMetadata, CreationContext, DailyLogService, NoteCreator,
-    NoteType as DomainNoteType,
+    CreationContext, DailyLogService, NoteCreator, NoteType as DomainNoteType,
 };
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::frontmatter::{serialize_with_order, Frontmatter, ParsedDocument};
@@ -61,6 +60,19 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: NewArgs) {
         eprintln!("Usage: mdv new <type> [title] [--var field=value]");
         eprintln!("       mdv new --template <name> [--var key=value]");
         std::process::exit(1);
+    }
+}
+
+/// Inject focused project into vars if creating a task and project not already set.
+fn inject_focus_context(cfg: &ResolvedConfig, vars: &mut HashMap<String, String>) {
+    if vars.contains_key("project") {
+        return;
+    }
+    if let Ok(context_mgr) = ContextManager::load(&cfg.vault_root) {
+        if let Some(focused_project) = context_mgr.active_project() {
+            debug!("Using focused project: {}", focused_project);
+            vars.insert("project".to_string(), focused_project.to_string());
+        }
     }
 }
 
@@ -122,14 +134,8 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
     }
 
     // For task templates: use focus context or show project picker if project not already provided
-    if template_name == "task" && !provided_vars.contains_key("project") {
-        // Check for active focus context first
-        if let Ok(context_mgr) = ContextManager::load(&cfg.vault_root) {
-            if let Some(focused_project) = context_mgr.active_project() {
-                debug!("Using focused project: {}", focused_project);
-                provided_vars.insert("project".to_string(), focused_project.to_string());
-            }
-        }
+    if template_name == "task" {
+        inject_focus_context(cfg, &mut provided_vars);
 
         // If still no project and not batch mode, prompt for selection
         if !provided_vars.contains_key("project") && !args.batch {
@@ -490,13 +496,8 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
         .with_batch_mode(args.batch);
 
     // For task types: inject focused project if not already provided via --var
-    if type_name == "task" && !ctx.vars.contains_key("project") {
-        if let Ok(context_mgr) = ContextManager::load(&cfg.vault_root) {
-            if let Some(focused_project) = context_mgr.active_project() {
-                debug!("Using focused project for task: {}", focused_project);
-                ctx.set_var("project", focused_project);
-            }
-        }
+    if type_name == "task" {
+        inject_focus_context(cfg, &mut ctx.vars);
     }
 
     // Handle type-specific prompts
@@ -708,11 +709,10 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
                             };
 
                             // Re-apply core metadata and write
-                            let final_content = match ensure_core_metadata(
-                                &regenerated,
-                                &ctx.core_metadata,
-                                order.as_deref(),
-                            ) {
+                            let final_content = match ctx
+                                .core_metadata
+                                .apply_to_content(&regenerated, order.as_deref())
+                            {
                                 Ok(fixed) => fixed,
                                 Err(_) => regenerated,
                             };
@@ -749,11 +749,9 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
 
                     // Re-apply core metadata to protect against hook tampering
                     if let Ok(current) = std::fs::read_to_string(&result.path) {
-                        if let Ok(fixed) = ensure_core_metadata(
-                            &current,
-                            &ctx.core_metadata,
-                            order.as_deref(),
-                        ) {
+                        if let Ok(fixed) =
+                            ctx.core_metadata.apply_to_content(&current, order.as_deref())
+                        {
                             if let Err(e) = std::fs::write(&result.path, fixed) {
                                 eprintln!(
                                     "Warning: failed to re-apply core metadata: {e}"
@@ -793,65 +791,6 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
             std::process::exit(1);
         }
     }
-}
-
-/// Ensure core metadata fields are present in the note content.
-///
-/// This function is called after template rendering and hook execution to guarantee
-/// that required fields managed by mdvault are not removed or corrupted by user code.
-/// Templates and hooks can ADD fields but cannot REMOVE core fields.
-fn ensure_core_metadata(
-    content: &str,
-    core: &CoreMetadata,
-    order: Option<&[String]>,
-) -> Result<String, String> {
-    let parsed = parse_frontmatter(content).map_err(|e| e.to_string())?;
-
-    // Start with existing frontmatter or create new
-    let mut fields: HashMap<String, serde_yaml::Value> =
-        if let Some(fm) = parsed.frontmatter { fm.fields } else { HashMap::new() };
-
-    // Inject/overwrite core fields - these are authoritative from Rust
-    if let Some(ref t) = core.note_type {
-        fields.insert("type".to_string(), serde_yaml::Value::String(t.clone()));
-    }
-
-    if let Some(ref t) = core.title {
-        fields.insert("title".to_string(), serde_yaml::Value::String(t.clone()));
-    }
-
-    if let Some(ref id) = core.project_id {
-        fields.insert("project-id".to_string(), serde_yaml::Value::String(id.clone()));
-    }
-
-    if let Some(ref id) = core.task_id {
-        fields.insert("task-id".to_string(), serde_yaml::Value::String(id.clone()));
-    }
-
-    if let Some(counter) = core.task_counter {
-        fields.insert(
-            "task_counter".to_string(),
-            serde_yaml::Value::Number(serde_yaml::Number::from(counter)),
-        );
-    }
-
-    if let Some(ref proj) = core.project {
-        fields.insert("project".to_string(), serde_yaml::Value::String(proj.clone()));
-    }
-
-    if let Some(ref date) = core.date {
-        fields.insert("date".to_string(), serde_yaml::Value::String(date.clone()));
-    }
-
-    if let Some(ref week) = core.week {
-        fields.insert("week".to_string(), serde_yaml::Value::String(week.clone()));
-    }
-
-    // Rebuild the document
-    let doc =
-        ParsedDocument { frontmatter: Some(Frontmatter { fields }), body: parsed.body };
-
-    Ok(serialize_with_order(&doc, order))
 }
 
 /// Force a vault reindex to include newly created notes.
@@ -1561,6 +1500,7 @@ fn validate_before_write(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mdvault_core::domain::CoreMetadata;
     use mdvault_core::types::FieldSchema;
     use serde_yaml::Value;
 
@@ -1573,7 +1513,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ensure_core_metadata() {
+    fn test_apply_core_metadata() {
         let content = "---\nexisting: val\n---\nbody";
         let core = CoreMetadata {
             note_type: Some("task".into()),
@@ -1581,7 +1521,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = ensure_core_metadata(content, &core, None).unwrap();
+        let result = core.apply_to_content(content, None).unwrap();
 
         let parsed = parse_frontmatter(&result).unwrap();
         let fm = parsed.frontmatter.unwrap();
