@@ -9,9 +9,7 @@ use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::context::ContextManager;
-use mdvault_core::domain::{
-    CreationContext, DailyLogService, NoteCreator, NoteType as DomainNoteType,
-};
+use mdvault_core::domain::{CreationContext, NoteCreator, NoteType as DomainNoteType};
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::frontmatter::{serialize_with_order, Frontmatter, ParsedDocument};
 use mdvault_core::index::{IndexBuilder, IndexDb, NoteQuery, NoteType};
@@ -21,7 +19,8 @@ use mdvault_core::scripting::{
 };
 use mdvault_core::templates::discovery::TemplateInfo;
 use mdvault_core::templates::engine::{
-    build_minimal_context, render, render_string, resolve_template_output_path,
+    build_minimal_context, render, render_string, render_with_ref_date,
+    resolve_template_output_path,
 };
 use mdvault_core::templates::repository::{TemplateRepoError, TemplateRepository};
 use mdvault_core::types::try_fix_note;
@@ -63,6 +62,131 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: NewArgs) {
     }
 }
 
+/// Dispatch type-specific prompts to interactive widgets and collect values.
+///
+/// Pattern: caller does `let prompts = behavior.type_prompts(&ctx.to_prompt_context());`
+/// (immutable borrow, returns owned Vec), then passes the owned Vec here with a mutable
+/// reference to vars. This avoids borrow checker issues with CreationContext.
+fn dispatch_type_prompts(
+    prompts: Vec<mdvault_core::domain::FieldPrompt>,
+    vars: &mut HashMap<String, String>,
+    cfg: &ResolvedConfig,
+    batch_mode: bool,
+) {
+    for prompt in prompts {
+        // Skip if already provided
+        if vars.contains_key(&prompt.field_name) {
+            continue;
+        }
+
+        if batch_mode {
+            // In batch mode, use default or skip
+            if let Some(default) = prompt.default_value {
+                vars.insert(prompt.field_name, default);
+            }
+        } else {
+            // Interactive prompt (fall back to default if not interactive)
+            match &prompt.prompt_type {
+                mdvault_core::domain::PromptType::ProjectSelector => {
+                    match prompt_project_selection(cfg) {
+                        Some(project) => {
+                            vars.insert("project".to_string(), project);
+                        }
+                        None => {
+                            if let Some(default) = prompt.default_value {
+                                vars.insert(prompt.field_name, default);
+                            } else {
+                                eprintln!("No project selected");
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                }
+                mdvault_core::domain::PromptType::Text => {
+                    match prompt_for_field(
+                        &prompt.field_name,
+                        &prompt.prompt_text,
+                        prompt.default_value.as_deref(),
+                        prompt.required,
+                    ) {
+                        Ok(value) => {
+                            vars.insert(prompt.field_name, value);
+                        }
+                        Err(_) if prompt.default_value.is_some() => {
+                            vars.insert(prompt.field_name, prompt.default_value.unwrap());
+                        }
+                        Err(e) => {
+                            eprintln!("Error: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                mdvault_core::domain::PromptType::Multiline => {
+                    if let Some(text) = Editor::new().edit("").ok().flatten() {
+                        vars.insert(prompt.field_name, text);
+                    }
+                }
+                mdvault_core::domain::PromptType::Select(options) => {
+                    match prompt_for_enum(
+                        &prompt.field_name,
+                        &prompt.prompt_text,
+                        options,
+                        prompt.default_value.as_deref(),
+                    ) {
+                        Ok(value) => {
+                            vars.insert(prompt.field_name, value);
+                        }
+                        Err(_) if prompt.default_value.is_some() => {
+                            vars.insert(prompt.field_name, prompt.default_value.unwrap());
+                        }
+                        Err(e) => {
+                            eprintln!("Error: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Merge CreationContext vars and core_metadata fields into a template render HashMap.
+///
+/// After `behavior.before_create()` populates the CreationContext (vars + core_metadata),
+/// this copies those values into the HashMap used by the template engine.
+fn merge_context_to_render_vars(
+    ctx: &CreationContext,
+    render_ctx: &mut HashMap<String, String>,
+) {
+    // Copy all vars
+    for (k, v) in &ctx.vars {
+        render_ctx.insert(k.clone(), v.clone());
+    }
+
+    // Copy core_metadata fields
+    if let Some(ref id) = ctx.core_metadata.task_id {
+        render_ctx.insert("task-id".to_string(), id.clone());
+    }
+    if let Some(ref id) = ctx.core_metadata.project_id {
+        render_ctx.insert("project-id".to_string(), id.clone());
+    }
+    if let Some(ref id) = ctx.core_metadata.meeting_id {
+        render_ctx.insert("meeting-id".to_string(), id.clone());
+    }
+    if let Some(ref p) = ctx.core_metadata.project {
+        render_ctx.insert("project".to_string(), p.clone());
+    }
+    if let Some(ref d) = ctx.core_metadata.date {
+        render_ctx.insert("date".to_string(), d.clone());
+    }
+    if let Some(ref w) = ctx.core_metadata.week {
+        render_ctx.insert("week".to_string(), w.clone());
+    }
+    if let Some(counter) = ctx.core_metadata.task_counter {
+        render_ctx.insert("task_counter".to_string(), counter.to_string());
+    }
+}
+
 /// Inject focused project into vars if creating a task and project not already set.
 fn inject_focus_context(cfg: &ResolvedConfig, vars: &mut HashMap<String, String>) {
     if vars.contains_key("project") {
@@ -76,8 +200,40 @@ fn inject_focus_context(cfg: &ResolvedConfig, vars: &mut HashMap<String, String>
     }
 }
 
-/// Run template-based note creation (existing behavior).
+/// Resolve output path from Lua typedef, or exit with an error.
+fn resolve_lua_output_or_exit(
+    lua_typedef: &Option<TypeDefinition>,
+    cfg: &ResolvedConfig,
+    render_ctx: &HashMap<String, String>,
+) -> PathBuf {
+    if let Some(ref typedef) = lua_typedef {
+        if let Some(ref output_template) = typedef.output {
+            match render_output_path(output_template, cfg, render_ctx) {
+                Ok(path) => path,
+                Err(e) => {
+                    eprintln!("Failed to resolve Lua output path: {e}");
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            eprintln!(
+                "Error: --output is required (neither template nor Lua script has output)"
+            );
+            std::process::exit(1);
+        }
+    } else {
+        eprintln!("Error: --output is required (template has no output in frontmatter)");
+        std::process::exit(1);
+    }
+}
+
+/// Run template-based note creation with optional behaviour lifecycle.
+///
+/// If the template name matches a first-class type, the behaviour lifecycle is used
+/// for ID generation, prompts, output path resolution, and after-create logging.
+/// Otherwise, falls back to the original template-only flow.
 fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) {
+    // 1. Load template
     let repo = match TemplateRepository::new(&cfg.templates_dir) {
         Ok(r) => r,
         Err(e) => {
@@ -101,16 +257,15 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         },
     };
 
-    // Build TemplateInfo for context building
+    // 2. Build TemplateInfo for context building
     let info = TemplateInfo {
         logical_name: loaded.logical_name.clone(),
         path: loaded.path.clone(),
     };
 
-    // Check if template links to a Lua script
+    // 3. Check if template links to a Lua script
     let lua_typedef: Option<TypeDefinition> =
         loaded.frontmatter.as_ref().and_then(|fm| fm.lua.as_ref()).and_then(|lua_path| {
-            // Resolve lua path relative to typedefs directory
             let lua_file = cfg.typedefs_dir.join(lua_path);
             match load_typedef_from_file(&lua_file) {
                 Ok(td) => Some(td),
@@ -121,38 +276,60 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
             }
         });
 
-    // Convert provided vars to HashMap
+    // 4. Parse CLI vars and title
     let mut provided_vars: HashMap<String, String> = args.vars.iter().cloned().collect();
 
-    // Handle title: In template mode, the first positional arg (note_type) is actually the title
-    // since --template replaces the type name. Also check args.title for completeness.
-    // If title is not provided here, collect_schema_variables will prompt for it
-    // when the schema has title with `prompt` or `default` set.
     let title = args.title.clone().or_else(|| args.note_type.clone());
     if let Some(ref t) = title {
         provided_vars.entry("title".to_string()).or_insert(t.clone());
     }
 
-    // For task templates: use focus context or show project picker if project not already provided
-    if template_name == "task" {
-        inject_focus_context(cfg, &mut provided_vars);
+    // 5. Load TypedefRepository + TypeRegistry for behaviour lookup
+    let typedef_repo = TypedefRepository::new(&cfg.typedefs_dir).ok();
+    let type_registry =
+        typedef_repo.as_ref().and_then(|repo| TypeRegistry::from_repository(repo).ok());
 
-        // If still no project and not batch mode, prompt for selection
-        if !provided_vars.contains_key("project") && !args.batch {
-            if let Some(project) = prompt_project_selection(cfg) {
-                provided_vars.insert("project".to_string(), project);
+    // 6. Try NoteType::try_from_name — None for unknown templates (e.g. "contact")
+    let mut note_type = type_registry
+        .as_ref()
+        .and_then(|reg| DomainNoteType::try_from_name(template_name, reg));
+
+    // 7–9. If behaviour exists: build CreationContext, inject focus, run type prompts
+    let mut creation_ctx: Option<CreationContext> = None;
+    if let (Some(ref mut _nt), Some(ref registry)) = (&mut note_type, &type_registry) {
+        let title_str = provided_vars.get("title").cloned().unwrap_or_default();
+        let mut ctx = CreationContext::new(template_name, &title_str, cfg, registry)
+            .with_vars(provided_vars.clone())
+            .with_batch_mode(args.batch);
+
+        // Track which vars exist before lifecycle steps, so we only sync new ones
+        let pre_lifecycle_keys: std::collections::HashSet<String> =
+            ctx.vars.keys().cloned().collect();
+
+        // 7. Inject focus context (replaces hardcoded task check)
+        inject_focus_context(cfg, &mut ctx.vars);
+
+        // 8. Run type-specific prompts (replaces hardcoded project selector)
+        let behavior = _nt.behavior();
+        let prompts = behavior.type_prompts(&ctx.to_prompt_context());
+        dispatch_type_prompts(prompts, &mut ctx.vars, cfg, args.batch);
+
+        // 9. Sync only NEW vars (added by lifecycle) back to provided_vars
+        //    so schema prompts can see them, without polluting with defaults
+        //    like title="Untitled" from CreationContext::new
+        for (k, v) in &ctx.vars {
+            if !pre_lifecycle_keys.contains(k) {
+                provided_vars.insert(k.clone(), v.clone());
             }
         }
+
+        creation_ctx = Some(ctx);
     }
 
-    // Build minimal context for variable resolution
-    let minimal_ctx = build_minimal_context(cfg, &info);
-
-    // Collect variables using Lua schema prompts
+    // 10. Collect schema variables (unchanged)
     let prompt_options = PromptOptions { batch_mode: args.batch };
 
     let collected = if let Some(ref typedef) = lua_typedef {
-        // Use Lua schema for prompting - fields with `prompt` set will be prompted
         match collect_schema_variables(
             typedef,
             &provided_vars,
@@ -166,7 +343,6 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
             }
         }
     } else {
-        // No Lua script - just use provided vars directly
         CollectedVars {
             values: provided_vars.clone(),
             prompted: Vec::new(),
@@ -174,43 +350,55 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         }
     };
 
-    // Merge collected variables into context
+    // 11. Build minimal render context + merge collected vars
     debug!("Collected variables: {:?}", collected.values);
-    let mut ctx = minimal_ctx;
-    for (k, v) in collected.values {
-        ctx.insert(k, v);
+    let minimal_ctx = build_minimal_context(cfg, &info);
+    let mut render_ctx = minimal_ctx;
+    for (k, v) in &collected.values {
+        render_ctx.insert(k.clone(), v.clone());
     }
 
-    // Resolve output path: CLI arg > template frontmatter > Lua typedef output
+    // 12–13. If behaviour: merge collected vars into CreationContext, call before_create
+    let mut ref_date = None;
+    if let Some(ref mut ctx) = creation_ctx {
+        // 12. Merge collected vars into CreationContext
+        for (k, v) in &collected.values {
+            ctx.set_var(k, v);
+        }
+
+        // 13. Call before_create (ID gen, date eval, counters)
+        if let Some(ref nt) = note_type {
+            let behavior = nt.behavior();
+            if let Err(e) = behavior.before_create(ctx) {
+                eprintln!("FAIL mdv new");
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
+
+        ref_date = ctx.reference_date;
+
+        // 14. Merge CreationContext vars + core_metadata into render_ctx
+        merge_context_to_render_vars(ctx, &mut render_ctx);
+    }
+
+    // 15. Resolve output path: CLI > template FM > behaviour > Lua > error
     let output_path = if let Some(ref out) = args.output {
         out.clone()
     } else {
-        // Try to get from template frontmatter first
-        match resolve_template_output_path(&loaded, cfg, &ctx) {
+        match resolve_template_output_path(&loaded, cfg, &render_ctx) {
             Ok(Some(path)) => path,
             Ok(None) => {
-                // Fall back to Lua typedef output if available
-                if let Some(ref typedef) = lua_typedef {
-                    if let Some(ref output_template) = typedef.output {
-                        // Render the output template with current context
-                        match render_output_path(output_template, cfg, &ctx) {
-                            Ok(path) => path,
-                            Err(e) => {
-                                eprintln!("Failed to resolve Lua output path: {e}");
-                                std::process::exit(1);
-                            }
+                // Try behaviour output_path
+                if let (Some(ref nt), Some(ref ctx)) = (&note_type, &creation_ctx) {
+                    match nt.behavior().output_path(ctx) {
+                        Ok(path) => path,
+                        Err(_) => {
+                            resolve_lua_output_or_exit(&lua_typedef, cfg, &render_ctx)
                         }
-                    } else {
-                        eprintln!(
-                            "Error: --output is required (neither template nor Lua script has output)"
-                        );
-                        std::process::exit(1);
                     }
                 } else {
-                    eprintln!(
-                        "Error: --output is required (template has no output in frontmatter)"
-                    );
-                    std::process::exit(1);
+                    resolve_lua_output_or_exit(&lua_typedef, cfg, &render_ctx)
                 }
             }
             Err(e) => {
@@ -220,7 +408,12 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         }
     };
 
-    // Update context with output info
+    // 16. If behaviour: set ctx.output_path so after_create can reference it
+    if let Some(ref mut ctx) = creation_ctx {
+        ctx.output_path = Some(output_path.clone());
+    }
+
+    // Update render context with output info
     let output_abs = if output_path.is_absolute() {
         output_path.clone()
     } else {
@@ -228,12 +421,13 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
             .unwrap_or_else(|_| std::path::PathBuf::from("."))
             .join(&output_path)
     };
-    ctx.insert("output_path".to_string(), output_abs.to_string_lossy().to_string());
+    render_ctx
+        .insert("output_path".to_string(), output_abs.to_string_lossy().to_string());
     if let Some(name) = output_abs.file_name().and_then(|s| s.to_str()) {
-        ctx.insert("output_filename".to_string(), name.to_string());
+        render_ctx.insert("output_filename".to_string(), name.to_string());
     }
     if let Some(parent) = output_abs.parent() {
-        ctx.insert("output_dir".to_string(), parent.to_string_lossy().to_string());
+        render_ctx.insert("output_dir".to_string(), parent.to_string_lossy().to_string());
     }
 
     if output_path.exists() {
@@ -244,8 +438,9 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         std::process::exit(1);
     }
 
-    debug!("Render context: {:?}", ctx);
-    let mut rendered = match render(&loaded, &ctx) {
+    // 17. Render template (use render_with_ref_date for date expression support)
+    debug!("Render context: {:?}", render_ctx);
+    let mut rendered = match render_with_ref_date(&loaded, &render_ctx, ref_date) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to render template: {e}");
@@ -253,31 +448,37 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         }
     };
 
-    // Phase 3: Validate content before writing
-    // Load type registry for validation (only if we have a Lua typedef)
-    if let Some(ref typedef) = lua_typedef {
-        // Try to load type registry, skip validation if it fails
-        if let Ok(typedef_repo) = TypedefRepository::new(&cfg.typedefs_dir) {
-            if let Ok(type_registry) = TypeRegistry::from_repository(&typedef_repo) {
-                // Extract note type from rendered content for validation
-                let note_type =
-                    extract_note_type(&rendered).unwrap_or_else(|| typedef.name.clone());
+    // 18. If behaviour: apply core_metadata to rendered content (protects generated fields)
+    if let Some(ref ctx) = creation_ctx {
+        let order = lua_typedef.as_ref().and_then(|td| td.frontmatter_order.as_deref());
+        match ctx.core_metadata.apply_to_content(&rendered, order) {
+            Ok(fixed) => rendered = fixed,
+            Err(e) => {
+                eprintln!("Warning: failed to apply core metadata: {e}");
+            }
+        }
+    }
 
-                match validate_before_write(
-                    &type_registry,
-                    &note_type,
-                    &output_path,
-                    &rendered,
-                ) {
-                    Ok(Some(fixed)) => rendered = fixed,
-                    Ok(None) => {} // Valid
-                    Err(errors) => {
-                        eprintln!("Validation failed:");
-                        for err in &errors {
-                            eprintln!("  - {}", err);
-                        }
-                        std::process::exit(1);
+    // 19. Validate content before writing
+    if let Some(ref typedef) = lua_typedef {
+        if let Some(ref registry) = type_registry {
+            let note_type_name =
+                extract_note_type(&rendered).unwrap_or_else(|| typedef.name.clone());
+
+            match validate_before_write(
+                registry,
+                &note_type_name,
+                &output_path,
+                &rendered,
+            ) {
+                Ok(Some(fixed)) => rendered = fixed,
+                Ok(None) => {}
+                Err(errors) => {
+                    eprintln!("Validation failed:");
+                    for err in &errors {
+                        eprintln!("  - {}", err);
                     }
+                    std::process::exit(1);
                 }
             }
         }
@@ -295,58 +496,41 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
         std::process::exit(1);
     }
 
-    // Execute on_create hook if type definition exists
-
+    // 20. Hook execution (unchanged)
     match run_on_create_hook_if_exists(
         cfg,
         &output_path,
         &rendered,
         lua_typedef.as_ref(),
-        &ctx,
+        &render_ctx,
     ) {
         Ok(hook_result) => {
             if hook_result.modified {
-                // Check if variables were updated by the hook
-
                 let final_content = if let Some(ref new_vars) = hook_result.variables {
-                    // Update context with new variables
-
                     if let serde_yaml::Value::Mapping(map) = new_vars {
                         for (k, v) in map {
                             if let serde_yaml::Value::String(ks) = k {
-                                // Convert value to string for RenderContext
-
                                 let vs = match v {
                                     serde_yaml::Value::String(s) => s.clone(),
-
                                     serde_yaml::Value::Number(n) => n.to_string(),
-
                                     serde_yaml::Value::Bool(b) => b.to_string(),
-
                                     _ => format!("{:?}", v),
                                 };
-
-                                ctx.insert(ks.clone(), vs);
+                                render_ctx.insert(ks.clone(), vs);
                             }
                         }
                     }
 
-                    // Re-render template with new context
-
-                    match render(&loaded, &ctx) {
+                    match render_with_ref_date(&loaded, &render_ctx, ref_date) {
                         Ok(s) => s,
-
                         Err(e) => {
                             eprintln!("Warning: failed to re-render template: {e}");
-
                             rendered.clone()
                         }
                     }
                 } else {
                     rendered.clone()
                 };
-
-                // Apply other modifications (frontmatter/content)
 
                 let order =
                     lua_typedef.as_ref().and_then(|td| td.frontmatter_order.as_deref());
@@ -363,49 +547,58 @@ fn run_template_mode(cfg: &ResolvedConfig, template_name: &str, args: &NewArgs) 
                 }
             }
         }
-
         Err(e) => {
             eprintln!("Warning: on_create hook failed: {e}");
         }
     }
 
-    // Log to daily note for tasks and projects
-    // Note: In template mode, we don't auto-generate IDs (user should use scaffolding mode for that)
-    // But we still log to daily with whatever ID might be in the context
-    if template_name == "task" || template_name == "project" {
-        let title = ctx.get("title").cloned().unwrap_or_else(|| "Untitled".to_string());
-        let note_id = ctx
-            .get("task-id")
-            .or_else(|| ctx.get("project-id"))
-            .cloned()
-            .unwrap_or_default();
-        if let Err(e) = DailyLogService::log_creation(
-            cfg,
-            template_name,
-            &title,
-            &note_id,
-            &output_path,
-        ) {
-            eprintln!("Warning: failed to log to daily note: {e}");
+    // 21. If behaviour: call after_create (replaces hardcoded daily logging)
+    if let (Some(ref nt), Some(ref ctx)) = (&note_type, &creation_ctx) {
+        if let Err(e) = nt.behavior().after_create(ctx, &rendered) {
+            eprintln!("Warning: after_create failed: {e}");
         }
-
-        // Force reindex so the new note appears in queries
-        reindex_vault(cfg);
     }
 
-    // Log to activity log
+    // 22. Reindex (always, not gated on type)
+    reindex_vault(cfg);
+
+    // 23. Activity logging (use core_metadata for IDs)
     if let Some(activity) = ActivityLogService::try_from_config(cfg) {
-        let note_id = ctx
-            .get("task-id")
-            .or_else(|| ctx.get("project-id"))
+        let note_id = creation_ctx
+            .as_ref()
+            .and_then(|ctx| {
+                ctx.core_metadata
+                    .task_id
+                    .as_ref()
+                    .or(ctx.core_metadata.project_id.as_ref())
+                    .or(ctx.core_metadata.meeting_id.as_ref())
+            })
             .cloned()
+            .or_else(|| {
+                render_ctx
+                    .get("task-id")
+                    .or_else(|| render_ctx.get("project-id"))
+                    .cloned()
+            })
             .unwrap_or_default();
-        let title = ctx.get("title").cloned();
-        let _ = activity.log_new(template_name, &note_id, &output_path, title.as_deref());
+        let title_val = render_ctx.get("title").cloned();
+        let _ =
+            activity.log_new(template_name, &note_id, &output_path, title_val.as_deref());
     }
 
     println!("OK   mdv new");
     println!("template: {}", template_name);
+    if let Some(ref ctx) = creation_ctx {
+        if let Some(ref id) = ctx
+            .core_metadata
+            .task_id
+            .as_ref()
+            .or(ctx.core_metadata.project_id.as_ref())
+            .or(ctx.core_metadata.meeting_id.as_ref())
+        {
+            println!("id:       {}", id);
+        }
+    }
     println!("output:   {}", output_path.display());
 }
 
@@ -503,74 +696,7 @@ fn run_scaffolding_mode(cfg: &ResolvedConfig, type_name: &str, args: &NewArgs) {
     // Handle type-specific prompts
     let behavior = note_type.behavior();
     let prompts = behavior.type_prompts(&ctx.to_prompt_context());
-
-    for prompt in prompts {
-        // Skip if already provided
-        if ctx.vars.contains_key(&prompt.field_name) {
-            continue;
-        }
-
-        if args.batch {
-            // In batch mode, use default or skip
-            if let Some(default) = prompt.default_value {
-                ctx.set_var(&prompt.field_name, default);
-            }
-        } else {
-            // Interactive prompt
-            match &prompt.prompt_type {
-                mdvault_core::domain::PromptType::ProjectSelector => {
-                    // Use existing project selection logic
-                    match prompt_project_selection(cfg) {
-                        Some(project) => {
-                            ctx.set_var("project", &project);
-                        }
-                        None => {
-                            eprintln!("No project selected");
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                mdvault_core::domain::PromptType::Text => {
-                    match prompt_for_field(
-                        &prompt.field_name,
-                        &prompt.prompt_text,
-                        prompt.default_value.as_deref(),
-                        prompt.required,
-                    ) {
-                        Ok(value) => {
-                            ctx.set_var(&prompt.field_name, value);
-                        }
-                        Err(e) => {
-                            eprintln!("Error: {e}");
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                mdvault_core::domain::PromptType::Multiline => {
-                    // For multiline, use editor
-                    if let Some(text) = Editor::new().edit("").ok().flatten() {
-                        ctx.set_var(&prompt.field_name, text);
-                    }
-                }
-                mdvault_core::domain::PromptType::Select(options) => {
-                    match prompt_for_enum(
-                        &prompt.field_name,
-                        &prompt.prompt_text,
-                        options,
-                        prompt.default_value.as_deref(),
-                    ) {
-                        Ok(value) => {
-                            ctx.set_var(&prompt.field_name, value);
-                        }
-                        Err(e) => {
-                            eprintln!("Error: {e}");
-                            std::process::exit(1);
-                        }
-                    }
-                }
-            }
-        }
-    }
+    dispatch_type_prompts(prompts, &mut ctx.vars, cfg, args.batch);
 
     // Collect schema-based prompts from Lua typedef (if available)
     // This handles fields with `prompt` attribute that aren't type-specific

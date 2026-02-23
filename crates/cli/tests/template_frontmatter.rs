@@ -188,8 +188,9 @@ fn template_with_user_vars_in_frontmatter() {
     );
 
     // Template with user-defined variables (no vars: DSL - that was removed in v0.2.0)
+    // Uses "standup" to avoid triggering MeetingBehavior lifecycle
     write(
-        &templates.join("meeting.md"),
+        &templates.join("standup.md"),
         r#"---
 output: meetings/{{date}}.md
 title: "{{meeting_title}}"
@@ -206,7 +207,7 @@ Attendees: {{attendees}}
         .arg(&config_path)
         .arg("new")
         .arg("--template")
-        .arg("meeting")
+        .arg("standup")
         .arg("--var")
         .arg("meeting_title=Quarterly Review")
         .arg("--var")

@@ -105,6 +105,25 @@ impl NoteType {
         }
     }
 
+    /// Try to create a NoteType, returning None for unknown types.
+    ///
+    /// Unlike `from_name()` which errors on unknown types, this returns `None`
+    /// for templates that don't match any first-class type (e.g. `--template contact`).
+    pub fn try_from_name(name: &str, registry: &TypeRegistry) -> Option<Self> {
+        let typedef = registry.get(name);
+        match name.to_lowercase().as_str() {
+            "task" => Some(NoteType::Task(TaskBehavior::new(typedef))),
+            "project" => Some(NoteType::Project(ProjectBehavior::new(typedef))),
+            "daily" => Some(NoteType::Daily(DailyBehavior::new(typedef))),
+            "weekly" => Some(NoteType::Weekly(WeeklyBehavior::new(typedef))),
+            "meeting" => Some(NoteType::Meeting(MeetingBehavior::new(typedef))),
+            "zettel" | "knowledge" => {
+                Some(NoteType::Zettel(ZettelBehavior::new(typedef)))
+            }
+            _ => typedef.map(|td| NoteType::Custom(CustomBehavior::new(td))),
+        }
+    }
+
     /// Get the type name.
     pub fn type_name(&self) -> &str {
         match self {
@@ -161,5 +180,45 @@ mod tests {
     fn test_note_type_unknown_fails() {
         let registry = TypeRegistry::new();
         assert!(NoteType::from_name("unknown_type", &registry).is_err());
+    }
+
+    #[test]
+    fn test_try_from_name_builtins() {
+        let registry = TypeRegistry::new();
+
+        assert!(matches!(
+            NoteType::try_from_name("task", &registry),
+            Some(NoteType::Task(_))
+        ));
+        assert!(matches!(
+            NoteType::try_from_name("project", &registry),
+            Some(NoteType::Project(_))
+        ));
+        assert!(matches!(
+            NoteType::try_from_name("daily", &registry),
+            Some(NoteType::Daily(_))
+        ));
+        assert!(matches!(
+            NoteType::try_from_name("weekly", &registry),
+            Some(NoteType::Weekly(_))
+        ));
+        assert!(matches!(
+            NoteType::try_from_name("meeting", &registry),
+            Some(NoteType::Meeting(_))
+        ));
+        assert!(matches!(
+            NoteType::try_from_name("zettel", &registry),
+            Some(NoteType::Zettel(_))
+        ));
+        assert!(matches!(
+            NoteType::try_from_name("knowledge", &registry),
+            Some(NoteType::Zettel(_))
+        ));
+    }
+
+    #[test]
+    fn test_try_from_name_unknown_returns_none() {
+        let registry = TypeRegistry::new();
+        assert!(NoteType::try_from_name("unknown_type", &registry).is_none());
     }
 }

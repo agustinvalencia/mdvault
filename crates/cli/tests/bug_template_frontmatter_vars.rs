@@ -169,8 +169,9 @@ return M
         "organisation should be substituted"
     );
     // Check that the default dash value is properly quoted to avoid YAML parsing errors
+    // serde_yaml may use single or double quotes depending on serialization path
     assert!(
-        content.contains("phone: \"-\""),
+        content.contains("phone: \"-\"") || content.contains("phone: '-'"),
         "phone default '-' should be quoted, got: {}",
         content
     );
@@ -283,6 +284,13 @@ updated_at: {{updated_at}}
 
 return M
 "#,
+    );
+
+    // Create a project so the task behaviour lifecycle can find it
+    let project_dir = vault.join("Projects").join("myproject");
+    write(
+        &project_dir.join("myproject.md"),
+        "---\ntype: project\ntitle: My Project\nproject-id: MYP\ntask_counter: 0\n---\n# My Project\n\n## Logs\n",
     );
 
     // Run the command in batch mode
