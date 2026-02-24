@@ -5,7 +5,7 @@ All notable changes to mdvault will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0] - Unreleased
+## [0.4.0] - 2026-02-24
 
 This release unifies the note creation pipeline. `mdv new task "Title"` and `mdv new --template task "Title"` now go through the same code path, with behaviours (lifecycle hooks, schema validation, output paths) available in all creation flows.
 
