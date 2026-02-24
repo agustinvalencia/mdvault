@@ -356,9 +356,9 @@ mdv list --type task --json | jq '.[] | select(.path | contains("MCP"))'
 
 ## Type Definitions
 
-You can customize project and task schemas with Lua type definitions:
+You can customize project and task schemas with Lua type definitions in your `typedefs_dir`:
 
-**`~/.config/mdvault/types/task.lua`**:
+**`<typedefs_dir>/task.lua`**:
 ```lua
 return {
     name = "task",

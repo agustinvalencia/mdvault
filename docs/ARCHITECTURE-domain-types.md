@@ -21,18 +21,7 @@ First-class types (tasks, projects, journaling) are foundational to mdvault's va
 
 A `TaskBehavior` can delegate to the user's `task.lua` for schema and hooks, but ID generation and project counter logic stay in Rust.
 
-## Current Problem: Entanglement
-
-The `crates/cli/src/cmd/new.rs` file has:
-
-1. **Scattered conditionals**: `if template_name == "task"` checks in 6+ locations
-2. **Triple metadata preservation**: `ensure_core_metadata()` called 3 times
-3. **Two parallel code paths**: Template mode and scaffolding mode with duplicated logic
-4. **No abstraction**: Type-specific behavior determined by string matching
-
-This makes the code hard to maintain and extend.
-
-## Proposed Architecture
+## Architecture
 
 ### 1. Trait Hierarchy
 
@@ -260,43 +249,35 @@ impl NoteIdentity for NoteType {
 }
 ```
 
-### 5. Clean `new.rs` - Single Dispatch Point
+### 5. Unified Creation Flow — `run_unified()`
 
-The command becomes simple orchestration:
+`mdv new <type> "Title"` and `mdv new --template <type> "Title"` both route through a single `run_unified()` function. Template loading is optional — when no template file exists, content is generated via scaffolding. The behaviour lifecycle always runs for known types regardless of content source.
 
-```rust
-// crates/cli/src/cmd/new.rs
-
-fn run_scaffolding_mode(cfg: &Config, type_name: &str, title: &str) -> Result<()> {
-    let registry = load_type_registry(cfg)?;
-    let note_type = NoteType::from_name(type_name, &registry)?;
-
-    // Build creation context
-    let mut ctx = CreationContext::new(title, cfg);
-
-    // Collect prompts (polymorphic - Task adds project selector)
-    let prompts = note_type.prompts(&ctx.prompt_context());
-    let answers = run_prompts(prompts)?;
-    ctx.apply_answers(answers);
-
-    // Before hook (polymorphic - sets up IDs, metadata)
-    note_type.before_create(&mut ctx)?;
-
-    // Generate identity (polymorphic - Task uses counter, Project uses title)
-    let id = note_type.generate_id(&ctx);
-    let path = note_type.output_path(&ctx);
-
-    // Common: scaffold, validate, write
-    let content = scaffold_note(&ctx, &note_type)?;
-    validate_content(&content, &note_type)?;
-    let note = write_note(&path, &content)?;
-
-    // After hook (polymorphic - Task logs to daily, triggers reindex)
-    note_type.after_create(&note, &vault)?;
-
-    Ok(())
-}
 ```
+ 1. Load TypedefRepository + TypeRegistry
+ 2. Try load template (optional — not fatal if missing)
+ 3. Load Lua typedef: from template `lua:` field, or implicit registry match
+ 4. Resolve NoteType for behaviour lifecycle
+ 5. Error if no template AND no known type
+ 6. Parse CLI vars and title
+ 7–9. Build CreationContext, inject focus, type prompts, sync vars
+10. Collect schema variables
+11–14. Merge vars, before_create
+15. Resolve output path (CLI > template FM > behaviour > Lua)
+16. Generate content (template rendering or scaffolding)
+17. Apply core_metadata (before write)
+18. Validate before write
+19. Create dirs + write file
+20. post_write_pipeline (hooks, core_metadata protection, after_create, reindex, activity)
+21. Print success
+```
+
+The `post_write_pipeline()` runs after every note creation:
+1. Execute `on_create` hook — if vars modified, re-render content
+2. Re-apply core metadata after hooks (defensive protection)
+3. Call `behavior.after_create()` — runs after hooks so it sees hook-modified content
+4. Reindex vault
+5. Activity logging
 
 ## File Structure
 
@@ -325,13 +306,13 @@ crates/core/src/
 
 ## Benefits
 
-| Current Problem | Solution |
-|-----------------|----------|
-| `if template_name == "task"` scattered in 6+ places | Single dispatch via `NoteType` enum |
-| Core metadata preserved 3 times | `before_create` sets metadata once, correctly |
-| Template mode vs Scaffolding mode duplication | Both call the same trait methods |
+| Problem Solved | How |
+|----------------|-----|
+| Scattered `if template_name == "task"` checks | Single dispatch via `NoteType` enum |
+| Core metadata preserved multiple times | `apply_core_metadata` before write + defensive re-application after hooks |
+| Template mode vs scaffolding mode duplication | Unified `run_unified()` — single code path for all creation |
 | Adding new first-class types | Just add a new behavior struct (e.g., `MeetingBehavior` added in v0.3.0) |
-| Lua can corrupt task IDs | Rust owns `generate_id`, Lua can only extend schema |
+| Lua can corrupt task IDs | Rust owns `generate_id`, core metadata re-applied after hooks |
 
 ## What Stays in Lua
 
@@ -375,24 +356,25 @@ Critical behaviors that must be predictable:
 - Remove triple `ensure_core_metadata()` calls
 
 ### Phase 3: Consolidate Template/Scaffolding Modes - COMPLETE
-- Unify the two creation paths
-- Both use the same trait dispatch
-- `NoteCreator` handles both template and scaffolding generation
+- Unified `run_unified()` replaces both `run_template_mode()` and `run_scaffolding_mode()`
+- `post_write_pipeline()` handles hooks, core metadata protection, after_create, reindex, activity logging
+- `after_create` moved out of `NoteCreator` — now runs after hooks in the CLI layer
+- Template loading is optional — known types work with scaffolding when no template exists
 - `DailyLogService` centralized in domain layer
 
 ### Phase 4: Test & Validate - COMPLETE
-- Ensure all existing tests pass (430+ tests)
-- Add trait-specific unit tests
-- Verify Lua extensions still work
+- All tests pass (450+ tests)
+- Integration tests cover implicit registry lookup, template-less creation, and core metadata protection
+- Lua extensions verified across all creation paths
 
-> **Status:** Migration completed in v0.2.0 (2026-01-18). Extended in v0.3.0 with MeetingBehavior.
+> **Status:** Domain types implemented in v0.2.0. Extended with MeetingBehavior in v0.3.0. Unified creation flow completed in v0.4.0.
 
-## Open Questions
+## Resolved Design Questions
 
-1. **Zettel behavior**: Should zettel have any hardcoded behavior, or is it purely Lua-defined?
-2. **Builtin overrides**: When a user provides `task.lua`, how much can it override?
-3. **New first-class types**: What's the process to promote a custom type to first-class?
-4. **Hook ordering**: Should Lua `on_create` run before or after `after_create` Rust logic?
+1. **Zettel behavior**: Purely Lua-defined — no hardcoded Rust behaviour beyond scaffolding.
+2. **Builtin overrides**: User-provided `task.lua` can add schema fields, prompts, validation, and `on_create` hooks. It cannot override ID generation, core metadata, or the Rust lifecycle.
+3. **New first-class types**: Add a new variant to the `NoteType` enum and implement `NoteBehavior`. See `MeetingBehavior` as the reference implementation.
+4. **Hook ordering**: Lua `on_create` runs as a hook *before* `after_create` Rust logic. This ensures hooks can modify content that `after_create` then references (e.g., daily logging sees hook-modified frontmatter).
 
 ## Conclusion
 

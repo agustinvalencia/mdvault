@@ -4,7 +4,7 @@ mdvault uses the `tracing` ecosystem for structured logging. This allows for fle
 
 ## Configuration
 
-Logging is configured in your `mdvault.toml` configuration file (typically located at `~/.config/mdvault/mdvault.toml` or `$XDG_CONFIG_HOME/mdvault/mdvault.toml`).
+Logging is configured in your `config.toml` configuration file (typically located at `~/.config/mdvault/config.toml` or `$XDG_CONFIG_HOME/mdvault/config.toml`).
 
 The `[logging]` section controls the behavior:
 
@@ -77,7 +77,7 @@ To add logs in the Rust codebase, use the `tracing` macros.
 
 ## Logging from Lua
 
-Currently, **Lua scripts do not have direct access to the application's structured logging system**. You cannot write directly to the log file defined in `mdvault.toml` from a Lua script.
+Currently, **Lua scripts do not have direct access to the application's structured logging system**. You cannot write directly to the log file defined in `config.toml` from a Lua script.
 
 However, you have two alternatives:
 

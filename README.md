@@ -19,31 +19,21 @@ mdvault is a Rust-based CLI tool and MCP (Model Context Protocol) server for man
 - Automated maintenance—proactive detection of stale/broken/orphaned content
 - Passive surfacing—don't wait for searches, show relevant context
 
-## Current Status
+## Features
 
-mdvault is undergoing a significant expansion. The core templating and capture system is functional, while the indexing, search, and MCP integration are in development.
-
-### Working Now
-
-- **Templates**: Create notes from templates with variable substitution
-- **Type-Aware Scaffolding**: `mdv new task "My Task"` creates notes with schema-based frontmatter
-- **Interactive Task Creation**: `mdv new task` prompts to select a project from existing ones
-- **Task Management**: `mdv task list` shows tasks by project, `mdv task done` marks complete
-- **Project Overview**: `mdv project list` shows projects with open/done task counts
-- **Captures**: Quick append to existing notes (daily logs, project notes)
-- **Macros**: Multi-step workflow automation
-- **Date Math**: Expressions like `{{today + 1d}}` or `{{today + monday}}`
+- **Unified Note Creation**: `mdv new <type> "Title"` creates notes with type-aware behaviour, schema-driven prompts, and lifecycle hooks — all through a single creation flow
+- **Task & Project Management**: `mdv task list`, `mdv task done`, `mdv project status`, `mdv project archive`
+- **Meeting Notes**: Auto-generated IDs (`MTG-YYYY-MM-DD-NNN`), date-based organisation
+- **Focus Mode**: `mdv focus PROJECT` sets context for frictionless task creation
+- **Captures & Macros**: Quick append and multi-step workflow automation
+- **Lua Scripting**: Sandboxed Lua runtime for type definitions, schemas, validation, and lifecycle hooks
+- **Date Math**: Expressions like `{{today + 1d}}`, `{{week_start + 3d}}`
 - **Template Filters**: `{{title | slugify}}`, `{{name | lowercase}}`, etc.
-- **TUI**: Interactive palette for templates, captures, and macros
 - **Vault Indexing**: SQLite-based index with note metadata, link graph, and incremental updates
-- **Index Queries**: List notes, find backlinks/outlinks, detect orphans via CLI
-- **Lua Scripting**: Sandboxed Lua runtime with access to date math and template engines
-- **Type System**: Lua-based type definitions with schemas, validation, and lifecycle hooks
 - **Validation**: `mdv validate` checks notes against type schemas with auto-fix support
-- **MCP Server**: Basic vault browsing and note operations
-
-### In Development
-- Contextual search (graph neighbourhood + temporal signals)
+- **Activity Tracking**: Daily dashboard, progress reports, context queries
+- **TUI**: Interactive palette for templates, captures, and macros
+- **MCP Server**: AI-assisted vault interaction via [companion project](https://github.com/agustinvalencia/markdown-vault-mcp)
 
 ## Installation
 
@@ -92,10 +82,11 @@ version = 1
 profile = "default"
 
 [profiles.default]
-vault_root = "~/Notes"
-templates_dir = "{{vault_root}}/.mdvault/templates"
-captures_dir  = "{{vault_root}}/.mdvault/captures"
-macros_dir    = "{{vault_root}}/.mdvault/macros"
+vault_root    = "~/Notes"
+templates_dir = "{{vault_root}}/automations/templates"
+captures_dir  = "{{vault_root}}/automations/captures"
+macros_dir    = "{{vault_root}}/automations/macros"
+typedefs_dir  = "{{vault_root}}/automations/types"
 
 [security]
 allow_shell = false
@@ -121,8 +112,7 @@ mdv
 |---------|-------------|
 | `mdv` | Launch interactive TUI |
 | `mdv doctor` | Validate configuration |
-| `mdv new <type> "Title"` | Create note with type-based scaffolding |
-| `mdv new --template <name>` | Create note from template |
+| `mdv new <type> "Title"` | Create note with type-aware behaviour |
 | `mdv capture <name>` | Run a capture workflow |
 | `mdv macro <name>` | Execute a multi-step macro |
 | `mdv list-templates` | List available templates |
@@ -152,7 +142,7 @@ See `mdv --help` for full options.
 
 ## Note Types
 
-mdvault enforces note types via frontmatter. Types can be customized with Lua definitions in `~/.config/mdvault/types/`:
+mdvault enforces note types via frontmatter. Types can be customized with Lua definitions in your `typedefs_dir` (default: `~/.config/mdvault/types/`):
 
 | Type | Purpose | Required Fields |
 |------|---------|-----------------|

@@ -5,6 +5,28 @@ All notable changes to mdvault will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - Unreleased
+
+This release unifies the note creation pipeline. `mdv new task "Title"` and `mdv new --template task "Title"` now go through the same code path, with behaviours (lifecycle hooks, schema validation, output paths) available in all creation flows.
+
+### Changed
+
+- **Unified creation flow**: `run_template_mode()` and `run_scaffolding_mode()` replaced by a single `run_unified()` function. Template loading is optional — known types work with scaffolding when no template file exists. (MDV-003)
+- **`after_create` runs after hooks**: Previously called inside `NoteCreator` (before hooks), now called in `post_write_pipeline()` after hook execution. This ensures hooks can modify content that `after_create` references (e.g., daily logging sees hook-modified frontmatter).
+- **Core metadata protection**: Applied both before write and defensively after hooks, combining the best of both previous flows.
+- **`NoteCreator::create()` returns content**: `CreationResult` now includes a `content` field for use in the post-write pipeline.
+
+### Added
+
+- **Meeting Lua typedef**: Meeting notes now have a proper Lua type definition with schema, output path, and frontmatter ordering. (MDV-005)
+- **Script resolution documentation**: New "Script Resolution" section in `docs/lua-scripting.md` documenting the typedef lookup chain — explicit `lua:` reference, then implicit registry match by name. (MDV-011)
+- **Regression tests**: Integration tests for implicit registry lookup, title-via-var for output paths, and template-less task creation with full lifecycle.
+
+### Fixed
+
+- Title provided via `--var title=X` now correctly used for output path rendering in `CustomBehavior::output_path()`.
+- Documentation references to `types_dir` corrected to `typedefs_dir` throughout.
+
 ## [0.3.6] - 2026-02-22
 
 ### Added
@@ -286,7 +308,7 @@ vars:
 
 **After (v0.2.0):**
 
-1. Create a Lua type definition in `~/.config/mdvault/types/`:
+1. Create a Lua type definition in your `typedefs_dir`:
 ```lua
 -- types/mytask.lua
 return {

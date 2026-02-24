@@ -220,21 +220,24 @@ The CLI uses the `mdv` command (short for mdvault). Commands are designed to be 
 
 ### Currently Implemented Commands
 
-**Note Creation** (with type-aware scaffolding):
+**Note Creation** (unified flow with type-aware behaviour):
 ```bash
 mdv new task "Implement feature X" --var project=myproject
   # Creates task with proper frontmatter from type schema
-  # Auto-generates path: tasks/implement-feature-x.md
+  # Auto-generates path: Projects/myproject/Tasks/MYP-001.md
   # Runs on_create hook if defined
 
 mdv new project "Network Slicing Research" --var status=active
-  # Creates project note with scaffolding
+  # Creates project note with auto-generated ID
 
 mdv new zettel "KAN architecture notes" --var tags=ml,kan
   # Creates zettel with tags
 
-mdv new --template daily
-  # Create from template instead of type
+mdv new daily
+  # Create today's daily note
+
+mdv new meeting "Team Sync" --var attendees="Alice, Bob"
+  # Creates meeting with auto-generated ID (MTG-YYYY-MM-DD-NNN)
 
 mdv new task "Title" -o custom/path.md
   # Custom output path
@@ -351,34 +354,32 @@ mdv stuck                       # Tasks in-progress >14 days
 
 ```toml
 # ~/.config/mdvault/config.toml
+version = 1
+profile = "default"
 
-[validation]
-strict_mode = true
-auto_link_to_daily = true
-default_task_status = "open"
-allowed_task_statuses = ["open", "in-progress", "blocked", "done", "cancelled"]
-allowed_project_statuses = ["planning", "active", "paused", "completed", "archived"]
+[profiles.default]
+vault_root    = "~/Documents/vault"
+templates_dir = "{{vault_root}}/automations/templates"
+captures_dir  = "{{vault_root}}/automations/captures"
+macros_dir    = "{{vault_root}}/automations/macros"
+typedefs_dir  = "{{vault_root}}/automations/types"
+excluded_folders = [
+    "automations/templates",
+    "automations/captures",
+    "automations/macros",
+]
 
-[workflows]
-task_completion_requires_summary = true
-stale_project_threshold_days = 14
-auto_create_weekly = true
-archive_completed_tasks_after_days = 30
+[logging]
+level = "error"
+file = "{{vault_root}}/automations/.mdvault.log"
+file_level = "debug"
 
-[paths]
-daily_notes = "journal/daily"
-weekly_notes = "journal/weekly"
-projects = "projects"
-tasks = "tasks"
-zettels = "knowledge"
-quick_capture = "inbox"
-
-[search]
-default_context_depth = 2
-temporal_weight = 0.7  # Favour recent notes
-max_search_results = 20
-enable_full_text_index = false  # Use on-demand search
+[security]
+allow_shell = false
+allow_http  = false
 ```
+
+Multiple profiles can be defined for managing separate vaults. The `{{vault_root}}` placeholder is expanded in all path fields.
 
 ## MCP (Model Context Protocol) Integration
 
@@ -743,7 +744,7 @@ normalize_note_names(
 
 ### Phase 1.5: Lua Scripting Layer ✓ Complete
 - mlua-based sandboxed Lua runtime
-- Type definitions in `~/.config/mdvault/types/*.lua`
+- Type definitions in configurable `typedefs_dir` (default: `~/.config/mdvault/types/`)
 - Schema validation (required fields, enums, constraints)
 - Custom validate() hooks and lifecycle hooks (on_create, on_update)
 - Vault context bindings (`mdv.current_note()`, `mdv.backlinks()`, etc.)

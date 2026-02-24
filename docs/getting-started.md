@@ -21,14 +21,22 @@ cp target/release/mdv ~/.local/bin/
 Create `~/.config/mdvault/config.toml`:
 
 ```toml
-vault_root = "~/Documents/vault"  # Your vault location
+version = 1
+profile = "default"
 
-[paths]
-templates_dir = "~/.config/mdvault/templates"
-captures_dir = "~/.config/mdvault/captures"
-macros_dir = "~/.config/mdvault/macros"
-types_dir = "~/.config/mdvault/types"
+[profiles.default]
+vault_root    = "~/Documents/vault"
+templates_dir = "{{vault_root}}/automations/templates"
+captures_dir  = "{{vault_root}}/automations/captures"
+macros_dir    = "{{vault_root}}/automations/macros"
+typedefs_dir  = "{{vault_root}}/automations/types"
+
+[security]
+allow_shell = false
+allow_http  = false
 ```
+
+The `{{vault_root}}` placeholder is expanded automatically, letting you keep automation files inside your vault for version control. If `typedefs_dir` is omitted, it defaults to `~/.config/mdvault/types/`.
 
 ### 2. Verify Setup
 
@@ -65,9 +73,9 @@ Built-in types: `daily`, `weekly`, `task`, `project`, `meeting`, `zettel`, `none
 
 ### Templates
 
-Templates live in `~/.config/mdvault/templates/`. Templates can reference a Lua type definition for schema-driven prompts and output paths.
+Templates live in your configured `templates_dir`. Templates can reference a Lua type definition for schema-driven prompts and output paths.
 
-**Simple template** (`~/.config/mdvault/templates/note.md`):
+**Simple template** (`templates/note.md`):
 ```markdown
 ---
 output: "notes/{{title | slugify}}.md"
@@ -77,7 +85,7 @@ output: "notes/{{title | slugify}}.md"
 
 ```
 
-**Lua-integrated template** (`~/.config/mdvault/templates/meeting.md`):
+**Lua-integrated template** (`templates/meeting.md`):
 ```markdown
 ---
 lua: meeting.lua
@@ -92,7 +100,7 @@ lua: meeting.lua
 
 ```
 
-The `lua:` field references a type definition (relative to `types_dir`) that provides:
+The `lua:` field references a type definition (relative to `typedefs_dir`) that provides:
 - Schema with prompts for interactive input
 - Default values for fields
 - Output path template
@@ -100,7 +108,7 @@ The `lua:` field references a type definition (relative to `types_dir`) that pro
 
 ### Captures
 
-Captures append content to existing files. Example `~/.config/mdvault/captures/inbox.lua`:
+Captures append content to existing files. Example `captures/inbox.lua`:
 
 ```lua
 return {
@@ -159,6 +167,8 @@ The focus state is stored per-vault in `.mdvault/state/context.toml` and persist
 
 ### Creating Notes
 
+All note creation goes through a single unified flow. `mdv new <type>` and `mdv new --template <type>` are equivalent — both load the template (if one exists) and run the full behaviour lifecycle:
+
 ```bash
 # Create a task (uses focus project, or prompts if no focus)
 mdv new task "Implement search feature"
@@ -166,14 +176,14 @@ mdv new task "Implement search feature"
 # Create a task with explicit project (overrides focus)
 mdv new task "Implement search feature" --var project=myproject
 
-# Create from a template
-mdv new --template daily
-
 # Create a project
 mdv new project "New Project" --var status=active
 
 # Create a meeting note
 mdv new meeting "Team Sync" --var attendees="Alice, Bob"
+
+# Create a daily note
+mdv new daily
 ```
 
 ### Creating Journal Notes for Other Dates
@@ -368,9 +378,9 @@ mdv macro weekly-review
 
 ## Custom Type Definitions
 
-Create custom types in `~/.config/mdvault/types/`. These Lua scripts define schemas, prompts, output paths, and hooks.
+Create custom types in your `typedefs_dir`. These Lua scripts define schemas, prompts, output paths, and hooks. The filename becomes the type name (e.g., `meeting.lua` defines the `meeting` type).
 
-Example `~/.config/mdvault/types/meeting.lua`:
+Example `meeting.lua`:
 
 ```lua
 return {
@@ -459,13 +469,13 @@ lua: meeting.lua
 When creating notes:
 ```bash
 # Interactive mode - prompts for fields with 'prompt' attribute
-mdv new --template meeting "Weekly Standup"
+mdv new meeting "Weekly Standup"
 
 # Provide values via --var to skip prompts
-mdv new --template meeting "Design Review" --var attendees="Alice, Bob"
+mdv new meeting "Design Review" --var attendees="Alice, Bob"
 
 # Batch mode - uses defaults, fails if required fields missing
-mdv new --template meeting "Quick Sync" --batch --var attendees="Team"
+mdv new meeting "Quick Sync" --batch --var attendees="Team"
 ```
 
 ## Date Math Expressions
