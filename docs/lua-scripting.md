@@ -256,7 +256,7 @@ match engine.eval_string(r#"mdv.date("invalid_expr")"#) {
 
 ## Type Definitions
 
-Type definitions allow you to define custom note types with schema validation, interactive prompts, and lifecycle hooks. Type definitions are Lua files stored in `~/.config/mdvault/types/`.
+Type definitions allow you to define custom note types with schema validation, interactive prompts, and lifecycle hooks. Type definitions are Lua files stored in a **typedefs directory** — by default `~/.config/mdvault/types/`, but configurable via `typedefs_dir` in your profile (see [Script Resolution](#script-resolution) below).
 
 ### Lua-Template Integration
 
@@ -273,7 +273,7 @@ lua: meeting.lua
 **Priority**: {{priority}}
 ```
 
-The `lua:` path is resolved relative to your `types_dir` (e.g., `~/.config/mdvault/types/`). This enables:
+The `lua:` path is resolved relative to your `typedefs_dir` (see [Script Resolution](#script-resolution) for details). This enables:
 
 1. **Schema-driven prompts**: Fields with `prompt` attribute are asked interactively
 2. **Default values**: Fields with `default` use that value when not provided
@@ -282,12 +282,36 @@ The `lua:` path is resolved relative to your `types_dir` (e.g., `~/.config/mdvau
 
 > **Tip**: If a schema field has a `default` value, that default is used automatically without prompting. This is particularly useful for journal types where `title` can default to today's date (e.g., `default = mdv.date("today")`).
 
+### Script Resolution
+
+When `mdv new` runs, it loads Lua type definitions using the following resolution order:
+
+1. **Explicit `lua:` reference** — If the template frontmatter contains a `lua:` field (e.g., `lua: meeting.lua`), the path is resolved relative to your `typedefs_dir`.
+
+2. **Implicit registry lookup** — If the template has no `lua:` field, or if no template exists at all (scaffolding path), mdvault looks for a `.lua` file in `typedefs_dir` whose filename matches the type/template name. For example, `mdv new task "Title"` automatically loads `task.lua` from `typedefs_dir` if it exists.
+
+This means a template named `daily.md` will automatically pick up `daily.lua` from your typedefs directory even without an explicit `lua: daily.lua` in the template frontmatter.
+
+#### Configuring `typedefs_dir`
+
+The typedefs directory is configured in your profile at `~/.config/mdvault/config.toml`:
+
+```toml
+[profiles.default]
+vault_root    = "/path/to/vault"
+typedefs_dir  = "{{vault_root}}/automations/types"
+```
+
+If `typedefs_dir` is omitted, it defaults to `~/.config/mdvault/types/`. The `{{vault_root}}` placeholder is expanded to your vault root, so you can keep type definitions inside your vault (useful for version control).
+
+> **Note**: There is no local-first resolution — mdvault does not search the vault's `automations/templates/` directory for `.lua` files. Lua scripts must live in the configured `typedefs_dir`.
+
 ### Creating a Type Definition
 
-Create a `.lua` file in `~/.config/mdvault/types/`. The filename becomes the type name:
+Create a `.lua` file in your `typedefs_dir`. The filename becomes the type name:
 
 ```lua
--- ~/.config/mdvault/types/meeting.lua
+-- <typedefs_dir>/meeting.lua
 return {
     description = "Meeting notes with attendees and action items",
 
@@ -596,7 +620,7 @@ end
 mdvault has five built-in types: `daily`, `weekly`, `task`, `project`, and `zettel`. You can create Lua files with these names to add validation and hooks to them:
 
 ```lua
--- ~/.config/mdvault/types/task.lua
+-- <typedefs_dir>/task.lua
 -- This overrides/extends the built-in task type
 return {
     schema = {
@@ -1277,7 +1301,7 @@ return {
 Then create a type definition with an `on_create` hook:
 
 ```lua
--- ~/.config/mdvault/types/task.lua
+-- <typedefs_dir>/task.lua
 return {
     name = "task",
     schema = {
@@ -1315,7 +1339,7 @@ The task is created and automatically linked in today's daily note under the "Cr
 Use `mdv.read_note()` to inherit fields from a parent note. This is useful when child notes should share properties with their parent:
 
 ```lua
--- ~/.config/mdvault/types/task.lua
+-- <typedefs_dir>/task.lua
 return {
     name = "task",
     schema = {
@@ -1554,7 +1578,7 @@ impl SandboxConfig {
 
 ## Built-in Type Examples
 
-These examples show how to create Lua-first type definitions for the built-in types (task, project). Place these files in your `types_dir` (default: `~/.config/mdvault/types/`).
+These examples show how to create Lua-first type definitions for the built-in types (task, project). Place these files in your `typedefs_dir` (default: `~/.config/mdvault/types/`).
 
 ### Task Type Definition
 
