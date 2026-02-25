@@ -5,6 +5,12 @@ All notable changes to mdvault will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-02-25
+
+### Changed
+
+- **Dependency upgrades**: All dependencies updated to latest versions. Major bumps: comrak 0.35→0.50, mlua 0.10→0.11, rusqlite 0.32→0.38, toml 0.9→1.0, ratatui 0.29→0.30, crossterm 0.28→0.29, tabled 0.17→0.20, dialoguer 0.11→0.12.
+
 ## [0.4.0] - 2026-02-24
 
 This release unifies the note creation pipeline. `mdv new task "Title"` and `mdv new --template task "Title"` now go through the same code path, with behaviours (lifecycle hooks, schema validation, output paths) available in all creation flows.
