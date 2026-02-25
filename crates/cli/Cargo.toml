@@ -19,13 +19,13 @@ chrono = { version = "0.4.43", features = ["clock"] }
 clap = { version = "4.5.54", features = ["derive"] }
 clap_complete = { version = "4.5", features = ["unstable-dynamic"] }
 color-eyre = "0.6"
-crossterm = "0.28"
-dialoguer = { version = "0.11", features = ["fuzzy-select"] }
+crossterm = "0.29"
+dialoguer = { version = "0.12", features = ["fuzzy-select"] }
 mdvault-core = { version = "0.4.0", path = "../core" }
-ratatui = "0.29"
+ratatui = "0.30"
 regex = "1.12.2"
 serde = { version = "1.0", features = ["derive"] }
-tabled = "0.17"
+tabled = "0.20"
 serde_json = "1.0"
 serde_yaml = "0.9"
 walkdir = "2.5"

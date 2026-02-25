@@ -282,7 +282,7 @@ fn default_options() -> Options<'static> {
     // Render options for CommonMark output
     options.render.hardbreaks = false;
     options.render.github_pre_lang = true;
-    options.render.unsafe_ = true; // Allow raw HTML passthrough
+    options.render.r#unsafe = true; // Allow raw HTML passthrough
 
     options
 }
