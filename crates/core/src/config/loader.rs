@@ -71,12 +71,19 @@ impl ConfigLoader {
             .get(&active)
             .ok_or_else(|| ConfigError::ProfileNotFound(active.clone()))?;
 
+        // Compute config directory for typedefs fallback resolution
+        let config_dir = path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(default_config_dir);
+
         let resolved = Self::resolve_profile(
             &active,
             prof,
             &cf.security,
             &cf.logging,
             &cf.activity,
+            &config_dir,
         )?;
         Ok(resolved)
     }
@@ -87,6 +94,7 @@ impl ConfigLoader {
         sec: &SecurityPolicy,
         log_cfg: &LoggingConfig,
         activity_cfg: &ActivityConfig,
+        config_dir: &Path,
     ) -> Result<ResolvedConfig, ConfigError> {
         let vault_root = expand_path(&prof.vault_root)?;
         let sub = |s: &str| s.replace("{{vault_root}}", &vault_root.to_string_lossy());
@@ -94,9 +102,21 @@ impl ConfigLoader {
         let templates_dir = expand_path(&sub(&prof.templates_dir))?;
         let captures_dir = expand_path(&sub(&prof.captures_dir))?;
         let macros_dir = expand_path(&sub(&prof.macros_dir))?;
-        let typedefs_dir = match &prof.typedefs_dir {
-            Some(dir) => expand_path(&sub(dir))?,
-            None => default_typedefs_dir(),
+        // Compute fallback typedefs dir from the config file's sibling "types/" directory.
+        // This respects both real and test config paths.
+        let default_td_dir = config_dir.join("types");
+        let (typedefs_dir, typedefs_fallback_dir) = match &prof.typedefs_dir {
+            Some(dir) => {
+                let resolved = expand_path(&sub(dir))?;
+                // When the configured dir differs from the default, use the default as fallback
+                let fallback = if resolved != default_td_dir && default_td_dir.exists() {
+                    Some(default_td_dir)
+                } else {
+                    None
+                };
+                (resolved, fallback)
+            }
+            None => (default_td_dir, None),
         };
 
         // Resolve excluded folders
@@ -128,12 +148,21 @@ impl ConfigLoader {
             captures_dir,
             macros_dir,
             typedefs_dir,
+            typedefs_fallback_dir,
             excluded_folders,
             security: sec.clone(),
             logging,
             activity: activity_cfg.clone(),
         })
     }
+}
+
+fn default_config_dir() -> PathBuf {
+    if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
+        return Path::new(&xdg).join("mdvault");
+    }
+    let home = home_dir().unwrap_or_else(|| PathBuf::from("~"));
+    home.join(".config").join("mdvault")
 }
 
 pub fn default_config_path() -> PathBuf {
@@ -144,15 +173,6 @@ pub fn default_config_path() -> PathBuf {
     home.join(".config").join("mdvault").join("config.toml")
 }
 
-/// Default directory for Lua type definitions.
-/// Global location: ~/.config/mdvault/types/
-pub fn default_typedefs_dir() -> PathBuf {
-    if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
-        return Path::new(&xdg).join("mdvault").join("types");
-    }
-    let home = home_dir().unwrap_or_else(|| PathBuf::from("~"));
-    home.join(".config").join("mdvault").join("types")
-}
 
 fn expand_path(input: &str) -> Result<PathBuf, ConfigError> {
     let expanded = full(input).map_err(|_| ConfigError::NoHome)?;

@@ -22,8 +22,12 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
         }
     };
 
-    // Load type definitions
-    let typedef_repo = match TypedefRepository::new(&rc.typedefs_dir) {
+    // Load type definitions (with fallback to default dir)
+    let typedef_repo = match &rc.typedefs_fallback_dir {
+        Some(fallback) => TypedefRepository::with_fallback(&rc.typedefs_dir, fallback),
+        None => TypedefRepository::new(&rc.typedefs_dir),
+    };
+    let typedef_repo = match typedef_repo {
         Ok(repo) => repo,
         Err(e) => {
             eprintln!("Error loading type definitions: {}", e);

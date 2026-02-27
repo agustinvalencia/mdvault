@@ -342,8 +342,12 @@ fn run_on_update_hook_if_needed(cfg: &ResolvedConfig, target_file: &Path, conten
         return;
     }
 
-    // Load type definitions
-    let typedef_repo = match TypedefRepository::new(&cfg.typedefs_dir) {
+    // Load type definitions (with fallback to default dir)
+    let typedef_repo = match &cfg.typedefs_fallback_dir {
+        Some(fallback) => TypedefRepository::with_fallback(&cfg.typedefs_dir, fallback),
+        None => TypedefRepository::new(&cfg.typedefs_dir),
+    };
+    let typedef_repo = match typedef_repo {
         Ok(r) => r,
         Err(_) => return, // Can't load types, skip hook
     };

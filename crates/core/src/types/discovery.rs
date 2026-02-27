@@ -76,6 +76,25 @@ impl TypedefRepository {
         Ok(Self { root: root.to_path_buf(), typedefs })
     }
 
+    /// Create a repository merging type definitions from a primary and fallback directory.
+    ///
+    /// Definitions in the primary directory take precedence over the fallback.
+    /// This allows vault-local type overrides while still picking up global defaults.
+    pub fn with_fallback(primary: &Path, fallback: &Path) -> Result<Self, TypedefError> {
+        let mut typedefs = discover_typedefs(primary)?;
+        let fallback_typedefs = discover_typedefs(fallback)?;
+
+        // Add fallback typedefs that don't exist in primary
+        for ft in fallback_typedefs {
+            if !typedefs.iter().any(|t| t.name == ft.name) {
+                typedefs.push(ft);
+            }
+        }
+
+        typedefs.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(Self { root: primary.to_path_buf(), typedefs })
+    }
+
     /// List all discovered type definitions.
     pub fn list_all(&self) -> &[TypedefInfo] {
         &self.typedefs
@@ -632,5 +651,67 @@ return {
         let area_field = typedef.schema.get("area").unwrap();
         assert_eq!(area_field.selector, Some("area".to_string()));
         assert_eq!(area_field.prompt, Some("Which area?".to_string()));
+    }
+
+    #[test]
+    fn test_with_fallback_merges_directories() {
+        let temp = TempDir::new().unwrap();
+        let primary_dir = temp.path().join("primary");
+        let fallback_dir = temp.path().join("fallback");
+        fs::create_dir_all(&primary_dir).unwrap();
+        fs::create_dir_all(&fallback_dir).unwrap();
+
+        // Primary has meeting.lua
+        fs::write(
+            primary_dir.join("meeting.lua"),
+            r#"return { description = "primary meeting" }"#,
+        )
+        .unwrap();
+
+        // Fallback has daily.lua and meeting.lua (should not override primary)
+        fs::write(
+            fallback_dir.join("daily.lua"),
+            r#"return { description = "fallback daily" }"#,
+        )
+        .unwrap();
+        fs::write(
+            fallback_dir.join("meeting.lua"),
+            r#"return { description = "fallback meeting" }"#,
+        )
+        .unwrap();
+
+        let repo = TypedefRepository::with_fallback(&primary_dir, &fallback_dir).unwrap();
+
+        // Should have both types
+        assert_eq!(repo.typedefs.len(), 2);
+        assert!(repo.has_typedef("meeting"));
+        assert!(repo.has_typedef("daily"));
+
+        // Primary meeting should win over fallback
+        let meeting = repo.load_typedef("meeting").unwrap();
+        assert_eq!(meeting.description, Some("primary meeting".to_string()));
+
+        // Fallback daily should be available
+        let daily = repo.load_typedef("daily").unwrap();
+        assert_eq!(daily.description, Some("fallback daily".to_string()));
+    }
+
+    #[test]
+    fn test_with_fallback_missing_fallback_dir() {
+        let temp = TempDir::new().unwrap();
+        let primary_dir = temp.path().join("primary");
+        let fallback_dir = temp.path().join("nonexistent");
+        fs::create_dir_all(&primary_dir).unwrap();
+
+        fs::write(
+            primary_dir.join("meeting.lua"),
+            r#"return { description = "meeting" }"#,
+        )
+        .unwrap();
+
+        // Should work fine even if fallback dir doesn't exist
+        let repo = TypedefRepository::with_fallback(&primary_dir, &fallback_dir).unwrap();
+        assert_eq!(repo.typedefs.len(), 1);
+        assert!(repo.has_typedef("meeting"));
     }
 }

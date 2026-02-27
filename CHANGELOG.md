@@ -5,6 +5,12 @@ All notable changes to mdvault will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-02-27
+
+### Fixed
+
+- **Typedef fallback resolution**: When `typedefs_dir` is explicitly configured (e.g. vault-local `automations/types/`), type definitions not found there now fall back to the global config directory (`~/.config/mdvault/types/`). Previously, missing Lua type definitions caused schema defaults to be silently lost, resulting in daily notes missing fields like `meds`, `exercise`, `intention`, `closed`, and `created_at`.
+
 ## [0.4.1] - 2026-02-25
 
 ### Changed

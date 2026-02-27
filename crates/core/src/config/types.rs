@@ -99,9 +99,29 @@ pub struct ResolvedConfig {
     pub macros_dir: PathBuf,
     /// Directory for Lua type definitions (global, not per-profile).
     pub typedefs_dir: PathBuf,
+    /// Fallback directory for type definitions (the global default when typedefs_dir is overridden).
+    pub typedefs_fallback_dir: Option<PathBuf>,
     /// Folders to exclude from vault operations (resolved to absolute paths).
     pub excluded_folders: Vec<PathBuf>,
     pub security: SecurityPolicy,
     pub logging: LoggingConfig,
     pub activity: ActivityConfig,
+}
+
+impl ResolvedConfig {
+    /// Resolve a Lua type definition path, checking the configured dir first then fallback.
+    pub fn resolve_lua_path(&self, lua_path: &str) -> PathBuf {
+        let primary = self.typedefs_dir.join(lua_path);
+        if primary.exists() {
+            return primary;
+        }
+        if let Some(ref fallback) = self.typedefs_fallback_dir {
+            let fallback_path = fallback.join(lua_path);
+            if fallback_path.exists() {
+                return fallback_path;
+            }
+        }
+        primary // Return primary path (will fail with a clear error)
+    }
+
 }

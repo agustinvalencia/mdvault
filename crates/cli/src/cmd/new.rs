@@ -409,8 +409,11 @@ fn post_write_pipeline(
 /// content is generated via `generate_scaffolding()`. The behaviour lifecycle always runs
 /// for known types regardless of content source.
 fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
-    // 1. Load TypedefRepository + TypeRegistry
-    let typedef_repo = TypedefRepository::new(&cfg.typedefs_dir).ok();
+    // 1. Load TypedefRepository + TypeRegistry (with fallback to default dir)
+    let typedef_repo = match &cfg.typedefs_fallback_dir {
+        Some(fallback) => TypedefRepository::with_fallback(&cfg.typedefs_dir, fallback).ok(),
+        None => TypedefRepository::new(&cfg.typedefs_dir).ok(),
+    };
     let type_registry =
         typedef_repo.as_ref().and_then(|repo| TypeRegistry::from_repository(repo).ok());
 
@@ -426,7 +429,7 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
         .and_then(|loaded| loaded.frontmatter.as_ref())
         .and_then(|fm| fm.lua.as_ref())
         .and_then(|lua_path| {
-            let lua_file = cfg.typedefs_dir.join(lua_path);
+            let lua_file = cfg.resolve_lua_path(lua_path);
             match load_typedef_from_file(&lua_file) {
                 Ok(td) => Some(td),
                 Err(e) => {
@@ -816,8 +819,11 @@ fn run_on_create_hook_if_exists(
     variables: &HashMap<String, String>,
 ) -> Result<HookResult, String> {
     // Load type registry first, as we need it for VaultContext anyway
-    let typedef_repo =
-        TypedefRepository::new(&cfg.typedefs_dir).map_err(|e| e.to_string())?;
+    let typedef_repo = match &cfg.typedefs_fallback_dir {
+        Some(fallback) => TypedefRepository::with_fallback(&cfg.typedefs_dir, fallback),
+        None => TypedefRepository::new(&cfg.typedefs_dir),
+    }
+    .map_err(|e| e.to_string())?;
     let type_registry =
         TypeRegistry::from_repository(&typedef_repo).map_err(|e| e.to_string())?;
 
