@@ -62,8 +62,12 @@ impl NoteIdentity for WeeklyBehavior {
 
 impl NoteLifecycle for WeeklyBehavior {
     fn before_create(&self, ctx: &mut CreationContext) -> DomainResult<()> {
-        // Use title as week if it looks like a week, otherwise use current week
-        let week = if looks_like_week(&ctx.title) {
+        // Check for a week provided via --var week=... first, then try title, then current week
+        let week = if let Some(provided) = ctx.get_var("week")
+            && looks_like_week(&provided)
+        {
+            provided.to_string()
+        } else if looks_like_week(&ctx.title) {
             ctx.title.clone()
         } else {
             // Try to evaluate as date expr, forcing ISO week format if not specified

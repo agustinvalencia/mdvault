@@ -62,8 +62,12 @@ impl NoteIdentity for DailyBehavior {
 
 impl NoteLifecycle for DailyBehavior {
     fn before_create(&self, ctx: &mut CreationContext) -> DomainResult<()> {
-        // Use title as date if it looks like a date, otherwise use today
-        let date = if looks_like_date(&ctx.title) {
+        // Check for a date provided via --var date=... first, then try title, then today
+        let date = if let Some(provided) = ctx.get_var("date")
+            && looks_like_date(&provided)
+        {
+            provided.to_string()
+        } else if looks_like_date(&ctx.title) {
             ctx.title.clone()
         } else if let Some(evaluated) = try_evaluate_date_expr(&ctx.title) {
             evaluated

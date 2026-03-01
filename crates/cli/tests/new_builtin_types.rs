@@ -639,3 +639,87 @@ fn on_create_hook_preserves_schema_defaults_when_returning_new_note() {
         "Schema default 'tags' lost. Content:\n{content}"
     );
 }
+
+#[test]
+fn daily_var_date_overrides_path_and_frontmatter() {
+    let (_tmp, vault, cfg_path) = setup_vault();
+
+    let target_date = "2026-06-15";
+
+    // Setup: Create daily.lua typedef with output using {{date}}
+    let typedef_path = vault.join(".mdvault/typedefs/daily.lua");
+    write(
+        &typedef_path,
+        r#"return {
+    output = "Journal/{{date | %Y}}/Daily/{{title}}.md",
+    schema = {
+        date = { type = "string", default_expr = "os.date('%Y-%m-%d')" }
+    }
+}"#,
+    );
+
+    // Action: mdv new daily "placeholder" --batch --var date=2026-06-15
+    // The title is required in batch mode, but --var date= should override it
+    let output = run_mdv(
+        &cfg_path,
+        &["new", "daily", "placeholder", "--batch", "--var", &format!("date={}", target_date)],
+    );
+
+    assert!(output.status.success(), "Command failed: {:?}", output);
+
+    // Assertions: file should be at the target date path, NOT today's path
+    let daily_path = vault.join(format!("Journal/2026/Daily/{}.md", target_date));
+    assert!(
+        daily_path.exists(),
+        "Daily note not found at {:?} — --var date= was likely ignored",
+        daily_path
+    );
+
+    let content = fs::read_to_string(&daily_path).unwrap();
+    assert!(content.contains(&format!("date: {}", target_date)));
+    assert!(content.contains(&format!("title: {}", target_date)));
+    assert!(
+        content.contains("week:") && content.contains("2026-W25"),
+        "Week should be derived from target date. Content:\n{content}"
+    );
+}
+
+#[test]
+fn weekly_var_week_overrides_path_and_frontmatter() {
+    let (_tmp, vault, cfg_path) = setup_vault();
+
+    let target_week = "2026-W30";
+
+    // Setup: Create weekly.lua typedef with output using {{week}}
+    let typedef_path = vault.join(".mdvault/typedefs/weekly.lua");
+    write(
+        &typedef_path,
+        r#"return {
+    output = "Journal/{{week | %G}}/Weekly/{{title}}.md",
+    schema = {
+        week = { type = "string", default_expr = "os.date('%G-W%V')" }
+    }
+}"#,
+    );
+
+    // Action: mdv new weekly "placeholder" --batch --var week=2026-W30
+    // The title is required in batch mode, but --var week= should override it
+    let output = run_mdv(
+        &cfg_path,
+        &["new", "weekly", "placeholder", "--batch", "--var", &format!("week={}", target_week)],
+    );
+
+    assert!(output.status.success(), "Command failed: {:?}", output);
+
+    // Assertions: file should be at the target week path, NOT current week's path
+    let weekly_path = vault.join(format!("Journal/2026/Weekly/{}.md", target_week));
+    assert!(
+        weekly_path.exists(),
+        "Weekly note not found at {:?} — --var week= was likely ignored",
+        weekly_path
+    );
+
+    let content = fs::read_to_string(&weekly_path).unwrap();
+    assert!(content.contains(&format!("week: {}", target_week)));
+    assert!(content.contains(&format!("title: {}", target_week)));
+}
