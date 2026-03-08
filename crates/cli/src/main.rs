@@ -128,6 +128,9 @@ enum Commands {
     /// Query context for a day or week
     #[command(subcommand)]
     Context(ContextCommands),
+
+    /// Interactive dashboard TUI
+    Dashboard(DashboardArgs),
 }
 
 /// Today command subcommands.
@@ -281,11 +284,11 @@ pub struct TaskStatusArgs {
 #[derive(Debug, Args)]
 pub struct ReportArgs {
     /// Generate report for a specific month (YYYY-MM format)
-    #[arg(long, conflicts_with = "week")]
+    #[arg(long, conflicts_with_all = ["week", "dashboard"])]
     pub month: Option<String>,
 
     /// Generate report for a specific week (YYYY-WXX format)
-    #[arg(long, conflicts_with = "month")]
+    #[arg(long, conflicts_with_all = ["month", "dashboard"])]
     pub week: Option<String>,
 
     /// Output report to a markdown file instead of terminal
@@ -295,6 +298,22 @@ pub struct ReportArgs {
     /// Output as JSON
     #[arg(long)]
     pub json: bool,
+
+    /// Generate a dashboard report (project-aware, for TUI/charts/MCP)
+    #[arg(long, short, conflicts_with_all = ["month", "week"])]
+    pub dashboard: bool,
+
+    /// Scope to a specific project (ID or folder name). Requires --dashboard or --visual.
+    #[arg(long, short, add = ArgValueCompleter::new(completions::complete_projects))]
+    pub project: Option<String>,
+
+    /// Days of activity history to include in dashboard (default: 30)
+    #[arg(long, default_value = "30")]
+    pub activity_days: u32,
+
+    /// Generate a visual PNG dashboard (implies --dashboard)
+    #[arg(long, short, conflicts_with_all = ["month", "week"])]
+    pub visual: bool,
 }
 
 #[derive(Debug, Args)]
@@ -796,6 +815,23 @@ pub struct ContextFocusArgs {
     pub with_tasks: bool,
 }
 
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv dashboard                      # Vault-wide interactive dashboard
+  mdv dashboard --project MCP        # Dashboard scoped to project MCP
+  mdv dashboard --activity-days 60   # Include 60 days of activity
+")]
+pub struct DashboardArgs {
+    /// Scope to a specific project (ID or folder name)
+    #[arg(long, short, add = ArgValueCompleter::new(completions::complete_projects))]
+    pub project: Option<String>,
+
+    /// Days of activity history to include (default: 30)
+    #[arg(long, default_value = "30")]
+    pub activity_days: u32,
+}
+
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
     let pos =
         s.find('=').ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
@@ -975,14 +1011,26 @@ fn main() {
             }
         },
         Some(Commands::Report(args)) => {
-            cmd::report::run(
-                cli.config.as_deref(),
-                cli.profile.as_deref(),
-                args.month.as_deref(),
-                args.week.as_deref(),
-                args.output.as_deref(),
-                args.json,
-            );
+            if args.visual || args.dashboard {
+                cmd::report::run_dashboard(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    args.project.as_deref(),
+                    args.activity_days,
+                    args.json,
+                    args.output.as_deref(),
+                    args.visual,
+                );
+            } else {
+                cmd::report::run(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    args.month.as_deref(),
+                    args.week.as_deref(),
+                    args.output.as_deref(),
+                    args.json,
+                );
+            }
         }
         Some(Commands::Today(args)) => {
             cmd::today::run(cli.config.as_deref(), cli.profile.as_deref(), args);
@@ -1026,5 +1074,16 @@ fn main() {
                 );
             }
         },
+        Some(Commands::Dashboard(args)) => {
+            if let Err(e) = tui::dashboard::run(
+                cli.config.as_deref(),
+                cli.profile.as_deref(),
+                args.project.as_deref(),
+                args.activity_days,
+            ) {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
     }
 }

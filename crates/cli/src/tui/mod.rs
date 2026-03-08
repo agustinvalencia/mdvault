@@ -2,6 +2,7 @@
 
 mod actions;
 mod app;
+pub mod dashboard;
 mod event;
 mod ui;
 

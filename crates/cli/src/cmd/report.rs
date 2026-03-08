@@ -566,6 +566,184 @@ fn format_markdown_report(report: &ReportData) -> String {
     md
 }
 
+/// Run the dashboard report command.
+pub fn run_dashboard(
+    config: Option<&Path>,
+    profile: Option<&str>,
+    project: Option<&str>,
+    activity_days: u32,
+    json_output: bool,
+    output: Option<&Path>,
+    visual: bool,
+) {
+    let cfg = match ConfigLoader::load(config, profile) {
+        Ok(rc) => rc,
+        Err(e) => {
+            eprintln!("Failed to load config: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let db = match IndexDb::open(&index_path) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("Failed to open index: {e}");
+            eprintln!("Run 'mdv reindex' first.");
+            std::process::exit(1);
+        }
+    };
+
+    let options = mdvault_core::report::DashboardOptions {
+        project: project.map(String::from),
+        activity_days,
+        ..Default::default()
+    };
+
+    let report = match mdvault_core::report::build_dashboard(&db, &options) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to generate dashboard: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    if visual {
+        let png_path = if let Some(path) = output {
+            path.to_path_buf()
+        } else {
+            // Default: write to vault assets directory
+            let filename = match &report.scope {
+                mdvault_core::report::ReportScope::Project { id, .. } => {
+                    format!("dashboard-{}.png", id.to_lowercase())
+                }
+                mdvault_core::report::ReportScope::Vault => "dashboard-vault.png".to_string(),
+            };
+            cfg.vault_root.join("assets").join("dashboards").join(filename)
+        };
+
+        let gen_fn = if project.is_some() {
+            super::charts::generate_project_dashboard_png
+        } else {
+            super::charts::generate_dashboard_png
+        };
+
+        match gen_fn(&report, &png_path) {
+            Ok(()) => {
+                let rel_path = png_path
+                    .strip_prefix(&cfg.vault_root)
+                    .unwrap_or(&png_path);
+                println!("Dashboard PNG written to: {}", png_path.display());
+                println!("Embed in markdown:  ![dashboard]({})", rel_path.display());
+            }
+            Err(e) => {
+                eprintln!("Failed to generate dashboard PNG: {e}");
+                std::process::exit(1);
+            }
+        }
+
+        if json_output {
+            println!("{}", serde_json::to_string_pretty(&report).unwrap());
+        }
+    } else if json_output {
+        println!("{}", serde_json::to_string_pretty(&report).unwrap());
+    } else if let Some(path) = output {
+        let json_str = serde_json::to_string_pretty(&report).unwrap();
+        if let Err(e) = std::fs::write(path, &json_str) {
+            eprintln!("Failed to write report: {e}");
+            std::process::exit(1);
+        }
+        println!("Dashboard written to: {}", path.display());
+    } else {
+        print_dashboard_terminal(&report);
+    }
+}
+
+/// Print dashboard report to terminal in human-readable format.
+fn print_dashboard_terminal(report: &mdvault_core::report::DashboardReport) {
+    println!();
+    println!("{}", "═".repeat(65));
+    match &report.scope {
+        mdvault_core::report::ReportScope::Vault => {
+            println!("{:^65}", "Vault Dashboard");
+        }
+        mdvault_core::report::ReportScope::Project { id, title } => {
+            println!("{:^65}", format!("Dashboard: {} [{}]", title, id));
+        }
+    }
+    println!("{}", "═".repeat(65));
+    println!();
+
+    // Summary
+    println!("SUMMARY");
+    println!("  Total Notes:     {}", report.summary.total_notes);
+    println!("  Total Tasks:     {}", report.summary.total_tasks);
+    println!("  Total Projects:  {}", report.summary.total_projects);
+    println!("  Active Projects: {}", report.summary.active_projects);
+
+    if !report.summary.tasks_by_status.is_empty() {
+        print!("  Tasks by Status:");
+        let mut statuses: Vec<_> = report.summary.tasks_by_status.iter().collect();
+        statuses.sort_by_key(|(k, _)| (*k).clone());
+        for (status, count) in &statuses {
+            print!("  {}={}", status, count);
+        }
+        println!();
+    }
+    println!();
+
+    // Projects
+    if !report.projects.is_empty() {
+        println!("PROJECTS");
+        for p in &report.projects {
+            let bar_width: usize = 20;
+            let filled =
+                ((p.progress_percent / 100.0) * bar_width as f64).round() as usize;
+            let empty = bar_width.saturating_sub(filled);
+            let bar = format!("{}{}", "█".repeat(filled), "░".repeat(empty));
+
+            println!(
+                "  {} [{}]  {} {:.0}%  ({}/{} done)  vel: {:.1}/wk",
+                p.title,
+                p.id,
+                bar,
+                p.progress_percent,
+                p.tasks.done,
+                p.tasks.total,
+                p.velocity.tasks_per_week_4w
+            );
+        }
+        println!();
+    }
+
+    // Recent completions (across all projects, deduplicated)
+    let all_completions: Vec<_> = report
+        .projects
+        .iter()
+        .flat_map(|p| p.recent_completions.iter())
+        .collect();
+    if !all_completions.is_empty() {
+        println!("RECENT COMPLETIONS (7 days)");
+        for c in all_completions.iter().take(10) {
+            println!("  {} {} ({})", c.completed_at, c.id, c.title);
+        }
+        println!();
+    }
+
+    // Stale notes
+    if !report.activity.stale_notes.is_empty() {
+        println!("STALE NOTES (top {})", report.activity.stale_notes.len());
+        for s in &report.activity.stale_notes {
+            let last = s.last_seen.as_deref().unwrap_or("never");
+            println!(
+                "  [{:.2}] {} ({}, last seen: {})",
+                s.staleness_score, s.title, s.note_type, last
+            );
+        }
+        println!();
+    }
+}
+
 // --- Helper functions ---
 
 /// Get note type from frontmatter.
