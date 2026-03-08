@@ -64,7 +64,7 @@ impl NoteLifecycle for WeeklyBehavior {
     fn before_create(&self, ctx: &mut CreationContext) -> DomainResult<()> {
         // Check for a week provided via --var week=... first, then try title, then current week
         let week = if let Some(provided) = ctx.get_var("week")
-            && looks_like_week(&provided)
+            && looks_like_week(provided)
         {
             provided.to_string()
         } else if looks_like_week(&ctx.title) {

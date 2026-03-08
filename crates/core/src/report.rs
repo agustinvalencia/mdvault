@@ -135,12 +135,7 @@ pub struct DashboardOptions {
 
 impl Default for DashboardOptions {
     fn default() -> Self {
-        Self {
-            project: None,
-            activity_days: 30,
-            stale_limit: 10,
-            stale_threshold: 0.5,
-        }
+        Self { project: None, activity_days: 30, stale_limit: 10, stale_threshold: 0.5 }
     }
 }
 
@@ -153,15 +148,11 @@ pub fn build_dashboard(
         .query_notes(&NoteQuery::default())
         .map_err(|e| format!("Failed to query notes: {e}"))?;
 
-    let tasks: Vec<&IndexedNote> = all_notes
-        .iter()
-        .filter(|n| n.note_type == NoteType::Task)
-        .collect();
+    let tasks: Vec<&IndexedNote> =
+        all_notes.iter().filter(|n| n.note_type == NoteType::Task).collect();
 
-    let projects: Vec<&IndexedNote> = all_notes
-        .iter()
-        .filter(|n| n.note_type == NoteType::Project)
-        .collect();
+    let projects: Vec<&IndexedNote> =
+        all_notes.iter().filter(|n| n.note_type == NoteType::Project).collect();
 
     // Determine scope
     let (scope, target_projects) = if let Some(ref project_filter) = options.project {
@@ -169,48 +160,30 @@ pub fn build_dashboard(
             .iter()
             .find(|p| {
                 let (id, _, _) = extract_project_info(p);
-                let folder = p
-                    .path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("");
+                let folder = p.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
                 id.eq_ignore_ascii_case(project_filter)
                     || folder.eq_ignore_ascii_case(project_filter)
             })
             .ok_or_else(|| format!("Project not found: {project_filter}"))?;
 
         let (id, _, _) = extract_project_info(matched);
-        let title = if matched.title.is_empty() {
-            id.clone()
-        } else {
-            matched.title.clone()
-        };
+        let title =
+            if matched.title.is_empty() { id.clone() } else { matched.title.clone() };
 
-        (
-            ReportScope::Project {
-                id: id.clone(),
-                title,
-            },
-            vec![*matched],
-        )
+        (ReportScope::Project { id: id.clone(), title }, vec![*matched])
     } else {
         (ReportScope::Vault, projects.to_vec())
     };
 
     // Build per-project reports
-    let project_reports: Vec<ProjectReport> = target_projects
-        .iter()
-        .map(|p| build_project_report(p, &tasks))
-        .collect();
+    let project_reports: Vec<ProjectReport> =
+        target_projects.iter().map(|p| build_project_report(p, &tasks)).collect();
 
     // Resolve project filter to folder name for consistent matching
     let resolved_project_folder: Option<String> = if options.project.is_some() {
-        target_projects.first().and_then(|p| {
-            p.path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(String::from)
-        })
+        target_projects
+            .first()
+            .and_then(|p| p.path.file_stem().and_then(|s| s.to_str()).map(String::from))
     } else {
         None
     };
@@ -220,8 +193,7 @@ pub fn build_dashboard(
         build_vault_summary(&all_notes, &tasks, &projects, &resolved_project_folder);
 
     // Activity report
-    let activity =
-        build_activity_report(db, &all_notes, &tasks, options)?;
+    let activity = build_activity_report(db, &all_notes, &tasks, options)?;
 
     Ok(DashboardReport {
         generated_at: Utc::now().to_rfc3339(),
@@ -244,24 +216,20 @@ fn build_vault_summary(
 ) -> VaultSummary {
     let mut notes_by_type: HashMap<String, usize> = HashMap::new();
     for note in all_notes {
-        *notes_by_type
-            .entry(note.note_type.as_str().to_string())
-            .or_default() += 1;
+        *notes_by_type.entry(note.note_type.as_str().to_string()).or_default() += 1;
     }
 
     // If scoped to a project, filter tasks to that project
     let scoped_tasks: Vec<&&IndexedNote> = if let Some(pf) = project_filter {
-        tasks
-            .iter()
-            .filter(|t| task_matches_project(t, pf))
-            .collect()
+        tasks.iter().filter(|t| task_matches_project(t, pf)).collect()
     } else {
         tasks.iter().collect()
     };
 
     let mut tasks_by_status: HashMap<String, usize> = HashMap::new();
     for task in &scoped_tasks {
-        let status = get_frontmatter_str(task, "status").unwrap_or_else(|| "todo".to_string());
+        let status =
+            get_frontmatter_str(task, "status").unwrap_or_else(|| "todo".to_string());
         let normalised = normalise_status(&status);
         *tasks_by_status.entry(normalised).or_default() += 1;
     }
@@ -284,23 +252,20 @@ fn build_vault_summary(
     }
 }
 
-fn build_project_report(project: &IndexedNote, all_tasks: &[&IndexedNote]) -> ProjectReport {
+fn build_project_report(
+    project: &IndexedNote,
+    all_tasks: &[&IndexedNote],
+) -> ProjectReport {
     let (id, status, kind) = extract_project_info(project);
-    let project_folder = project
-        .path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
+    let project_folder = project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     let title = if project.title.is_empty() {
         project_folder.to_string()
     } else {
         project.title.clone()
     };
 
-    let project_tasks: Vec<&&IndexedNote> = all_tasks
-        .iter()
-        .filter(|t| task_matches_project(t, project_folder))
-        .collect();
+    let project_tasks: Vec<&&IndexedNote> =
+        all_tasks.iter().filter(|t| task_matches_project(t, project_folder)).collect();
 
     let mut counts = TaskCounts::default();
     for task in &project_tasks {
@@ -363,10 +328,8 @@ fn build_activity_report(
             .filter(|t| get_frontmatter_date(t, "created_at") == Some(current))
             .count();
 
-        let modified = all_notes
-            .iter()
-            .filter(|n| n.modified.date_naive() == current)
-            .count();
+        let modified =
+            all_notes.iter().filter(|n| n.modified.date_naive() == current).count();
 
         daily_activity.push(DayActivity {
             date: date_str,
@@ -385,9 +348,7 @@ fn build_activity_report(
         .get_stale_notes(options.stale_threshold, None, Some(options.stale_limit))
         .map_err(|e| format!("Failed to query stale notes: {e}"))?
         .into_iter()
-        .filter(|(note, _)| {
-            matches!(note.note_type, NoteType::Task | NoteType::Project)
-        })
+        .filter(|(note, _)| matches!(note.note_type, NoteType::Task | NoteType::Project))
         .map(|(note, score)| {
             let last_seen = db
                 .get_activity_summary(note.id.unwrap_or(0))
@@ -405,11 +366,7 @@ fn build_activity_report(
         })
         .collect();
 
-    Ok(ActivityReport {
-        period_days: options.activity_days,
-        daily_activity,
-        stale_notes,
-    })
+    Ok(ActivityReport { period_days: options.activity_days, daily_activity, stale_notes })
 }
 
 fn calculate_velocity(tasks: &[&&IndexedNote]) -> Velocity {
@@ -507,9 +464,7 @@ fn get_frontmatter_date(note: &IndexedNote, key: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
         .ok()
         .or_else(|| {
-            chrono::DateTime::parse_from_rfc3339(&date_str)
-                .ok()
-                .map(|dt| dt.date_naive())
+            chrono::DateTime::parse_from_rfc3339(&date_str).ok().map(|dt| dt.date_naive())
         })
         .or_else(|| {
             // Handle "YYYY-MM-DDThh:mm:ss" without timezone
@@ -530,12 +485,7 @@ fn extract_project_info(project: &IndexedNote) -> (String, String, String) {
         .and_then(|fm| fm.get("project-id").and_then(|v| v.as_str()))
         .map(String::from)
         .unwrap_or_else(|| {
-            project
-                .path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("???")
-                .to_string()
+            project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("???").to_string()
         });
 
     let status = fm
@@ -634,18 +584,16 @@ mod tests {
             "project": project_folder,
         });
         if let Some(d) = created_at {
-            fm["created_at"] = serde_json::Value::String(d.format("%Y-%m-%d").to_string());
+            fm["created_at"] =
+                serde_json::Value::String(d.format("%Y-%m-%d").to_string());
         }
         if let Some(d) = completed_at {
-            fm["completed_at"] = serde_json::Value::String(d.format("%Y-%m-%d").to_string());
+            fm["completed_at"] =
+                serde_json::Value::String(d.format("%Y-%m-%d").to_string());
         }
         let modified = completed_at
             .or(created_at)
-            .map(|d| {
-                Utc.from_utc_datetime(
-                    &d.and_hms_opt(12, 0, 0).unwrap(),
-                )
-            })
+            .map(|d| Utc.from_utc_datetime(&d.and_hms_opt(12, 0, 0).unwrap()))
             .unwrap_or_else(Utc::now);
         IndexedNote {
             modified,
@@ -695,20 +643,13 @@ mod tests {
             Some(r#"{"status": "done", "project": "my-project"}"#),
         );
         assert_eq!(get_frontmatter_str(&note, "status"), Some("done".into()));
-        assert_eq!(
-            get_frontmatter_str(&note, "project"),
-            Some("my-project".into())
-        );
+        assert_eq!(get_frontmatter_str(&note, "project"), Some("my-project".into()));
     }
 
     #[test]
     fn get_frontmatter_str_missing_key_returns_none() {
-        let note = make_note(
-            "test.md",
-            NoteType::Task,
-            "Test",
-            Some(r#"{"status": "done"}"#),
-        );
+        let note =
+            make_note("test.md", NoteType::Task, "Test", Some(r#"{"status": "done"}"#));
         assert_eq!(get_frontmatter_str(&note, "nonexistent"), None);
     }
 
@@ -823,10 +764,11 @@ mod tests {
         let yesterday = today - Duration::days(1);
         let two_days_ago = today - Duration::days(2);
 
-        let t1 = make_task("proj", "T-1", "A", "done", Some(two_days_ago), Some(yesterday));
+        let t1 =
+            make_task("proj", "T-1", "A", "done", Some(two_days_ago), Some(yesterday));
         let t2 = make_task("proj", "T-2", "B", "done", Some(two_days_ago), Some(today));
 
-        let tasks = vec![&t1, &t2];
+        let tasks = [&t1, &t2];
         let refs: Vec<&&IndexedNote> = tasks.iter().collect();
         let v = calculate_velocity(&refs);
 
@@ -841,7 +783,7 @@ mod tests {
         let old_date = chrono::Local::now().date_naive() - Duration::days(60);
         let t1 = make_task("proj", "T-1", "Old", "done", Some(old_date), Some(old_date));
 
-        let tasks = vec![&t1];
+        let tasks = [&t1];
         let refs: Vec<&&IndexedNote> = tasks.iter().collect();
         let v = calculate_velocity(&refs);
 
@@ -861,7 +803,7 @@ mod tests {
         let t2 = make_task("proj", "T-2", "Today", "done", None, Some(today));
         let t3 = make_task("proj", "T-3", "Old", "done", None, Some(old));
 
-        let tasks = vec![&t1, &t2, &t3];
+        let tasks = [&t1, &t2, &t3];
         let refs: Vec<&&IndexedNote> = tasks.iter().collect();
         let result = recent_completions(&refs, "PROJ", 7, 10);
 
@@ -878,7 +820,7 @@ mod tests {
         let t2 = make_task("proj", "T-2", "B", "done", None, Some(today));
         let t3 = make_task("proj", "T-3", "C", "done", None, Some(today));
 
-        let tasks = vec![&t1, &t2, &t3];
+        let tasks = [&t1, &t2, &t3];
         let refs: Vec<&&IndexedNote> = tasks.iter().collect();
         let result = recent_completions(&refs, "PROJ", 7, 2);
 
@@ -1029,10 +971,8 @@ mod tests {
         db.insert_note(&t1).unwrap();
         db.insert_note(&t2).unwrap();
 
-        let options = DashboardOptions {
-            project: Some("PA".to_string()),
-            ..Default::default()
-        };
+        let options =
+            DashboardOptions { project: Some("PA".to_string()), ..Default::default() };
         let report = build_dashboard(&db, &options).unwrap();
 
         assert!(matches!(report.scope, ReportScope::Project { .. }));
@@ -1069,10 +1009,7 @@ mod tests {
     #[test]
     fn build_dashboard_activity_days_respected() {
         let db = IndexDb::open_in_memory().unwrap();
-        let options = DashboardOptions {
-            activity_days: 7,
-            ..Default::default()
-        };
+        let options = DashboardOptions { activity_days: 7, ..Default::default() };
         let report = build_dashboard(&db, &options).unwrap();
 
         assert_eq!(report.activity.period_days, 7);
@@ -1102,12 +1039,8 @@ mod tests {
         };
         let report = build_dashboard(&db, &options).unwrap();
 
-        let stale_types: Vec<&str> = report
-            .activity
-            .stale_notes
-            .iter()
-            .map(|s| s.note_type.as_str())
-            .collect();
+        let stale_types: Vec<&str> =
+            report.activity.stale_notes.iter().map(|s| s.note_type.as_str()).collect();
 
         assert!(stale_types.iter().all(|t| *t == "task" || *t == "project"));
         assert!(!stale_types.contains(&"zettel"));
