@@ -24,6 +24,9 @@ pub struct DashboardReport {
     pub summary: VaultSummary,
     pub projects: Vec<ProjectReport>,
     pub activity: ActivityReport,
+    pub overdue: Vec<FlaggedTask>,
+    pub high_priority: Vec<FlaggedTask>,
+    pub upcoming_deadlines: Vec<FlaggedTask>,
 }
 
 /// Whether this report covers the whole vault or a single project.
@@ -117,6 +120,18 @@ pub struct StaleNote {
     pub last_seen: Option<String>,
 }
 
+/// A task flagged for attention (overdue, high priority, or upcoming deadline).
+#[derive(Debug, Serialize)]
+pub struct FlaggedTask {
+    pub id: String,
+    pub title: String,
+    pub project: String,
+    pub due_date: Option<String>,
+    pub priority: Option<String>,
+    pub status: String,
+    pub days_overdue: Option<i64>,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Builder
 // ─────────────────────────────────────────────────────────────────────────────
@@ -195,12 +210,20 @@ pub fn build_dashboard(
     // Activity report
     let activity = build_activity_report(db, &all_notes, &tasks, options)?;
 
+    // Build actionable task lists
+    let today = chrono::Local::now().date_naive();
+    let (overdue, high_priority, upcoming_deadlines) =
+        build_flagged_tasks(&tasks, &target_projects, today);
+
     Ok(DashboardReport {
         generated_at: Utc::now().to_rfc3339(),
         scope,
         summary,
         projects: project_reports,
         activity,
+        overdue,
+        high_priority,
+        upcoming_deadlines,
     })
 }
 
@@ -446,6 +469,109 @@ fn recent_completions(
     completions.sort_by(|a, b| b.completed_at.cmp(&a.completed_at));
     completions.truncate(limit);
     completions
+}
+
+fn build_flagged_tasks(
+    tasks: &[&IndexedNote],
+    target_projects: &[&IndexedNote],
+    today: NaiveDate,
+) -> (Vec<FlaggedTask>, Vec<FlaggedTask>, Vec<FlaggedTask>) {
+    // Build folder-name → project-id map
+    let folder_to_id: HashMap<String, String> = target_projects
+        .iter()
+        .filter_map(|p| {
+            let folder = p.path.file_stem().and_then(|s| s.to_str())?.to_string();
+            let (id, _, _) = extract_project_info(p);
+            Some((folder, id))
+        })
+        .collect();
+
+    let resolve_project = |task: &IndexedNote| -> String {
+        let raw = get_frontmatter_str(task, "project").unwrap_or_default();
+        folder_to_id.get(&raw).cloned().unwrap_or(raw)
+    };
+
+    let is_open =
+        |status: &str| !matches!(normalise_status(status).as_str(), "done" | "cancelled");
+
+    // Overdue
+    let mut overdue: Vec<FlaggedTask> = tasks
+        .iter()
+        .filter_map(|t| {
+            let status = get_frontmatter_str(t, "status").unwrap_or_default();
+            if !is_open(&status) {
+                return None;
+            }
+            let due = get_frontmatter_date(t, "due_date")?;
+            if due >= today {
+                return None;
+            }
+            Some(FlaggedTask {
+                id: get_frontmatter_str(t, "task-id").unwrap_or_default(),
+                title: t.title.clone(),
+                project: resolve_project(t),
+                due_date: Some(due.format("%Y-%m-%d").to_string()),
+                priority: get_frontmatter_str(t, "priority"),
+                status: normalise_status(&status),
+                days_overdue: Some((today - due).num_days()),
+            })
+        })
+        .collect();
+    overdue.sort_by(|a, b| b.days_overdue.cmp(&a.days_overdue));
+
+    // High priority
+    let mut high_priority: Vec<FlaggedTask> = tasks
+        .iter()
+        .filter_map(|t| {
+            let status = get_frontmatter_str(t, "status").unwrap_or_default();
+            if !is_open(&status) {
+                return None;
+            }
+            let priority = get_frontmatter_str(t, "priority")?;
+            if priority != "high" {
+                return None;
+            }
+            Some(FlaggedTask {
+                id: get_frontmatter_str(t, "task-id").unwrap_or_default(),
+                title: t.title.clone(),
+                project: resolve_project(t),
+                due_date: get_frontmatter_date(t, "due_date")
+                    .map(|d| d.format("%Y-%m-%d").to_string()),
+                priority: Some(priority),
+                status: normalise_status(&status),
+                days_overdue: None,
+            })
+        })
+        .collect();
+    high_priority.truncate(10);
+
+    // Upcoming deadlines (next 14 days)
+    let deadline_horizon = today + Duration::days(14);
+    let mut upcoming_deadlines: Vec<FlaggedTask> = tasks
+        .iter()
+        .filter_map(|t| {
+            let status = get_frontmatter_str(t, "status").unwrap_or_default();
+            if !is_open(&status) {
+                return None;
+            }
+            let due = get_frontmatter_date(t, "due_date")?;
+            if due < today || due > deadline_horizon {
+                return None;
+            }
+            Some(FlaggedTask {
+                id: get_frontmatter_str(t, "task-id").unwrap_or_default(),
+                title: t.title.clone(),
+                project: resolve_project(t),
+                due_date: Some(due.format("%Y-%m-%d").to_string()),
+                priority: get_frontmatter_str(t, "priority"),
+                status: normalise_status(&status),
+                days_overdue: None,
+            })
+        })
+        .collect();
+    upcoming_deadlines.sort_by(|a, b| a.due_date.cmp(&b.due_date));
+
+    (overdue, high_priority, upcoming_deadlines)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

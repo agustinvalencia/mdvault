@@ -6,7 +6,7 @@ use mdvault_core::report::{DashboardReport, ProjectReport};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
     Projects,
-    Tasks,
+    Detail,
 }
 
 /// Current operating mode.
@@ -47,7 +47,7 @@ pub struct DashboardApp {
     pub report: DashboardReport,
     pub panel: Panel,
     pub project_index: usize,
-    pub task_scroll: usize,
+    pub detail_scroll: usize,
     pub mode: Mode,
     pub status: Option<StatusMessage>,
     pub should_quit: bool,
@@ -69,7 +69,7 @@ impl DashboardApp {
             report,
             panel: Panel::Projects,
             project_index: 0,
-            task_scroll: 0,
+            detail_scroll: 0,
             mode: Mode::Browse,
             status: None,
             should_quit: false,
@@ -84,6 +84,18 @@ impl DashboardApp {
         self.report.projects.get(self.project_index)
     }
 
+    /// Count of alerts for a given project ID.
+    pub fn project_alert_count(&self, proj_id: &str) -> usize {
+        self.report.overdue.iter().filter(|t| t.project == proj_id).count()
+            + self
+                .report
+                .upcoming_deadlines
+                .iter()
+                .filter(|t| t.project == proj_id)
+                .count()
+            + self.report.high_priority.iter().filter(|t| t.project == proj_id).count()
+    }
+
     /// Process a message and update state.
     pub fn update(&mut self, msg: Message) {
         match msg {
@@ -91,26 +103,26 @@ impl DashboardApp {
                 Panel::Projects => {
                     if self.project_index < self.report.projects.len().saturating_sub(1) {
                         self.project_index += 1;
-                        self.task_scroll = 0;
+                        self.detail_scroll = 0;
                     }
                 }
-                Panel::Tasks => {
-                    self.task_scroll = self.task_scroll.saturating_add(1);
+                Panel::Detail => {
+                    self.detail_scroll = self.detail_scroll.saturating_add(1);
                 }
             },
             Message::SelectPrev => match self.panel {
                 Panel::Projects => {
                     self.project_index = self.project_index.saturating_sub(1);
-                    self.task_scroll = 0;
+                    self.detail_scroll = 0;
                 }
-                Panel::Tasks => {
-                    self.task_scroll = self.task_scroll.saturating_sub(1);
+                Panel::Detail => {
+                    self.detail_scroll = self.detail_scroll.saturating_sub(1);
                 }
             },
             Message::SwitchPanel => {
                 self.panel = match self.panel {
-                    Panel::Projects => Panel::Tasks,
-                    Panel::Tasks => Panel::Projects,
+                    Panel::Projects => Panel::Detail,
+                    Panel::Detail => Panel::Projects,
                 };
             }
             Message::GeneratePng => {

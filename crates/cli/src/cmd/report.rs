@@ -20,7 +20,10 @@ struct ReportData {
     summary: ReportSummary,
     tasks_by_project: Vec<ProjectTaskSummary>,
     activity_heatmap: Vec<DayActivity>,
-    top_completed: Vec<CompletedTask>,
+    overdue: Vec<FlaggedTask>,
+    high_priority: Vec<FlaggedTask>,
+    upcoming_deadlines: Vec<FlaggedTask>,
+    stale_notes: Vec<StaleNoteEntry>,
 }
 
 #[derive(Serialize)]
@@ -36,8 +39,12 @@ struct ReportSummary {
 struct ProjectTaskSummary {
     id: String,
     title: String,
+    total: usize,
+    done: usize,
+    in_progress: usize,
     created: usize,
     completed: usize,
+    progress_percent: f64,
 }
 
 #[derive(Serialize)]
@@ -48,11 +55,21 @@ struct DayActivity {
 }
 
 #[derive(Serialize)]
-struct CompletedTask {
+struct FlaggedTask {
     id: String,
     title: String,
-    completed_at: String,
     project: String,
+    due_date: Option<String>,
+    priority: Option<String>,
+    status: String,
+    days_overdue: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct StaleNoteEntry {
+    title: String,
+    note_type: String,
+    staleness_score: f64,
 }
 
 /// Row for project tasks table.
@@ -62,9 +79,13 @@ struct ProjectTaskRow {
     id: String,
     #[tabled(rename = "Project")]
     title: String,
-    #[tabled(rename = "Created")]
+    #[tabled(rename = "Progress")]
+    progress: String,
+    #[tabled(rename = "Active")]
+    in_progress: usize,
+    #[tabled(rename = "+New")]
     created: usize,
-    #[tabled(rename = "Done")]
+    #[tabled(rename = "+Done")]
     completed: usize,
 }
 
@@ -247,50 +268,96 @@ fn generate_report(
     // Calculate days in period
     let days_in_period = (end_date - start_date).num_days() as usize + 1;
 
-    // Group tasks by project
-    let mut project_stats: HashMap<String, (String, usize, usize)> = HashMap::new();
+    // Group tasks by project: (title, total, done, in_progress, created_in_period, completed_in_period)
+    let mut project_stats: HashMap<String, (String, usize, usize, usize, usize, usize)> =
+        HashMap::new();
 
-    // Initialize with known projects
+    // Build folder-name → project-id mapping for task matching
+    let mut folder_to_id: HashMap<String, String> = HashMap::new();
+
+    // Initialize with known projects and count all their tasks
     for project in &projects {
         let (id, _) = extract_project_info(project);
         let title =
             if project.title.is_empty() { id.clone() } else { project.title.clone() };
-        project_stats.insert(id, (title, 0, 0));
+        let proj_folder =
+            project.path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+
+        folder_to_id.insert(proj_folder.clone(), id.clone());
+
+        let mut total = 0usize;
+        let mut done = 0usize;
+        let mut in_prog = 0usize;
+
+        for task in &tasks {
+            let task_proj = get_task_project(task).unwrap_or_default();
+            let path_str = task.path.to_string_lossy();
+            if task_proj.eq_ignore_ascii_case(&proj_folder)
+                || path_str.contains(&format!("Projects/{}/", proj_folder))
+            {
+                total += 1;
+                let status = get_fm_str(task, "status").unwrap_or_default();
+                match status.as_str() {
+                    "done" | "completed" => done += 1,
+                    "in-progress" | "in_progress" | "doing" => in_prog += 1,
+                    _ => {}
+                }
+            }
+        }
+
+        project_stats.insert(id, (title, total, done, in_prog, 0, 0));
     }
 
-    // Add inbox
-    project_stats.insert("INB".to_string(), ("Inbox".to_string(), 0, 0));
-
-    // Count created tasks by project
+    // Count created tasks in period by project
     for task in &tasks_created {
-        let project = get_task_project(task).unwrap_or_else(|| "INB".to_string());
-        if let Some(entry) = project_stats.get_mut(&project) {
-            entry.1 += 1;
+        let raw = get_task_project(task).unwrap_or_else(|| "INB".to_string());
+        let project_id = if project_stats.contains_key(&raw) {
+            raw
         } else {
-            project_stats.insert(project.clone(), (project, 1, 0));
+            folder_to_id.get(&raw).cloned().unwrap_or(raw)
+        };
+        if let Some(entry) = project_stats.get_mut(&project_id) {
+            entry.4 += 1;
         }
     }
 
-    // Count completed tasks by project
+    // Count completed tasks in period by project
     for task in &tasks_completed {
-        let project = get_task_project(task).unwrap_or_else(|| "INB".to_string());
-        if let Some(entry) = project_stats.get_mut(&project) {
-            entry.2 += 1;
+        let raw = get_task_project(task).unwrap_or_else(|| "INB".to_string());
+        let project_id = if project_stats.contains_key(&raw) {
+            raw
+        } else {
+            folder_to_id.get(&raw).cloned().unwrap_or(raw)
+        };
+        if let Some(entry) = project_stats.get_mut(&project_id) {
+            entry.5 += 1;
         }
     }
 
-    // Build project summary (only include projects with activity)
+    // Build project summary (include projects with tasks or period activity)
     let mut tasks_by_project: Vec<ProjectTaskSummary> = project_stats
         .into_iter()
-        .filter(|(_, (_, created, completed))| *created > 0 || *completed > 0)
-        .map(|(id, (title, created, completed))| ProjectTaskSummary {
-            id,
-            title,
-            created,
-            completed,
+        .filter(|(_, (_, total, _, _, created, completed))| {
+            *total > 0 || *created > 0 || *completed > 0
+        })
+        .map(|(id, (title, total, done, in_progress, created, completed))| {
+            let cancelled = 0; // not tracked separately here
+            let active = total.saturating_sub(cancelled);
+            let progress_percent =
+                if active > 0 { (done as f64 / active as f64) * 100.0 } else { 0.0 };
+            ProjectTaskSummary {
+                id,
+                title,
+                total,
+                done,
+                in_progress,
+                created,
+                completed,
+                progress_percent,
+            }
         })
         .collect();
-    tasks_by_project.sort_by(|a, b| b.completed.cmp(&a.completed));
+    // Sort deferred until after flagged task lists are built
 
     // Build activity heatmap
     let mut activity_heatmap: Vec<DayActivity> = Vec::new();
@@ -310,30 +377,127 @@ fn generate_report(
         current += Duration::days(1);
     }
 
-    // Build top completed tasks
-    let mut top_completed: Vec<CompletedTask> = tasks_completed
-        .iter()
-        .map(|t| {
-            let id = get_task_id(t).unwrap_or_else(|| "-".to_string());
-            let title = if t.title.is_empty() {
-                t.path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Untitled")
-                    .to_string()
-            } else {
-                t.title.clone()
-            };
-            let completed_at = get_completed_at(t)
-                .map(|d| d.format("%Y-%m-%d").to_string())
-                .unwrap_or_default();
-            let project = get_task_project(t).unwrap_or_else(|| "INB".to_string());
+    // Build actionable task lists
+    let today = Local::now().date_naive();
 
-            CompletedTask { id, title, completed_at, project }
+    // Overdue tasks: due_date < today, status not done/cancelled
+    let mut overdue: Vec<FlaggedTask> = tasks
+        .iter()
+        .filter_map(|t| {
+            let status = get_fm_str(t, "status").unwrap_or_default();
+            if matches!(status.as_str(), "done" | "completed" | "cancelled" | "canceled")
+            {
+                return None;
+            }
+            let due = get_fm_date(t, "due_date")?;
+            if due >= today {
+                return None;
+            }
+            Some(FlaggedTask {
+                id: get_fm_str(t, "task-id").unwrap_or_default(),
+                title: t.title.clone(),
+                project: get_task_project(t).unwrap_or_default(),
+                due_date: Some(due.format("%Y-%m-%d").to_string()),
+                priority: get_fm_str(t, "priority"),
+                status,
+                days_overdue: Some((today - due).num_days()),
+            })
         })
         .collect();
-    top_completed.sort_by(|a, b| b.completed_at.cmp(&a.completed_at));
-    top_completed.truncate(10);
+    overdue.sort_by(|a, b| b.days_overdue.cmp(&a.days_overdue));
+
+    // High priority open tasks
+    let mut high_priority: Vec<FlaggedTask> = tasks
+        .iter()
+        .filter_map(|t| {
+            let status = get_fm_str(t, "status").unwrap_or_default();
+            if matches!(status.as_str(), "done" | "completed" | "cancelled" | "canceled")
+            {
+                return None;
+            }
+            let priority = get_fm_str(t, "priority")?;
+            if priority != "high" {
+                return None;
+            }
+            Some(FlaggedTask {
+                id: get_fm_str(t, "task-id").unwrap_or_default(),
+                title: t.title.clone(),
+                project: get_task_project(t).unwrap_or_default(),
+                due_date: get_fm_date(t, "due_date")
+                    .map(|d| d.format("%Y-%m-%d").to_string()),
+                priority: Some(priority),
+                status,
+                days_overdue: None,
+            })
+        })
+        .collect();
+    high_priority.truncate(10);
+
+    // Upcoming deadlines (next 14 days)
+    let deadline_horizon = today + Duration::days(14);
+    let mut upcoming_deadlines: Vec<FlaggedTask> = tasks
+        .iter()
+        .filter_map(|t| {
+            let status = get_fm_str(t, "status").unwrap_or_default();
+            if matches!(status.as_str(), "done" | "completed" | "cancelled" | "canceled")
+            {
+                return None;
+            }
+            let due = get_fm_date(t, "due_date")?;
+            if due < today || due > deadline_horizon {
+                return None;
+            }
+            Some(FlaggedTask {
+                id: get_fm_str(t, "task-id").unwrap_or_default(),
+                title: t.title.clone(),
+                project: get_task_project(t).unwrap_or_default(),
+                due_date: Some(due.format("%Y-%m-%d").to_string()),
+                priority: get_fm_str(t, "priority"),
+                status,
+                days_overdue: None,
+            })
+        })
+        .collect();
+    upcoming_deadlines.sort_by_key(|t| t.due_date.clone());
+    upcoming_deadlines.truncate(10);
+
+    // Stale notes (tasks and projects only)
+    let stale_notes: Vec<StaleNoteEntry> = db
+        .get_stale_notes(0.5, None, Some(10))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(note, _)| {
+            let nt = note.note_type.as_str();
+            nt == "task" || nt == "project"
+        })
+        .map(|(note, score)| StaleNoteEntry {
+            title: note.title.clone(),
+            note_type: note.note_type.as_str().to_string(),
+            staleness_score: score,
+        })
+        .collect();
+
+    // Sort projects: those with alerts first, then by incomplete (lower progress first)
+    {
+        let alert_ids: std::collections::HashSet<&str> = overdue
+            .iter()
+            .chain(high_priority.iter())
+            .chain(upcoming_deadlines.iter())
+            .map(|t| t.project.as_str())
+            .collect();
+        tasks_by_project.sort_by(|a, b| {
+            let a_alerts = alert_ids.contains(a.id.as_str());
+            let b_alerts = alert_ids.contains(b.id.as_str());
+            match (a_alerts, b_alerts) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a
+                    .progress_percent
+                    .partial_cmp(&b.progress_percent)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            }
+        });
+    }
 
     // Count active projects (projects with any task activity)
     let projects_active = tasks_by_project.len();
@@ -353,7 +517,10 @@ fn generate_report(
         },
         tasks_by_project,
         activity_heatmap,
-        top_completed,
+        overdue,
+        high_priority,
+        upcoming_deadlines,
+        stale_notes,
     }
 }
 
@@ -384,7 +551,7 @@ fn print_terminal_report(report: &ReportData) {
 
     // Tasks by project
     if !report.tasks_by_project.is_empty() {
-        println!("TASKS BY PROJECT");
+        println!("PROJECTS");
         let rows: Vec<ProjectTaskRow> = report
             .tasks_by_project
             .iter()
@@ -395,6 +562,8 @@ fn print_terminal_report(report: &ReportData) {
                 } else {
                     p.title.clone()
                 },
+                progress: format!("{:.0}% ({}/{})", p.progress_percent, p.done, p.total),
+                in_progress: p.in_progress,
                 created: p.created,
                 completed: p.completed,
             })
@@ -404,16 +573,61 @@ fn print_terminal_report(report: &ReportData) {
         println!();
     }
 
-    // Activity heatmap (simplified for terminal)
+    // Overdue tasks
+    if !report.overdue.is_empty() {
+        println!("OVERDUE");
+        for t in &report.overdue {
+            let days = t.days_overdue.unwrap_or(0);
+            println!(
+                "  {} {}: {} ({} days overdue)",
+                t.id,
+                t.title,
+                t.due_date.as_deref().unwrap_or("-"),
+                days
+            );
+        }
+        println!();
+    }
+
+    // Upcoming deadlines
+    if !report.upcoming_deadlines.is_empty() {
+        println!("UPCOMING DEADLINES (14 days)");
+        for t in &report.upcoming_deadlines {
+            println!(
+                "  {} {}: due {}",
+                t.id,
+                t.title,
+                t.due_date.as_deref().unwrap_or("-")
+            );
+        }
+        println!();
+    }
+
+    // High priority
+    if !report.high_priority.is_empty() {
+        println!("HIGH PRIORITY");
+        for t in &report.high_priority {
+            println!(
+                "  {} {}: {} ({})",
+                t.id,
+                t.title,
+                t.status,
+                t.due_date.as_deref().unwrap_or("no due date")
+            );
+        }
+        println!();
+    }
+
+    // Activity heatmap
     println!("ACTIVITY (tasks completed per day)");
     print_activity_heatmap(&report.activity_heatmap);
     println!();
 
-    // Top completed
-    if !report.top_completed.is_empty() {
-        println!("TOP COMPLETED TASKS");
-        for (i, task) in report.top_completed.iter().take(5).enumerate() {
-            println!("  {}. {}: {}", i + 1, task.id, task.title);
+    // Stale notes
+    if !report.stale_notes.is_empty() {
+        println!("STALE (needs attention)");
+        for s in &report.stale_notes {
+            println!("  [{:.1}] {} ({})", s.staleness_score, s.title, s.note_type);
         }
         println!();
     }
@@ -474,7 +688,21 @@ fn print_activity_heatmap(heatmap: &[DayActivity]) {
         }
 
         for day in week {
-            print!(" {:>2} ", day.completed);
+            let block = match day.completed {
+                0 => " ·· ",
+                1 => " ░░ ",
+                2 => " ▒▒ ",
+                3 => " ▓▓ ",
+                _ => " ██ ",
+            };
+            let color = match day.completed {
+                0 => "\x1b[90m", // dark gray
+                1 => "\x1b[32m", // green
+                2 => "\x1b[92m", // bright green
+                3 => "\x1b[93m", // bright yellow
+                _ => "\x1b[91m", // bright red (hot)
+            };
+            print!("{}{}\x1b[0m", color, block);
         }
         println!();
     }
@@ -542,30 +770,70 @@ fn format_markdown_report(report: &ReportData) -> String {
     ));
     md.push('\n');
 
-    // Tasks by project
+    // Projects
     if !report.tasks_by_project.is_empty() {
-        md.push_str("## Tasks by Project\n\n");
-        md.push_str("| ID | Project | Created | Done |\n");
-        md.push_str("|----|---------|---------|------|\n");
+        md.push_str("## Projects\n\n");
+        md.push_str("| ID | Project | Progress | Active | +New | +Done |\n");
+        md.push_str("|----|---------|----------|--------|------|-------|\n");
         for p in &report.tasks_by_project {
             md.push_str(&format!(
-                "| {} | {} | {} | {} |\n",
-                p.id, p.title, p.created, p.completed
+                "| {} | {} | {}/{} ({:.0}%) | {} | {} | {} |\n",
+                p.id,
+                p.title,
+                p.done,
+                p.total,
+                p.progress_percent,
+                p.in_progress,
+                p.created,
+                p.completed
             ));
         }
         md.push('\n');
     }
 
-    // Top completed
-    if !report.top_completed.is_empty() {
-        md.push_str("## Top Completed Tasks\n\n");
-        for (i, task) in report.top_completed.iter().enumerate() {
+    // Overdue tasks
+    if !report.overdue.is_empty() {
+        md.push_str("## Overdue Tasks\n\n");
+        for t in &report.overdue {
+            let overdue =
+                t.days_overdue.map(|d| format!(" ({d}d overdue)")).unwrap_or_default();
             md.push_str(&format!(
-                "{}. **{}**: {} ({})\n",
-                i + 1,
-                task.id,
-                task.title,
-                task.completed_at
+                "- **{}**: {}{} [{}]\n",
+                t.id, t.title, overdue, t.project
+            ));
+        }
+        md.push('\n');
+    }
+
+    // High priority tasks
+    if !report.high_priority.is_empty() {
+        md.push_str("## High Priority\n\n");
+        for t in &report.high_priority {
+            let due =
+                t.due_date.as_deref().map(|d| format!(" (due {d})")).unwrap_or_default();
+            md.push_str(&format!("- **{}**: {}{} [{}]\n", t.id, t.title, due, t.project));
+        }
+        md.push('\n');
+    }
+
+    // Upcoming deadlines
+    if !report.upcoming_deadlines.is_empty() {
+        md.push_str("## Upcoming Deadlines\n\n");
+        for t in &report.upcoming_deadlines {
+            let due =
+                t.due_date.as_deref().map(|d| format!(" (due {d})")).unwrap_or_default();
+            md.push_str(&format!("- **{}**: {}{} [{}]\n", t.id, t.title, due, t.project));
+        }
+        md.push('\n');
+    }
+
+    // Stale notes
+    if !report.stale_notes.is_empty() {
+        md.push_str("## Stale Notes\n\n");
+        for s in &report.stale_notes {
+            md.push_str(&format!(
+                "- {} ({}, staleness: {:.1})\n",
+                s.title, s.note_type, s.staleness_score
             ));
         }
         md.push('\n');
@@ -725,6 +993,47 @@ fn print_dashboard_terminal(report: &mdvault_core::report::DashboardReport) {
         println!();
     }
 
+    // Overdue tasks
+    if !report.overdue.is_empty() {
+        println!("OVERDUE");
+        for t in &report.overdue {
+            let days = t.days_overdue.unwrap_or(0);
+            println!(
+                "  {} {}: {} ({} days overdue)",
+                t.id,
+                t.title,
+                t.due_date.as_deref().unwrap_or("-"),
+                days
+            );
+        }
+        println!();
+    }
+
+    // Upcoming deadlines
+    if !report.upcoming_deadlines.is_empty() {
+        println!("UPCOMING DEADLINES (14 days)");
+        for t in &report.upcoming_deadlines {
+            println!(
+                "  {} {}: due {}",
+                t.id,
+                t.title,
+                t.due_date.as_deref().unwrap_or("-")
+            );
+        }
+        println!();
+    }
+
+    // High priority
+    if !report.high_priority.is_empty() {
+        println!("HIGH PRIORITY");
+        for t in &report.high_priority {
+            let due =
+                t.due_date.as_deref().map(|d| format!(" (due {d})")).unwrap_or_default();
+            println!("  {} {}: {}{}", t.id, t.title, t.status, due);
+        }
+        println!();
+    }
+
     // Recent completions (across all projects, deduplicated)
     let all_completions: Vec<_> =
         report.projects.iter().flat_map(|p| p.recent_completions.iter()).collect();
@@ -758,6 +1067,19 @@ fn get_note_type(note: &IndexedNote) -> Option<String> {
         .as_ref()
         .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok())
         .and_then(|fm| fm.get("type").and_then(|v| v.as_str()).map(String::from))
+}
+
+/// Get a string field from frontmatter (short alias for report module).
+fn get_fm_str(note: &IndexedNote, key: &str) -> Option<String> {
+    note.frontmatter_json
+        .as_ref()
+        .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok())
+        .and_then(|fm| fm.get(key).and_then(|v| v.as_str()).map(String::from))
+}
+
+/// Get a date field from frontmatter (short alias for report module).
+fn get_fm_date(note: &IndexedNote, key: &str) -> Option<NaiveDate> {
+    parse_flexible_date(&get_fm_str(note, key)?)
 }
 
 /// Parse a date string that may be in various formats:
@@ -812,14 +1134,6 @@ fn get_note_date(note: &IndexedNote) -> Option<NaiveDate> {
     let date_str = fm.get("date")?.as_str()?;
 
     NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()
-}
-
-/// Get task ID from frontmatter.
-fn get_task_id(note: &IndexedNote) -> Option<String> {
-    note.frontmatter_json
-        .as_ref()
-        .and_then(|fm| serde_json::from_str::<serde_json::Value>(fm).ok())
-        .and_then(|fm| fm.get("task-id").and_then(|v| v.as_str()).map(String::from))
 }
 
 /// Get project from task frontmatter or path.

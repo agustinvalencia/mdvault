@@ -42,6 +42,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &DashboardApp) {
     frame.render_widget(Paragraph::new(line), area);
 }
 
+// Improvement #3: overdue count in summary bar
 fn draw_summary(frame: &mut Frame, area: Rect, app: &DashboardApp) {
     let s = &app.report.summary;
 
@@ -49,6 +50,27 @@ fn draw_summary(frame: &mut Frame, area: Rect, app: &DashboardApp) {
     let tasks_todo = s.tasks_by_status.get("todo").copied().unwrap_or(0);
     let tasks_in_progress = s.tasks_by_status.get("in_progress").copied().unwrap_or(0);
     let tasks_blocked = s.tasks_by_status.get("blocked").copied().unwrap_or(0);
+    let overdue_count = app.report.overdue.len();
+
+    let mut status_spans = vec![
+        Span::styled("  Done: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(tasks_done.to_string(), Style::default().fg(Color::Green)),
+        Span::styled("  Todo: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(tasks_todo.to_string(), Style::default().fg(Color::Blue)),
+        Span::styled("  In Progress: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(tasks_in_progress.to_string(), Style::default().fg(Color::Yellow)),
+        Span::styled("  Blocked: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(tasks_blocked.to_string(), Style::default().fg(Color::Red)),
+    ];
+
+    if overdue_count > 0 {
+        status_spans
+            .push(Span::styled("  Overdue: ", Style::default().fg(Color::DarkGray)));
+        status_spans.push(Span::styled(
+            overdue_count.to_string(),
+            Style::default().fg(Color::Red).bold(),
+        ));
+    }
 
     let lines = vec![
         Line::from(vec![
@@ -68,19 +90,7 @@ fn draw_summary(frame: &mut Frame, area: Rect, app: &DashboardApp) {
                 Style::default().fg(Color::White).bold(),
             ),
         ]),
-        Line::from(vec![
-            Span::styled("  Done: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(tasks_done.to_string(), Style::default().fg(Color::Green)),
-            Span::styled("  Todo: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(tasks_todo.to_string(), Style::default().fg(Color::Blue)),
-            Span::styled("  In Progress: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                tasks_in_progress.to_string(),
-                Style::default().fg(Color::Yellow),
-            ),
-            Span::styled("  Blocked: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(tasks_blocked.to_string(), Style::default().fg(Color::Red)),
-        ]),
+        Line::from(status_spans),
     ];
 
     // Activity sparkline
@@ -147,7 +157,7 @@ fn draw_projects_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // Project list with inline progress gauges
+    // Project list with inline progress gauges and alert indicators
     let items: Vec<ListItem> = app
         .report
         .projects
@@ -168,6 +178,16 @@ fn draw_projects_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
             let empty = bar_width.saturating_sub(filled);
             let bar = format!("{}{}", "#".repeat(filled), ".".repeat(empty));
 
+            let alert_count = app.project_alert_count(&p.id);
+            let alert_indicator = if alert_count > 0 {
+                Span::styled(
+                    format!(" !{alert_count}"),
+                    Style::default().fg(Color::Red).bold(),
+                )
+            } else {
+                Span::raw("")
+            };
+
             let line = Line::from(vec![
                 Span::raw(prefix),
                 Span::styled(&p.id, Style::default().fg(Color::Cyan).bold()),
@@ -182,6 +202,7 @@ fn draw_projects_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
                     format!("{}/{}", p.tasks.done, p.tasks.total),
                     Style::default().fg(Color::DarkGray),
                 ),
+                alert_indicator,
             ]);
 
             ListItem::new(line).style(style)
@@ -194,17 +215,11 @@ fn draw_projects_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
 
 fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
     let border_color =
-        if app.panel == Panel::Tasks { Color::Cyan } else { Color::DarkGray };
+        if app.panel == Panel::Detail { Color::Cyan } else { Color::DarkGray };
 
+    // Improvement #2: vault-wide alerts when no project selected
     let Some(project) = app.selected_project() else {
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(border_color))
-            .title(" Details ");
-        let p = Paragraph::new("  Select a project")
-            .style(Style::default().fg(Color::DarkGray))
-            .block(block);
-        frame.render_widget(p, area);
+        draw_vault_alerts(frame, area, app, border_color);
         return;
     };
 
@@ -216,13 +231,99 @@ fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // Split detail area: progress gauge + task breakdown + recent completions
+    // Filter flagged tasks for the selected project
+    let proj_id = &project.id;
+    let overdue: Vec<_> =
+        app.report.overdue.iter().filter(|t| t.project == *proj_id).collect();
+    let upcoming: Vec<_> =
+        app.report.upcoming_deadlines.iter().filter(|t| t.project == *proj_id).collect();
+    let high_pri: Vec<_> =
+        app.report.high_priority.iter().filter(|t| t.project == *proj_id).collect();
+    // Improvement #4: stale notes for this project
+    let stale: Vec<_> = app
+        .report
+        .activity
+        .stale_notes
+        .iter()
+        .filter(|s| s.path.contains(proj_id) || s.path.contains(&project.title))
+        .collect();
+
+    let has_alerts = !overdue.is_empty()
+        || !upcoming.is_empty()
+        || !high_pri.is_empty()
+        || !stale.is_empty();
+
+    // Build all detail lines for scrolling
+    let mut all_lines: Vec<Line> = Vec::new();
+
+    // Alerts section
+    if has_alerts {
+        for t in overdue.iter().take(5) {
+            let days = t.days_overdue.unwrap_or(0);
+            all_lines.push(Line::from(vec![
+                Span::styled("  ! ", Style::default().fg(Color::Red).bold()),
+                Span::styled(&t.id, Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    format!(" {} ", truncate_str(&t.title, 30)),
+                    Style::default().fg(Color::White),
+                ),
+                Span::styled(format!("{days}d overdue"), Style::default().fg(Color::Red)),
+            ]));
+        }
+
+        for t in upcoming.iter().take(5) {
+            let due = t.due_date.as_deref().unwrap_or("-");
+            all_lines.push(Line::from(vec![
+                Span::styled("  ~ ", Style::default().fg(Color::Yellow)),
+                Span::styled(&t.id, Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    format!(" {} ", truncate_str(&t.title, 30)),
+                    Style::default().fg(Color::White),
+                ),
+                Span::styled(format!("due {due}"), Style::default().fg(Color::Yellow)),
+            ]));
+        }
+
+        for t in high_pri.iter().take(3) {
+            all_lines.push(Line::from(vec![
+                Span::styled("  * ", Style::default().fg(Color::Magenta).bold()),
+                Span::styled(&t.id, Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    format!(" {}", truncate_str(&t.title, 35)),
+                    Style::default().fg(Color::White),
+                ),
+            ]));
+        }
+
+        for s in stale.iter().take(3) {
+            all_lines.push(Line::from(vec![
+                Span::styled("  ? ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    truncate_str(&s.title, 30),
+                    Style::default().fg(Color::White),
+                ),
+                Span::styled(
+                    format!(" stale ({:.1})", s.staleness_score),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+        }
+    } else {
+        all_lines.push(Line::from(Span::styled(
+            "  No alerts",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    let alerts_height = all_lines.len() as u16 + 2; // +2 for block border/title
+
+    // Split detail area: progress gauge + task breakdown + alerts (scrollable)
     let detail_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // Progress gauge
-            Constraint::Length(6), // Task breakdown
-            Constraint::Min(3),    // Recent completions
+            Constraint::Length(3),          // Progress gauge
+            Constraint::Length(6),          // Task breakdown
+            Constraint::Min(alerts_height), // Alerts
         ])
         .split(inner);
 
@@ -285,35 +386,149 @@ fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
     );
     frame.render_widget(tasks_paragraph, detail_chunks[1]);
 
-    // Recent completions
-    let completions_block = Block::default().title(" Recent Completions ");
+    // Alerts (scrollable via detail_scroll)
+    let visible_lines: Vec<Line> =
+        all_lines.into_iter().skip(app.detail_scroll).collect();
 
-    if project.recent_completions.is_empty() {
-        let p = Paragraph::new("  (none in last 7 days)")
-            .style(Style::default().fg(Color::DarkGray))
-            .block(completions_block);
-        frame.render_widget(p, detail_chunks[2]);
+    let alerts_block = Block::default()
+        .borders(Borders::BOTTOM)
+        .border_style(Style::default().fg(Color::DarkGray))
+        .title(" Alerts ");
+    let alerts_paragraph = Paragraph::new(visible_lines).block(alerts_block);
+    frame.render_widget(alerts_paragraph, detail_chunks[2]);
+}
+
+// Improvement #2: vault-wide alerts summary when no project is selected
+fn draw_vault_alerts(
+    frame: &mut Frame,
+    area: Rect,
+    app: &DashboardApp,
+    border_color: Color,
+) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color))
+        .title(" Vault Alerts ");
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    if app.report.overdue.is_empty()
+        && app.report.upcoming_deadlines.is_empty()
+        && app.report.high_priority.is_empty()
+        && app.report.activity.stale_notes.is_empty()
+    {
+        lines.push(Line::from(Span::styled(
+            "  All clear — no alerts",
+            Style::default().fg(Color::Green),
+        )));
     } else {
-        let items: Vec<ListItem> = project
-            .recent_completions
-            .iter()
-            .skip(app.task_scroll)
-            .map(|c| {
-                let line = Line::from(vec![
+        if !app.report.overdue.is_empty() {
+            lines.push(Line::from(Span::styled(
+                format!("  Overdue ({})", app.report.overdue.len()),
+                Style::default().fg(Color::Red).bold(),
+            )));
+            for t in app.report.overdue.iter().take(8) {
+                let days = t.days_overdue.unwrap_or(0);
+                lines.push(Line::from(vec![
+                    Span::styled("    ! ", Style::default().fg(Color::Red)),
+                    Span::styled(&t.id, Style::default().fg(Color::Cyan)),
                     Span::styled(
-                        format!("  {} ", c.completed_at),
+                        format!(" {} ", truncate_str(&t.title, 35)),
+                        Style::default().fg(Color::White),
+                    ),
+                    Span::styled(format!("{days}d"), Style::default().fg(Color::Red)),
+                    Span::styled(
+                        format!("  [{}]", t.project),
                         Style::default().fg(Color::DarkGray),
                     ),
-                    Span::styled(&c.id, Style::default().fg(Color::Cyan)),
-                    Span::raw(" "),
-                    Span::styled(&c.title, Style::default().fg(Color::White)),
-                ]);
-                ListItem::new(line)
-            })
-            .collect();
+                ]));
+            }
+            lines.push(Line::from(""));
+        }
 
-        let list = List::new(items).block(completions_block);
-        frame.render_widget(list, detail_chunks[2]);
+        if !app.report.upcoming_deadlines.is_empty() {
+            lines.push(Line::from(Span::styled(
+                format!("  Upcoming Deadlines ({})", app.report.upcoming_deadlines.len()),
+                Style::default().fg(Color::Yellow).bold(),
+            )));
+            for t in app.report.upcoming_deadlines.iter().take(8) {
+                let due = t.due_date.as_deref().unwrap_or("-");
+                lines.push(Line::from(vec![
+                    Span::styled("    ~ ", Style::default().fg(Color::Yellow)),
+                    Span::styled(&t.id, Style::default().fg(Color::Cyan)),
+                    Span::styled(
+                        format!(" {} ", truncate_str(&t.title, 35)),
+                        Style::default().fg(Color::White),
+                    ),
+                    Span::styled(due.to_string(), Style::default().fg(Color::Yellow)),
+                    Span::styled(
+                        format!("  [{}]", t.project),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]));
+            }
+            lines.push(Line::from(""));
+        }
+
+        if !app.report.high_priority.is_empty() {
+            lines.push(Line::from(Span::styled(
+                format!("  High Priority ({})", app.report.high_priority.len()),
+                Style::default().fg(Color::Magenta).bold(),
+            )));
+            for t in app.report.high_priority.iter().take(5) {
+                lines.push(Line::from(vec![
+                    Span::styled("    * ", Style::default().fg(Color::Magenta)),
+                    Span::styled(&t.id, Style::default().fg(Color::Cyan)),
+                    Span::styled(
+                        format!(" {}", truncate_str(&t.title, 35)),
+                        Style::default().fg(Color::White),
+                    ),
+                    Span::styled(
+                        format!("  [{}]", t.project),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]));
+            }
+            lines.push(Line::from(""));
+        }
+
+        if !app.report.activity.stale_notes.is_empty() {
+            lines.push(Line::from(Span::styled(
+                format!("  Stale Notes ({})", app.report.activity.stale_notes.len()),
+                Style::default().fg(Color::DarkGray).bold(),
+            )));
+            for s in app.report.activity.stale_notes.iter().take(5) {
+                let last = s.last_seen.as_deref().unwrap_or("never");
+                lines.push(Line::from(vec![
+                    Span::styled("    ? ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        truncate_str(&s.title, 35),
+                        Style::default().fg(Color::White),
+                    ),
+                    Span::styled(
+                        format!(" ({}, last: {last})", s.note_type),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]));
+            }
+        }
+    }
+
+    // Apply scroll
+    let visible: Vec<Line> = lines.into_iter().skip(app.detail_scroll).collect();
+
+    let paragraph = Paragraph::new(visible);
+    frame.render_widget(paragraph, inner);
+}
+
+fn truncate_str(s: &str, max: usize) -> String {
+    if s.len() > max {
+        format!("{}…", &s[..max.saturating_sub(1)])
+    } else {
+        s.to_string()
     }
 }
 
