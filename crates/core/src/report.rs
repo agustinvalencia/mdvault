@@ -379,11 +379,15 @@ fn build_activity_report(
         current += Duration::days(1);
     }
 
-    // Stale notes
+    // Stale notes — only tasks and projects are actionable, so exclude
+    // timeless note types like zettels, contacts, and daily/weekly notes.
     let stale_notes = db
         .get_stale_notes(options.stale_threshold, None, Some(options.stale_limit))
         .map_err(|e| format!("Failed to query stale notes: {e}"))?
         .into_iter()
+        .filter(|(note, _)| {
+            matches!(note.note_type, NoteType::Task | NoteType::Project)
+        })
         .map(|(note, score)| {
             let last_seen = db
                 .get_activity_summary(note.id.unwrap_or(0))
@@ -1073,5 +1077,40 @@ mod tests {
 
         assert_eq!(report.activity.period_days, 7);
         assert_eq!(report.activity.daily_activity.len(), 8); // 7 days + today
+    }
+
+    #[test]
+    fn stale_notes_excludes_non_actionable_types() {
+        let db = IndexDb::open_in_memory().unwrap();
+
+        // Insert notes of various types — all will have default staleness of 1.0
+        // (no activity_summary row → COALESCE to 1.0)
+        let task = make_task("proj", "T-1", "Stale task", "todo", None, None);
+        let project = make_project("proj", "P", "Stale project", "open");
+        let zettel = make_note("Zettelkasten/z1.md", NoteType::Zettel, "A zettel", None);
+        let daily = make_note("Journal/2025-01-01.md", NoteType::Daily, "Jan 1", None);
+
+        db.insert_note(&task).unwrap();
+        db.insert_note(&project).unwrap();
+        db.insert_note(&zettel).unwrap();
+        db.insert_note(&daily).unwrap();
+
+        let options = DashboardOptions {
+            stale_threshold: 0.5,
+            stale_limit: 50,
+            ..Default::default()
+        };
+        let report = build_dashboard(&db, &options).unwrap();
+
+        let stale_types: Vec<&str> = report
+            .activity
+            .stale_notes
+            .iter()
+            .map(|s| s.note_type.as_str())
+            .collect();
+
+        assert!(stale_types.iter().all(|t| *t == "task" || *t == "project"));
+        assert!(!stale_types.contains(&"zettel"));
+        assert!(!stale_types.contains(&"daily"));
     }
 }
