@@ -72,10 +72,8 @@ impl ConfigLoader {
             .ok_or_else(|| ConfigError::ProfileNotFound(active.clone()))?;
 
         // Compute config directory for typedefs fallback resolution
-        let config_dir = path
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(default_config_dir);
+        let config_dir =
+            path.parent().map(|p| p.to_path_buf()).unwrap_or_else(default_config_dir);
 
         let resolved = Self::resolve_profile(
             &active,
@@ -172,7 +170,6 @@ pub fn default_config_path() -> PathBuf {
     let home = home_dir().unwrap_or_else(|| PathBuf::from("~"));
     home.join(".config").join("mdvault").join("config.toml")
 }
-
 
 fn expand_path(input: &str) -> Result<PathBuf, ConfigError> {
     let expanded = full(input).map_err(|_| ConfigError::NoHome)?;

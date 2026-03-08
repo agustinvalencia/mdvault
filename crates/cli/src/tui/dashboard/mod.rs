@@ -16,7 +16,9 @@ use color_eyre::eyre::Result;
 use crossterm::{
     event::{poll, read, Event},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{
+        disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    },
 };
 use ratatui::prelude::*;
 

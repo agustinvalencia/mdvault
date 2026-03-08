@@ -39,7 +39,9 @@ pub fn complete_types(current: &OsStr) -> Vec<CompletionCandidate> {
     // Try to load custom types from config
     if let Some(cfg) = load_config() {
         let typedef_result = match &cfg.typedefs_fallback_dir {
-            Some(fallback) => TypedefRepository::with_fallback(&cfg.typedefs_dir, fallback),
+            Some(fallback) => {
+                TypedefRepository::with_fallback(&cfg.typedefs_dir, fallback)
+            }
             None => TypedefRepository::new(&cfg.typedefs_dir),
         };
         if let Ok(typedef_repo) = typedef_result {

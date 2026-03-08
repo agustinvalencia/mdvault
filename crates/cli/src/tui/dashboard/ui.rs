@@ -12,8 +12,8 @@ pub fn draw(frame: &mut Frame, app: &DashboardApp) {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),  // Header
-            Constraint::Length(5),  // Summary bar
+            Constraint::Length(1), // Header
+            Constraint::Length(5), // Summary bar
             Constraint::Min(10),   // Body
             Constraint::Length(2), // Status / keybindings
         ])
@@ -70,25 +70,16 @@ fn draw_summary(frame: &mut Frame, area: Rect, app: &DashboardApp) {
         ]),
         Line::from(vec![
             Span::styled("  Done: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                tasks_done.to_string(),
-                Style::default().fg(Color::Green),
-            ),
+            Span::styled(tasks_done.to_string(), Style::default().fg(Color::Green)),
             Span::styled("  Todo: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                tasks_todo.to_string(),
-                Style::default().fg(Color::Blue),
-            ),
+            Span::styled(tasks_todo.to_string(), Style::default().fg(Color::Blue)),
             Span::styled("  In Progress: ", Style::default().fg(Color::DarkGray)),
             Span::styled(
                 tasks_in_progress.to_string(),
                 Style::default().fg(Color::Yellow),
             ),
             Span::styled("  Blocked: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                tasks_blocked.to_string(),
-                Style::default().fg(Color::Red),
-            ),
+            Span::styled(tasks_blocked.to_string(), Style::default().fg(Color::Red)),
         ]),
     ];
 
@@ -117,10 +108,7 @@ fn draw_summary(frame: &mut Frame, area: Rect, app: &DashboardApp) {
     let sparkline_block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::DarkGray))
-        .title(format!(
-            " Activity ({}d) ",
-            app.report.activity.period_days
-        ));
+        .title(format!(" Activity ({}d) ", app.report.activity.period_days));
 
     let sparkline = Sparkline::default()
         .block(sparkline_block)
@@ -140,11 +128,8 @@ fn draw_body(frame: &mut Frame, area: Rect, app: &DashboardApp) {
 }
 
 fn draw_projects_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
-    let border_color = if app.panel == Panel::Projects {
-        Color::Cyan
-    } else {
-        Color::DarkGray
-    };
+    let border_color =
+        if app.panel == Panel::Projects { Color::Cyan } else { Color::DarkGray };
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -187,10 +172,7 @@ fn draw_projects_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
                 Span::raw(prefix),
                 Span::styled(&p.id, Style::default().fg(Color::Cyan).bold()),
                 Span::raw(" "),
-                Span::styled(
-                    format!("[{}]", bar),
-                    Style::default().fg(Color::Green),
-                ),
+                Span::styled(format!("[{}]", bar), Style::default().fg(Color::Green)),
                 Span::styled(
                     format!(" {:.0}%", p.progress_percent),
                     Style::default().fg(Color::White),
@@ -211,11 +193,8 @@ fn draw_projects_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
 }
 
 fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
-    let border_color = if app.panel == Panel::Tasks {
-        Color::Cyan
-    } else {
-        Color::DarkGray
-    };
+    let border_color =
+        if app.panel == Panel::Tasks { Color::Cyan } else { Color::DarkGray };
 
     let Some(project) = app.selected_project() else {
         let block = Block::default()
@@ -241,8 +220,8 @@ fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
     let detail_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Progress gauge
-            Constraint::Length(6),  // Task breakdown
+            Constraint::Length(3), // Progress gauge
+            Constraint::Length(6), // Task breakdown
             Constraint::Min(3),    // Recent completions
         ])
         .split(inner);
@@ -345,10 +324,7 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &DashboardApp) {
         } else {
             Style::default().fg(Color::Green)
         };
-        (
-            " [Enter] dismiss",
-            Span::styled(&status.text, style),
-        )
+        (" [Enter] dismiss", Span::styled(&status.text, style))
     } else {
         (
             " [j/k] navigate  [Tab] panel  [v] png  [s] export  [r] refresh  [q] quit",

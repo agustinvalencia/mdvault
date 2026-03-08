@@ -123,5 +123,4 @@ impl ResolvedConfig {
         }
         primary // Return primary path (will fail with a clear error)
     }
-
 }

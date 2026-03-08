@@ -662,7 +662,14 @@ fn daily_var_date_overrides_path_and_frontmatter() {
     // The title is required in batch mode, but --var date= should override it
     let output = run_mdv(
         &cfg_path,
-        &["new", "daily", "placeholder", "--batch", "--var", &format!("date={}", target_date)],
+        &[
+            "new",
+            "daily",
+            "placeholder",
+            "--batch",
+            "--var",
+            &format!("date={}", target_date),
+        ],
     );
 
     assert!(output.status.success(), "Command failed: {:?}", output);
@@ -706,7 +713,14 @@ fn weekly_var_week_overrides_path_and_frontmatter() {
     // The title is required in batch mode, but --var week= should override it
     let output = run_mdv(
         &cfg_path,
-        &["new", "weekly", "placeholder", "--batch", "--var", &format!("week={}", target_week)],
+        &[
+            "new",
+            "weekly",
+            "placeholder",
+            "--batch",
+            "--var",
+            &format!("week={}", target_week),
+        ],
     );
 
     assert!(output.status.success(), "Command failed: {:?}", output);

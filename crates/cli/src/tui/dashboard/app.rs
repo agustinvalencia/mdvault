@@ -156,9 +156,7 @@ impl DashboardApp {
 
         match result {
             Ok(()) => {
-                let rel = png_path
-                    .strip_prefix(&self.vault_root)
-                    .unwrap_or(&png_path);
+                let rel = png_path.strip_prefix(&self.vault_root).unwrap_or(&png_path);
                 self.status = Some(StatusMessage {
                     text: format!("PNG saved: {}", rel.display()),
                     is_error: false,
@@ -192,7 +190,9 @@ impl DashboardApp {
             mdvault_core::report::ReportScope::Project { id, .. } => {
                 format!("dashboard-{}.json", id.to_lowercase())
             }
-            mdvault_core::report::ReportScope::Vault => "dashboard-vault.json".to_string(),
+            mdvault_core::report::ReportScope::Vault => {
+                "dashboard-vault.json".to_string()
+            }
         };
         let out_path = self.vault_root.join("assets").join("dashboards").join(&filename);
 
@@ -202,9 +202,7 @@ impl DashboardApp {
 
         match std::fs::write(&out_path, &json) {
             Ok(()) => {
-                let rel = out_path
-                    .strip_prefix(&self.vault_root)
-                    .unwrap_or(&out_path);
+                let rel = out_path.strip_prefix(&self.vault_root).unwrap_or(&out_path);
                 self.status = Some(StatusMessage {
                     text: format!("Exported: {}", rel.display()),
                     is_error: false,

@@ -411,7 +411,9 @@ fn post_write_pipeline(
 fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
     // 1. Load TypedefRepository + TypeRegistry (with fallback to default dir)
     let typedef_repo = match &cfg.typedefs_fallback_dir {
-        Some(fallback) => TypedefRepository::with_fallback(&cfg.typedefs_dir, fallback).ok(),
+        Some(fallback) => {
+            TypedefRepository::with_fallback(&cfg.typedefs_dir, fallback).ok()
+        }
         None => TypedefRepository::new(&cfg.typedefs_dir).ok(),
     };
     let type_registry =

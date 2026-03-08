@@ -617,7 +617,9 @@ pub fn run_dashboard(
                 mdvault_core::report::ReportScope::Project { id, .. } => {
                     format!("dashboard-{}.png", id.to_lowercase())
                 }
-                mdvault_core::report::ReportScope::Vault => "dashboard-vault.png".to_string(),
+                mdvault_core::report::ReportScope::Vault => {
+                    "dashboard-vault.png".to_string()
+                }
             };
             cfg.vault_root.join("assets").join("dashboards").join(filename)
         };
@@ -630,9 +632,8 @@ pub fn run_dashboard(
 
         match gen_fn(&report, &png_path) {
             Ok(()) => {
-                let rel_path = png_path
-                    .strip_prefix(&cfg.vault_root)
-                    .unwrap_or(&png_path);
+                let rel_path =
+                    png_path.strip_prefix(&cfg.vault_root).unwrap_or(&png_path);
                 println!("Dashboard PNG written to: {}", png_path.display());
                 println!("Embed in markdown:  ![dashboard]({})", rel_path.display());
             }
@@ -717,11 +718,8 @@ fn print_dashboard_terminal(report: &mdvault_core::report::DashboardReport) {
     }
 
     // Recent completions (across all projects, deduplicated)
-    let all_completions: Vec<_> = report
-        .projects
-        .iter()
-        .flat_map(|p| p.recent_completions.iter())
-        .collect();
+    let all_completions: Vec<_> =
+        report.projects.iter().flat_map(|p| p.recent_completions.iter()).collect();
     if !all_completions.is_empty() {
         println!("RECENT COMPLETIONS (7 days)");
         for c in all_completions.iter().take(10) {
