@@ -445,7 +445,15 @@ fn print_activity_heatmap(heatmap: &[DayActivity]) {
 
     // Print each week
     for (i, week) in weeks.iter().enumerate() {
-        print!("  W{:02} ", i + 1);
+        // Use the ISO week number from the first day of this week
+        let week_num = if let Some(first_day) = week.first() {
+            NaiveDate::parse_from_str(&first_day.date, "%Y-%m-%d")
+                .map(|d| d.iso_week().week())
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        print!("  W{:02} ", week_num);
 
         // Pad beginning of first week if needed
         if i == 0 && !week.is_empty() {
@@ -752,16 +760,41 @@ fn get_note_type(note: &IndexedNote) -> Option<String> {
         .and_then(|fm| fm.get("type").and_then(|v| v.as_str()).map(String::from))
 }
 
+/// Parse a date string that may be in various formats:
+/// - "YYYY-MM-DD"
+/// - "YYYY-MM-DDThh:mm:ss" (no timezone)
+/// - "YYYY-MM-DD hh:mm:ss" (space separator)
+/// - "YYYY-MM-DD hh:mm:ss.fff" (fractional seconds)
+/// - RFC3339 ("YYYY-MM-DDThh:mm:ss+00:00")
+fn parse_flexible_date(date_str: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+        .ok()
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
+                .ok()
+                .map(|dt| dt.date())
+        })
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S")
+                .ok()
+                .map(|dt| dt.date())
+        })
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S%.f")
+                .ok()
+                .map(|dt| dt.date())
+        })
+        .or_else(|| {
+            chrono::DateTime::parse_from_rfc3339(date_str).ok().map(|dt| dt.date_naive())
+        })
+}
+
 /// Get completed_at date from frontmatter.
 fn get_completed_at(note: &IndexedNote) -> Option<NaiveDate> {
     let fm_json = note.frontmatter_json.as_ref()?;
     let fm: serde_json::Value = serde_json::from_str(fm_json).ok()?;
     let date_str = fm.get("completed_at")?.as_str()?;
-
-    // Try parsing as date first, then as datetime
-    NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok().or_else(|| {
-        chrono::DateTime::parse_from_rfc3339(date_str).ok().map(|dt| dt.date_naive())
-    })
+    parse_flexible_date(date_str)
 }
 
 /// Get created_at date from frontmatter.
@@ -769,10 +802,7 @@ fn get_created_at(note: &IndexedNote) -> Option<NaiveDate> {
     let fm_json = note.frontmatter_json.as_ref()?;
     let fm: serde_json::Value = serde_json::from_str(fm_json).ok()?;
     let date_str = fm.get("created_at")?.as_str()?;
-
-    NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok().or_else(|| {
-        chrono::DateTime::parse_from_rfc3339(date_str).ok().map(|dt| dt.date_naive())
-    })
+    parse_flexible_date(date_str)
 }
 
 /// Get date from daily note frontmatter.
