@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::Local;
 
@@ -32,6 +32,88 @@ pub fn set_updated_at(path: &Path) -> Result<(), String> {
 pub struct DailyLogService;
 
 impl DailyLogService {
+    /// Ensure today's daily note exists, creating it via `NoteCreator` if needed.
+    ///
+    /// Attempts the full template pipeline first (template + scaffolding + type definitions).
+    /// Falls back to minimal creation if the pipeline fails.
+    ///
+    /// Returns the path to the daily note.
+    fn ensure_daily_note(
+        config: &ResolvedConfig,
+        today: &str,
+    ) -> Result<PathBuf, String> {
+        let year = &today[..4];
+        let daily_path =
+            config.vault_root.join(format!("Journal/{}/Daily/{}.md", year, today));
+
+        if daily_path.exists() {
+            return Ok(daily_path);
+        }
+
+        // Try to create via NoteCreator with the full template pipeline
+        use crate::domain::NoteType;
+        use crate::domain::context::CreationContext;
+        use crate::domain::creator::NoteCreator;
+        use crate::templates::repository::TemplateRepository;
+        use crate::types::{TypeRegistry, TypedefRepository};
+
+        let try_full_creation = || -> Result<PathBuf, String> {
+            // Build TypeRegistry (with fallback if configured)
+            let typedef_repo = match &config.typedefs_fallback_dir {
+                Some(fallback) => {
+                    TypedefRepository::with_fallback(&config.typedefs_dir, fallback)
+                }
+                None => TypedefRepository::new(&config.typedefs_dir),
+            }
+            .map_err(|e| format!("Could not load type definitions: {e}"))?;
+
+            let registry = TypeRegistry::from_repository(&typedef_repo)
+                .map_err(|e| format!("Could not build type registry: {e}"))?;
+
+            // Try to load the daily template
+            let template = TemplateRepository::new(&config.templates_dir)
+                .ok()
+                .and_then(|repo| repo.get_by_name("daily").ok());
+
+            // Build NoteType and NoteCreator
+            let note_type = NoteType::from_name("daily", &registry)
+                .map_err(|e| format!("Could not resolve daily note type: {e}"))?;
+            let creator = NoteCreator::new(note_type);
+
+            // Build CreationContext
+            let mut ctx = CreationContext::new("daily", today, config, &registry)
+                .with_batch_mode(true);
+            if let Some(tmpl) = template {
+                ctx = ctx.with_template(tmpl);
+            }
+            ctx.set_var("date", today);
+
+            let result = creator
+                .create(&mut ctx)
+                .map_err(|e| format!("NoteCreator failed: {e}"))?;
+            Ok(result.path)
+        };
+
+        match try_full_creation() {
+            Ok(path) => Ok(path),
+            Err(e) => {
+                // Fallback to minimal creation if the pipeline fails
+                tracing::warn!("Full template creation failed, using minimal: {e}");
+                if let Some(parent) = daily_path.parent() {
+                    fs::create_dir_all(parent)
+                        .map_err(|e| format!("Could not create daily directory: {e}"))?;
+                }
+                let content = format!(
+                    "---\ntype: daily\ndate: {}\n---\n\n# {}\n\n## Logs\n",
+                    today, today
+                );
+                fs::write(&daily_path, &content)
+                    .map_err(|e| format!("Could not create daily note: {e}"))?;
+                Ok(daily_path)
+            }
+        }
+    }
+
     /// Log a creation event to today's daily note.
     ///
     /// Creates the daily note if it doesn't exist. The log entry includes
@@ -52,33 +134,13 @@ impl DailyLogService {
     ) -> Result<(), String> {
         let today = Local::now().format("%Y-%m-%d").to_string();
         let time = Local::now().format("%H:%M").to_string();
-        let year = &today[..4];
 
-        // Build daily note path (default pattern: Journal/{year}/Daily/YYYY-MM-DD.md)
-        let daily_path =
-            config.vault_root.join(format!("Journal/{}/Daily/{}.md", year, today));
+        // Ensure the daily note exists (creates via full pipeline if needed)
+        let daily_path = Self::ensure_daily_note(config, &today)?;
 
-        // Ensure parent directory exists
-        if let Some(parent) = daily_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Could not create daily directory: {e}"))?;
-        }
-
-        // Read or create daily note
-        let mut content = match fs::read_to_string(&daily_path) {
-            Ok(c) => c,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                // Create minimal daily note
-                let content = format!(
-                    "---\ntype: daily\ndate: {}\n---\n\n# {}\n\n## Logs\n",
-                    today, today
-                );
-                fs::write(&daily_path, &content)
-                    .map_err(|e| format!("Could not create daily note: {e}"))?;
-                content
-            }
-            Err(e) => return Err(format!("Could not read daily note: {e}")),
-        };
+        // Read the daily note content
+        let mut content = fs::read_to_string(&daily_path)
+            .map_err(|e| format!("Could not read daily note: {e}"))?;
 
         // Build the log entry with link to the note
         let rel_path =
@@ -152,29 +214,13 @@ impl DailyLogService {
     ) -> Result<(), String> {
         let today = Local::now().format("%Y-%m-%d").to_string();
         let time = Local::now().format("%H:%M").to_string();
-        let year = &today[..4];
 
-        let daily_path =
-            config.vault_root.join(format!("Journal/{}/Daily/{}.md", year, today));
+        // Ensure the daily note exists (creates via full pipeline if needed)
+        let daily_path = Self::ensure_daily_note(config, &today)?;
 
-        if let Some(parent) = daily_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Could not create daily directory: {e}"))?;
-        }
-
-        let mut content = match fs::read_to_string(&daily_path) {
-            Ok(c) => c,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let content = format!(
-                    "---\ntype: daily\ndate: {}\n---\n\n# {}\n\n## Logs\n",
-                    today, today
-                );
-                fs::write(&daily_path, &content)
-                    .map_err(|e| format!("Could not create daily note: {e}"))?;
-                content
-            }
-            Err(e) => return Err(format!("Could not read daily note: {e}")),
-        };
+        // Read the daily note content
+        let mut content = fs::read_to_string(&daily_path)
+            .map_err(|e| format!("Could not read daily note: {e}"))?;
 
         let rel_path =
             output_path.strip_prefix(&config.vault_root).unwrap_or(output_path);
