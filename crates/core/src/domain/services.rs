@@ -52,7 +52,7 @@ impl DailyLogService {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 // Create minimal daily note
                 let content = format!(
-                    "---\ntype: daily\ndate: {}\n---\n\n# {}\n\n## Log\n",
+                    "---\ntype: daily\ndate: {}\n---\n\n# {}\n\n## Logs\n",
                     today, today
                 );
                 fs::write(&daily_path, &content)
@@ -76,21 +76,22 @@ impl DailyLogService {
             time, note_type, id_display, link, title
         );
 
-        // Find the Log section and append, or append at end
-        if let Some(log_pos) = content.find("## Log") {
-            // Find the end of the Log section (next ## or end of file)
-            let after_log = &content[log_pos + 6..]; // Skip "## Log"
+        // Find the Logs section and append, or append at end
+        if let Some(log_pos) = content.find("## Logs") {
+            // Find the end of the Logs section (next ## or end of file)
+            let after_log = &content[log_pos + 7..]; // Skip "## Logs"
             let insert_pos = if let Some(next_section) = after_log.find("\n## ") {
-                log_pos + 6 + next_section
+                log_pos + 7 + next_section
             } else {
                 content.len()
             };
 
-            // Insert the log entry after a newline
-            content.insert_str(insert_pos, &format!("\n{}", log_entry));
+            // Insert the log entry, avoiding double newline
+            let prefix = if insert_pos > 0 && content.as_bytes()[insert_pos - 1] == b'\n' { "" } else { "\n" };
+            content.insert_str(insert_pos, &format!("{}{}", prefix, log_entry));
         } else {
-            // No Log section, add one
-            content.push_str(&format!("\n## Log\n{}", log_entry));
+            // No Logs section, add one
+            content.push_str(&format!("\n## Logs\n{}", log_entry));
         }
 
         // Write back
@@ -138,7 +139,7 @@ impl DailyLogService {
             Ok(c) => c,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 let content = format!(
-                    "---\ntype: daily\ndate: {}\n---\n\n# {}\n\n## Log\n",
+                    "---\ntype: daily\ndate: {}\n---\n\n# {}\n\n## Logs\n",
                     today, today
                 );
                 fs::write(&daily_path, &content)
@@ -160,16 +161,17 @@ impl DailyLogService {
             time, action, note_type, id_display, link, title
         );
 
-        if let Some(log_pos) = content.find("## Log") {
-            let after_log = &content[log_pos + 6..];
+        if let Some(log_pos) = content.find("## Logs") {
+            let after_log = &content[log_pos + 7..];
             let insert_pos = if let Some(next_section) = after_log.find("\n## ") {
-                log_pos + 6 + next_section
+                log_pos + 7 + next_section
             } else {
                 content.len()
             };
-            content.insert_str(insert_pos, &format!("\n{}", log_entry));
+            let prefix = if insert_pos > 0 && content.as_bytes()[insert_pos - 1] == b'\n' { "" } else { "\n" };
+            content.insert_str(insert_pos, &format!("{}{}", prefix, log_entry));
         } else {
-            content.push_str(&format!("\n## Log\n{}", log_entry));
+            content.push_str(&format!("\n## Logs\n{}", log_entry));
         }
 
         fs::write(&daily_path, &content)
@@ -201,7 +203,8 @@ impl ProjectLogService {
                 content.len()
             };
             let mut c = content.clone();
-            c.insert_str(insert_pos, &format!("\n{}", log_entry));
+            let prefix = if insert_pos > 0 && c.as_bytes()[insert_pos - 1] == b'\n' { "" } else { "\n" };
+            c.insert_str(insert_pos, &format!("{}{}", prefix, log_entry));
             c
         } else {
             format!("{}\n## Logs\n{}", content, log_entry)
@@ -264,7 +267,7 @@ mod tests {
 
         let content = fs::read_to_string(&daily_path).unwrap();
         assert!(content.contains("type: daily"));
-        assert!(content.contains("## Log"));
+        assert!(content.contains("## Logs"));
         assert!(content.contains("Created task TST-001"));
         assert!(content.contains("[[TST-001|Test Task]]"));
     }
@@ -281,7 +284,7 @@ mod tests {
         fs::create_dir_all(daily_path.parent().unwrap()).unwrap();
         fs::write(
             &daily_path,
-            "---\ntype: daily\n---\n\n# Today\n\n## Log\n- Existing entry\n",
+            "---\ntype: daily\n---\n\n# Today\n\n## Logs\n- Existing entry\n",
         )
         .unwrap();
 
