@@ -11,6 +11,7 @@ use mdvault_core::captures::{
 };
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
+use mdvault_core::domain::services::set_updated_at;
 use mdvault_core::frontmatter::{apply_ops, parse, serialize};
 use mdvault_core::index::{IndexBuilder, IndexDb};
 use mdvault_core::macros::MacroRepository;
@@ -241,6 +242,10 @@ pub fn run(
                 std::process::exit(1);
             }
 
+            if let Err(e) = set_updated_at(&target_file) {
+                tracing::warn!("Failed to set updated_at on new capture target: {}", e);
+            }
+
             println!("Created: {}", target_file.display());
             content
         }
@@ -268,6 +273,10 @@ pub fn run(
     if let Err(e) = fs::write(&target_file, &result_content) {
         eprintln!("Failed to write to {}: {e}", target_file.display());
         std::process::exit(1);
+    }
+
+    if let Err(e) = set_updated_at(&target_file) {
+        tracing::warn!("Failed to set updated_at on capture target: {}", e);
     }
 
     // 8.5. Run after_insert hook if defined

@@ -100,6 +100,11 @@ impl NoteCreator {
         }
         fs::write(&output_path, &content).map_err(DomainError::Io)?;
 
+        // Set updated_at on the newly created note
+        if let Err(e) = super::services::set_updated_at(&output_path) {
+            tracing::warn!("Failed to set updated_at on new note: {}", e);
+        }
+
         // Note: after_create is called by the CLI layer (after hooks)
 
         // Build result

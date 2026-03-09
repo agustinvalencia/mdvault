@@ -3,12 +3,30 @@
 //! These services handle cross-cutting concerns like daily logging
 //! that can be used by multiple behaviors.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
 use chrono::Local;
 
 use crate::config::types::ResolvedConfig;
+
+/// Update the `updated_at` frontmatter field in a note file.
+pub fn set_updated_at(path: &Path) -> Result<(), String> {
+    let content =
+        fs::read_to_string(path).map_err(|e| format!("Could not read file: {e}"))?;
+    let parsed = crate::frontmatter::parse(&content)
+        .map_err(|e| format!("Could not parse frontmatter: {e}"))?;
+    let mut fields: HashMap<String, serde_yaml::Value> =
+        parsed.frontmatter.map(|fm| fm.fields).unwrap_or_default();
+    let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    fields.insert("updated_at".to_string(), serde_yaml::Value::String(now));
+    let yaml = serde_yaml::to_string(&fields)
+        .map_err(|e| format!("Could not serialize frontmatter: {e}"))?;
+    let new_content = format!("---\n{}---\n{}", yaml, parsed.body);
+    fs::write(path, new_content).map_err(|e| format!("Could not write file: {e}"))?;
+    Ok(())
+}
 
 /// Service for logging note creation events to daily notes.
 pub struct DailyLogService;
@@ -87,7 +105,12 @@ impl DailyLogService {
             };
 
             // Insert the log entry, avoiding double newline
-            let prefix = if insert_pos > 0 && content.as_bytes()[insert_pos - 1] == b'\n' { "" } else { "\n" };
+            let prefix = if insert_pos > 0 && content.as_bytes()[insert_pos - 1] == b'\n'
+            {
+                ""
+            } else {
+                "\n"
+            };
             content.insert_str(insert_pos, &format!("{}{}", prefix, log_entry));
         } else {
             // No Logs section, add one
@@ -97,6 +120,10 @@ impl DailyLogService {
         // Write back
         fs::write(&daily_path, &content)
             .map_err(|e| format!("Could not write daily note: {e}"))?;
+
+        if let Err(e) = set_updated_at(&daily_path) {
+            tracing::warn!("Failed to set updated_at on daily note: {}", e);
+        }
 
         Ok(())
     }
@@ -168,7 +195,12 @@ impl DailyLogService {
             } else {
                 content.len()
             };
-            let prefix = if insert_pos > 0 && content.as_bytes()[insert_pos - 1] == b'\n' { "" } else { "\n" };
+            let prefix = if insert_pos > 0 && content.as_bytes()[insert_pos - 1] == b'\n'
+            {
+                ""
+            } else {
+                "\n"
+            };
             content.insert_str(insert_pos, &format!("{}{}", prefix, log_entry));
         } else {
             content.push_str(&format!("\n## Logs\n{}", log_entry));
@@ -176,6 +208,10 @@ impl DailyLogService {
 
         fs::write(&daily_path, &content)
             .map_err(|e| format!("Could not write daily note: {e}"))?;
+
+        if let Err(e) = set_updated_at(&daily_path) {
+            tracing::warn!("Failed to set updated_at on daily note: {}", e);
+        }
 
         Ok(())
     }
@@ -203,7 +239,11 @@ impl ProjectLogService {
                 content.len()
             };
             let mut c = content.clone();
-            let prefix = if insert_pos > 0 && c.as_bytes()[insert_pos - 1] == b'\n' { "" } else { "\n" };
+            let prefix = if insert_pos > 0 && c.as_bytes()[insert_pos - 1] == b'\n' {
+                ""
+            } else {
+                "\n"
+            };
             c.insert_str(insert_pos, &format!("{}{}", prefix, log_entry));
             c
         } else {
@@ -212,6 +252,10 @@ impl ProjectLogService {
 
         fs::write(project_file, &new_content)
             .map_err(|e| format!("Could not write project note: {e}"))?;
+
+        if let Err(e) = set_updated_at(project_file) {
+            tracing::warn!("Failed to set updated_at on project note: {}", e);
+        }
 
         Ok(())
     }

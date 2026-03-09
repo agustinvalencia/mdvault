@@ -257,6 +257,10 @@ pub fn done(
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     fm.fields.insert("completed_at".to_string(), serde_yaml::Value::String(now.clone()));
 
+    // Update updated_at
+    let updated_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    fm.fields.insert("updated_at".to_string(), serde_yaml::Value::String(updated_at));
+
     // Get task ID for output
     let task_id = fm
         .fields
@@ -421,6 +425,10 @@ pub fn cancel(
     // Set cancelled_at timestamp
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     fm.fields.insert("cancelled_at".to_string(), serde_yaml::Value::String(now.clone()));
+
+    // Update updated_at
+    let updated_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    fm.fields.insert("updated_at".to_string(), serde_yaml::Value::String(updated_at));
 
     // Get task ID for output
     let task_id = fm

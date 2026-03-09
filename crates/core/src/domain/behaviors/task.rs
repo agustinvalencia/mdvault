@@ -396,6 +396,9 @@ fn increment_project_counter(config: &ResolvedConfig, project: &str) -> DomainRe
         serde_yaml::Value::Number((current + 1).into()),
     );
 
+    let updated_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    fields.insert("updated_at".to_string(), serde_yaml::Value::String(updated_at));
+
     // Rebuild content with updated frontmatter
     let yaml = serde_yaml::to_string(&fields).map_err(|e| {
         DomainError::Other(format!("Failed to serialize frontmatter: {}", e))
