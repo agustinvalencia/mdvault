@@ -5,6 +5,19 @@ All notable changes to mdvault will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2026-03-09
+
+### Fixed
+
+- **Daily log section name**: Standardised `## Log` to `## Logs` across all code paths, matching the vault template convention
+- **Double newlines in logs**: Fixed insertion logic that added blank lines between consecutive log entries in daily and project notes
+
+### Added
+
+- **`updated_at` frontmatter tracking**: All write paths now set the `updated_at` field in frontmatter, enabling reliable timestamp-based staleness detection independent of filesystem mtime
+  - Note creation, task completion/cancellation, log appending, capture operations, and project counter increments all update `updated_at`
+  - New `set_updated_at()` utility in `domain::services` for consistent timestamp updates
+
 ## [0.4.2] - 2026-02-27
 
 ### Fixed
