@@ -5,6 +5,12 @@ All notable changes to mdvault will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - 2026-03-09
+
+### Changed
+
+- **Full template for auto-created daily notes**: When `DailyLogService` creates a daily note (e.g., during task creation), it now uses the full `NoteCreator` pipeline with template and type definitions instead of a minimal hardcoded format. Falls back to minimal if the pipeline fails. (MMCP-027)
+
 ## [0.4.5] - 2026-03-09
 
 ### Fixed
