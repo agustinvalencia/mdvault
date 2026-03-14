@@ -23,6 +23,7 @@ pub mod domain;
 pub mod frontmatter;
 pub mod ids;
 pub mod index;
+pub mod lint;
 pub mod macros;
 pub mod markdown_ast;
 pub mod rename;

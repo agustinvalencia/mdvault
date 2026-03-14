@@ -1,5 +1,6 @@
 pub mod capture;
 pub mod charts;
+pub mod check;
 pub mod context;
 pub mod doctor;
 pub mod focus;

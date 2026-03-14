@@ -131,6 +131,9 @@ enum Commands {
 
     /// Interactive dashboard TUI
     Dashboard(DashboardArgs),
+
+    /// Check vault structural correctness (lint)
+    Check(CheckArgs),
 }
 
 /// Today command subcommands.
@@ -832,6 +835,33 @@ pub struct DashboardArgs {
     pub activity_days: u32,
 }
 
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Examples:
+  mdv check                             # Run all checks
+  mdv check --category broken_references # Run a specific check
+  mdv check --json                      # JSON output
+  mdv check --quiet                     # Paths only
+  mdv check --no-reindex                # Skip index sync check
+")]
+pub struct CheckArgs {
+    /// Run only a specific check category
+    #[arg(long, short)]
+    pub category: Option<String>,
+
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+
+    /// Quiet mode - paths only
+    #[arg(long, short)]
+    pub quiet: bool,
+
+    /// Skip the index sync check (avoids reindexing)
+    #[arg(long)]
+    pub no_reindex: bool,
+}
+
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
     let pos =
         s.find('=').ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
@@ -1074,6 +1104,9 @@ fn main() {
                 );
             }
         },
+        Some(Commands::Check(args)) => {
+            cmd::check::run(cli.config.as_deref(), cli.profile.as_deref(), args);
+        }
         Some(Commands::Dashboard(args)) => {
             if let Err(e) = tui::dashboard::run(
                 cli.config.as_deref(),
