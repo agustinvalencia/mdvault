@@ -152,26 +152,107 @@ fn looks_like_week(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::types::{
+        ActivityConfig, LoggingConfig, ResolvedConfig, SecurityPolicy,
+    };
+    use crate::domain::context::CreationContext;
+    use crate::domain::traits::NoteLifecycle;
+    use crate::types::TypeRegistry;
+    use chrono::Datelike;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    fn test_config() -> ResolvedConfig {
+        ResolvedConfig {
+            active_profile: "test".into(),
+            vault_root: PathBuf::from("/tmp/test-vault"),
+            templates_dir: PathBuf::from("/tmp/test-vault/.mdvault/templates"),
+            captures_dir: PathBuf::from("/tmp/test-vault/.mdvault/captures"),
+            macros_dir: PathBuf::from("/tmp/test-vault/.mdvault/macros"),
+            typedefs_dir: PathBuf::from("/tmp/test-vault/.mdvault/types"),
+            typedefs_fallback_dir: None,
+            excluded_folders: vec![],
+            security: SecurityPolicy::default(),
+            logging: LoggingConfig::default(),
+            activity: ActivityConfig::default(),
+        }
+    }
+
+    fn run_before_create(
+        title: &str,
+        vars: HashMap<String, String>,
+    ) -> CreationContext<'_> {
+        // Leak to get 'static lifetime — fine for tests
+        let cfg = Box::leak(Box::new(test_config()));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let mut ctx =
+            CreationContext::new("weekly", title, cfg, registry).with_vars(vars);
+        let behavior = WeeklyBehavior::new(None);
+        behavior.before_create(&mut ctx).unwrap();
+        ctx
+    }
+
+    // ── before_create tests (MDV-034 regression) ─────────────────────────
 
     #[test]
-    fn test_date_title_resolves_to_correct_week() {
-        // Regression test for MDV-034: dates should resolve to their ISO week,
-        // not the current week.
-        use crate::vars::datemath::try_evaluate_date_expr;
-
-        // Simulate what before_create does when title is a date
-        let title = "2026-03-23";
-        assert!(!looks_like_week(title));
-
-        let expr = format!("{} | %G-W%V", title);
-        let week = try_evaluate_date_expr(&expr).unwrap();
-        assert_eq!(week, "2026-W13");
-
-        // Also test a different date
-        let expr2 = format!("{} | %G-W%V", "2026-03-16");
-        let week2 = try_evaluate_date_expr(&expr2).unwrap();
-        assert_eq!(week2, "2026-W12");
+    fn before_create_date_title_resolves_correct_week() {
+        // MDV-034: "2026-03-23" should resolve to W13, not the current week
+        let ctx = run_before_create("2026-03-23", HashMap::new());
+        assert_eq!(ctx.core_metadata.week.as_deref(), Some("2026-W13"));
+        assert_eq!(ctx.core_metadata.date.as_deref(), Some("2026-03-23")); // Monday of W13
+        assert_eq!(ctx.vars.get("week").map(|s| s.as_str()), Some("2026-W13"));
+        assert!(ctx.reference_date.is_some());
     }
+
+    #[test]
+    fn before_create_date_title_beats_schema_default() {
+        // The core bug: schema default sets week="2026-W11" (today's week),
+        // but title "2026-03-23" should override it to W13
+        let mut vars = HashMap::new();
+        vars.insert("week".into(), "2026-W11".into()); // Simulates schema default
+        let ctx = run_before_create("2026-03-23", vars);
+        assert_eq!(ctx.core_metadata.week.as_deref(), Some("2026-W13"));
+    }
+
+    #[test]
+    fn before_create_explicit_week_title() {
+        let ctx = run_before_create("2026-W05", HashMap::new());
+        assert_eq!(ctx.core_metadata.week.as_deref(), Some("2026-W05"));
+        assert_eq!(ctx.core_metadata.date.as_deref(), Some("2026-01-26")); // Monday of W05
+    }
+
+    #[test]
+    fn before_create_next_week_expr() {
+        let ctx = run_before_create("next week", HashMap::new());
+        let week = ctx.core_metadata.week.as_deref().unwrap();
+        assert!(looks_like_week(week), "Expected week format, got: {week}");
+    }
+
+    #[test]
+    fn before_create_placeholder_title_uses_var_week() {
+        // When title is not a date or week, fall back to --var week=
+        let mut vars = HashMap::new();
+        vars.insert("week".into(), "2026-W30".into());
+        let ctx = run_before_create("placeholder", vars);
+        assert_eq!(ctx.core_metadata.week.as_deref(), Some("2026-W30"));
+    }
+
+    #[test]
+    fn before_create_no_title_no_var_falls_back_to_now() {
+        let ctx = run_before_create("", HashMap::new());
+        let week = ctx.core_metadata.week.as_deref().unwrap();
+        assert!(looks_like_week(week), "Expected week format, got: {week}");
+    }
+
+    #[test]
+    fn before_create_sets_reference_date_to_monday() {
+        let ctx = run_before_create("2026-W13", HashMap::new());
+        let monday = ctx.reference_date.unwrap();
+        assert_eq!(monday.format("%Y-%m-%d").to_string(), "2026-03-23");
+        assert_eq!(monday.weekday(), Weekday::Mon);
+    }
+
+    // ── looks_like_week ──────────────────────────────────────────────────
 
     #[test]
     fn test_looks_like_week() {
@@ -181,5 +262,6 @@ mod tests {
         assert!(!looks_like_week("2025-01"));
         assert!(!looks_like_week("not a week"));
         assert!(!looks_like_week("W01-2025"));
+        assert!(!looks_like_week("2026-03-23"));
     }
 }
