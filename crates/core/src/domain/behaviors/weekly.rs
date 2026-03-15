@@ -62,34 +62,41 @@ impl NoteIdentity for WeeklyBehavior {
 
 impl NoteLifecycle for WeeklyBehavior {
     fn before_create(&self, ctx: &mut CreationContext) -> DomainResult<()> {
-        // Check for a week provided via --var week=... first, then try title, then current week
-        let week = if let Some(provided) = ctx.get_var("week")
-            && looks_like_week(provided)
-        {
-            provided.to_string()
-        } else if looks_like_week(&ctx.title) {
+        // Determine the week: title takes priority (it's the user's intent), then
+        // explicit --var week=..., then schema default, then current week.
+        // Title is checked first because the schema default for `week` eagerly
+        // evaluates to "today's week" and would shadow a date-based title.
+        let week = if looks_like_week(&ctx.title) {
+            // Title is already a week string (e.g. "2026-W13")
             ctx.title.clone()
-        } else {
-            // Try to evaluate as date expr, forcing ISO week format if not specified
-            let expr_to_eval = if is_date_expr(&ctx.title) && !ctx.title.contains('|') {
+        } else if is_date_expr(&ctx.title) {
+            // Title is a date or date expression (e.g. "2026-03-23", "next week") —
+            // evaluate it as a week. This takes priority over --var week= / schema
+            // defaults because the title is the user's explicit intent.
+            let expr_to_eval = if !ctx.title.contains('|') {
                 format!("{} | %G-W%V", ctx.title)
             } else {
                 ctx.title.clone()
             };
 
-            if let Some(evaluated) = try_evaluate_date_expr(&expr_to_eval) {
-                evaluated
-            } else {
-                Local::now().format("%G-W%V").to_string()
-            }
+            try_evaluate_date_expr(&expr_to_eval)
+                .unwrap_or_else(|| Local::now().format("%G-W%V").to_string())
+        } else if let Some(provided) = ctx.get_var("week")
+            && looks_like_week(provided)
+        {
+            // Explicit --var week=... or schema default
+            provided.to_string()
+        } else {
+            // Fallback: current week
+            Local::now().format("%G-W%V").to_string()
         };
 
         ctx.core_metadata.week = Some(week.clone());
         ctx.core_metadata.title = Some(week.clone());
         ctx.set_var("week", &week);
 
-        // Set reference_date to the Monday of this week so that date format
-        // filters like {{week | %G}} evaluate relative to the correct week.
+        // Set reference_date and core date to the Monday of this week so that
+        // date format filters and template variables resolve to the correct week.
         if week.len() >= 7
             && week.contains("-W")
             && let Ok(year) = week[..4].parse::<i32>()
@@ -97,6 +104,9 @@ impl NoteLifecycle for WeeklyBehavior {
             && let Some(monday) = NaiveDate::from_isoywd_opt(year, wk, Weekday::Mon)
         {
             ctx.reference_date = Some(monday);
+            let date_str = monday.format("%Y-%m-%d").to_string();
+            ctx.core_metadata.date = Some(date_str.clone());
+            ctx.set_var("date", &date_str);
         }
 
         Ok(())
@@ -142,6 +152,26 @@ fn looks_like_week(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_date_title_resolves_to_correct_week() {
+        // Regression test for MDV-034: dates should resolve to their ISO week,
+        // not the current week.
+        use crate::vars::datemath::try_evaluate_date_expr;
+
+        // Simulate what before_create does when title is a date
+        let title = "2026-03-23";
+        assert!(!looks_like_week(title));
+
+        let expr = format!("{} | %G-W%V", title);
+        let week = try_evaluate_date_expr(&expr).unwrap();
+        assert_eq!(week, "2026-W13");
+
+        // Also test a different date
+        let expr2 = format!("{} | %G-W%V", "2026-03-16");
+        let week2 = try_evaluate_date_expr(&expr2).unwrap();
+        assert_eq!(week2, "2026-W12");
+    }
 
     #[test]
     fn test_looks_like_week() {

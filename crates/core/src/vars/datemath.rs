@@ -922,6 +922,25 @@ mod tests {
     }
 
     #[test]
+    fn test_evaluate_iso_date_to_iso_week() {
+        // This is what the weekly behavior does: "DATE | %G-W%V"
+        let expr = parse_date_expr("2026-03-23 | %G-W%V").unwrap();
+        let result = evaluate_date_expr(&expr);
+        assert_eq!(result, "2026-W13");
+
+        let expr2 = parse_date_expr("2026-03-16 | %G-W%V").unwrap();
+        let result2 = evaluate_date_expr(&expr2);
+        assert_eq!(result2, "2026-W12");
+    }
+
+    #[test]
+    fn test_try_evaluate_weekly_expr() {
+        // End-to-end: try_evaluate_date_expr with the weekly format
+        let result = try_evaluate_date_expr("2026-03-23 | %G-W%V");
+        assert_eq!(result, Some("2026-W13".to_string()));
+    }
+
+    #[test]
     fn test_evaluate_iso_date_weekday_offset() {
         // 2025-01-15 is Wednesday, previous Monday is 2025-01-13
         let expr = parse_date_expr("2025-01-15 - monday").unwrap();
