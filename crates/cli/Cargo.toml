@@ -22,7 +22,7 @@ clap_complete = { version = "4.5", features = ["unstable-dynamic"] }
 color-eyre = "0.6"
 crossterm = "0.29"
 dialoguer = { version = "0.12", features = ["fuzzy-select"] }
-mdvault-core = { version = "0.5.1", path = "../core" }
+mdvault-core = { version = "0.6.0", path = "../core" }
 ratatui = "0.30"
 regex = "1.12.2"
 serde = { version = "1.0", features = ["derive"] }
