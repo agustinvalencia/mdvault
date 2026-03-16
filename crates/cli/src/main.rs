@@ -116,6 +116,10 @@ enum Commands {
     #[command(subcommand)]
     Project(ProjectCommands),
 
+    /// Area management commands
+    #[command(subcommand)]
+    Area(AreaCommands),
+
     /// Generate activity reports for a time period
     Report(ReportArgs),
 
@@ -198,6 +202,48 @@ enum ProjectCommands {
 
     /// Archive a completed project
     Archive(ProjectArchiveArgs),
+}
+
+/// Area management subcommands.
+#[derive(Debug, Subcommand)]
+enum AreaCommands {
+    /// Show area health report against defined standards
+    Report(AreaReportArgs),
+
+    /// Export area metrics as CSV or JSON
+    Export(AreaExportArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct AreaReportArgs {
+    /// Area name or ID
+    pub area: String,
+
+    /// Period: 'week', 'month', or specific like '2026-W11', '2026-03'
+    #[arg(long, default_value = "week")]
+    pub period: String,
+
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct AreaExportArgs {
+    /// Area name or ID
+    pub area: String,
+
+    /// Start date (YYYY-MM-DD)
+    #[arg(long)]
+    pub from: Option<String>,
+
+    /// End date (YYYY-MM-DD)
+    #[arg(long)]
+    pub to: Option<String>,
+
+    /// Output format (csv or json)
+    #[arg(long, default_value = "csv")]
+    pub format: String,
 }
 
 #[derive(Debug, Args)]
@@ -1037,6 +1083,27 @@ fn main() {
                     cli.profile.as_deref(),
                     &args.project,
                     args.yes,
+                );
+            }
+        },
+        Some(Commands::Area(subcmd)) => match subcmd {
+            AreaCommands::Report(args) => {
+                cmd::area::report(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    &args.area,
+                    &args.period,
+                    args.json,
+                );
+            }
+            AreaCommands::Export(args) => {
+                cmd::area::export(
+                    cli.config.as_deref(),
+                    cli.profile.as_deref(),
+                    &args.area,
+                    args.from.as_deref(),
+                    args.to.as_deref(),
+                    &args.format,
                 );
             }
         },

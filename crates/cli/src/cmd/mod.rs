@@ -1,3 +1,4 @@
+pub mod area;
 pub mod capture;
 pub mod charts;
 pub mod check;
