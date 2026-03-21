@@ -340,11 +340,12 @@ pub fn done(
     }
 
     // Log to daily note
+    let safe_title = strip_wikilinks(&task_title);
     let _ = DailyLogService::log_event(
         &cfg,
         "Completed",
         "task",
-        &task_title,
+        &safe_title,
         &task_id,
         &full_path,
     );
@@ -352,7 +353,7 @@ pub fn done(
     // Log to parent project note
     if let Some(ref project) = project_name {
         if let Ok(project_file) = find_project_file(&cfg, project) {
-            let msg = format!("Completed task [[{}]]: {}", task_id, task_title);
+            let msg = format!("Completed task [[{}]]: {}", task_id, safe_title);
             let _ = ProjectLogService::log_entry(&project_file, &msg);
         }
     }
@@ -509,11 +510,12 @@ pub fn cancel(
     }
 
     // Log to daily note
+    let safe_title = strip_wikilinks(&task_title);
     let _ = DailyLogService::log_event(
         &cfg,
         "Cancelled",
         "task",
-        &task_title,
+        &safe_title,
         &task_id,
         &full_path,
     );
@@ -521,7 +523,7 @@ pub fn cancel(
     // Log to parent project note
     if let Some(ref project) = project_name {
         if let Ok(project_file) = find_project_file(&cfg, project) {
-            let msg = format!("Cancelled task [[{}]]: {}", task_id, task_title);
+            let msg = format!("Cancelled task [[{}]]: {}", task_id, safe_title);
             let _ = ProjectLogService::log_entry(&project_file, &msg);
         }
     }
@@ -532,6 +534,46 @@ pub fn cancel(
     if reason.is_some() {
         println!("reason: logged to task");
     }
+}
+
+/// Strip wikilinks from a string so it can be safely embedded inside another wikilink.
+///
+/// `[[target|display]]` → `display`, `[[target]]` → `target`.
+fn strip_wikilinks(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '[' && chars.peek() == Some(&'[') {
+            chars.next(); // consume second '['
+            let mut inner = String::new();
+            let mut depth = 1u32;
+            for ch in chars.by_ref() {
+                if ch == '[' {
+                    depth += 1;
+                    inner.push(ch);
+                } else if ch == ']' {
+                    depth -= 1;
+                    if depth == 0 {
+                        // consume the second ']'
+                        let _ = chars.next();
+                        break;
+                    }
+                    inner.push(ch);
+                } else {
+                    inner.push(ch);
+                }
+            }
+            // Use display text (after '|') if present, otherwise the whole inner
+            if let Some(pos) = inner.rfind('|') {
+                result.push_str(&inner[pos + 1..]);
+            } else {
+                result.push_str(&inner);
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }
 
 /// Extract task ID, status, and project from frontmatter.
@@ -577,4 +619,49 @@ fn extract_project_from_path(path: &str) -> String {
         return parts[1].to_string();
     }
     "inbox".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_wikilinks;
+
+    #[test]
+    fn no_wikilinks() {
+        assert_eq!(strip_wikilinks("plain title"), "plain title");
+    }
+
+    #[test]
+    fn simple_wikilink() {
+        assert_eq!(strip_wikilinks("Read [[some-note]]"), "Read some-note");
+    }
+
+    #[test]
+    fn wikilink_with_display_text() {
+        assert_eq!(
+            strip_wikilinks("Read [[survey-llm-2024|Survey of LLM Architectures]]"),
+            "Read Survey of LLM Architectures"
+        );
+    }
+
+    #[test]
+    fn multiple_wikilinks() {
+        assert_eq!(
+            strip_wikilinks("Compare [[note-a|A]] and [[note-b|B]]"),
+            "Compare A and B"
+        );
+    }
+
+    #[test]
+    fn nested_wikilinks() {
+        // The exact case from the bug report
+        assert_eq!(
+            strip_wikilinks("Read [[Zettel/Literature/survey-llm-architectures-2024|Survey of Different Large Language Model Architectures]]"),
+            "Read Survey of Different Large Language Model Architectures"
+        );
+    }
+
+    #[test]
+    fn empty_string() {
+        assert_eq!(strip_wikilinks(""), "");
+    }
 }
