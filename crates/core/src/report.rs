@@ -28,6 +28,19 @@ pub struct DashboardReport {
     pub high_priority: Vec<FlaggedTask>,
     pub upcoming_deadlines: Vec<FlaggedTask>,
     pub zombie: Vec<FlaggedTask>,
+    pub review_due: Vec<ReviewDueProject>,
+}
+
+/// A project or area that hasn't been reviewed within its review_interval.
+#[derive(Debug, Serialize)]
+pub struct ReviewDueProject {
+    pub id: String,
+    pub title: String,
+    pub kind: String,
+    pub review_interval: String,
+    pub last_reviewed: Option<String>,
+    pub days_since_review: i64,
+    pub days_overdue: i64,
 }
 
 /// Whether this report covers the whole vault or a single project.
@@ -224,6 +237,9 @@ pub fn build_dashboard(
     let (overdue, high_priority, upcoming_deadlines, zombie) =
         build_flagged_tasks(&tasks, &target_projects, today, options.zombie_days);
 
+    // Projects/areas due for review
+    let review_due = build_review_due(&target_projects, today);
+
     Ok(DashboardReport {
         generated_at: Utc::now().to_rfc3339(),
         scope,
@@ -234,6 +250,7 @@ pub fn build_dashboard(
         high_priority,
         upcoming_deadlines,
         zombie,
+        review_due,
     })
 }
 
@@ -636,6 +653,72 @@ fn get_frontmatter_date(note: &IndexedNote, key: &str) -> Option<NaiveDate> {
                 .ok()
                 .map(|dt| dt.date())
         })
+        .or_else(|| {
+            // Handle "YYYY-MM-DD hh:mm:ss" (space separator, with optional fractional seconds)
+            let trimmed = date_str.split('.').next().unwrap_or(&date_str);
+            chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S")
+                .ok()
+                .map(|dt| dt.date())
+        })
+}
+
+/// Parse a duration string like "1w", "2w", "30d", "1m" into days.
+fn parse_review_interval(s: &str) -> Option<i64> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let (num_str, suffix) = s.split_at(s.len() - 1);
+    let num: i64 = num_str.parse().ok()?;
+    match suffix {
+        "d" => Some(num),
+        "w" => Some(num * 7),
+        "m" => Some(num * 30),
+        _ => None,
+    }
+}
+
+/// Build list of projects/areas due for review based on review_interval.
+fn build_review_due(
+    projects: &[&IndexedNote],
+    today: NaiveDate,
+) -> Vec<ReviewDueProject> {
+    let mut due: Vec<ReviewDueProject> = projects
+        .iter()
+        .filter_map(|p| {
+            let (id, status, kind) = extract_project_info(p);
+            // Skip archived/done projects
+            if matches!(status.as_str(), "done" | "archived") {
+                return None;
+            }
+            let interval_str = get_frontmatter_str(p, "review_interval")?;
+            let interval_days = parse_review_interval(&interval_str)?;
+
+            // Use last_reviewed if available, fallback to updated_at
+            let last_reviewed = get_frontmatter_date(p, "last_reviewed")
+                .or_else(|| get_frontmatter_date(p, "updated_at"))?;
+
+            let days_since = (today - last_reviewed).num_days();
+            let days_overdue = days_since - interval_days;
+
+            if days_overdue <= 0 {
+                return None;
+            }
+
+            Some(ReviewDueProject {
+                id,
+                title: p.title.clone(),
+                kind,
+                review_interval: interval_str,
+                last_reviewed: Some(last_reviewed.format("%Y-%m-%d").to_string()),
+                days_since_review: days_since,
+                days_overdue,
+            })
+        })
+        .collect();
+
+    due.sort_by(|a, b| b.days_overdue.cmp(&a.days_overdue));
+    due
 }
 
 fn extract_project_info(project: &IndexedNote) -> (String, String, String) {
@@ -1236,5 +1319,86 @@ mod tests {
         assert_eq!(zombie.len(), 1);
         assert_eq!(zombie[0].id, "T-1");
         assert_eq!(zombie[0].days_overdue, Some(80));
+    }
+
+    #[test]
+    fn parse_review_interval_parses_correctly() {
+        assert_eq!(parse_review_interval("1w"), Some(7));
+        assert_eq!(parse_review_interval("2w"), Some(14));
+        assert_eq!(parse_review_interval("30d"), Some(30));
+        assert_eq!(parse_review_interval("1m"), Some(30));
+        assert_eq!(parse_review_interval(""), None);
+        assert_eq!(parse_review_interval("abc"), None);
+    }
+
+    #[test]
+    fn review_due_flags_stale_projects() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 22).unwrap();
+        let old_update = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap(); // 21 days ago
+        let recent_update = NaiveDate::from_ymd_opt(2026, 3, 20).unwrap(); // 2 days ago
+
+        // Stale project: review_interval=1w, updated 21 days ago → 14 days overdue
+        let stale_proj = make_note(
+            "Projects/stale/stale.md",
+            NoteType::Project,
+            "Stale Project",
+            Some(&serde_json::json!({
+                "project-id": "SP",
+                "status": "open",
+                "kind": "project",
+                "review_interval": "1w",
+                "updated_at": old_update.format("%Y-%m-%d").to_string(),
+            }).to_string()),
+        );
+
+        // Fresh project: review_interval=1w, updated 2 days ago → not due
+        let fresh_proj = make_note(
+            "Projects/fresh/fresh.md",
+            NoteType::Project,
+            "Fresh Project",
+            Some(&serde_json::json!({
+                "project-id": "FP",
+                "status": "open",
+                "kind": "project",
+                "review_interval": "1w",
+                "updated_at": recent_update.format("%Y-%m-%d").to_string(),
+            }).to_string()),
+        );
+
+        // Done project: should be skipped even if stale
+        let done_proj = make_note(
+            "Projects/done/done.md",
+            NoteType::Project,
+            "Done Project",
+            Some(&serde_json::json!({
+                "project-id": "DP",
+                "status": "done",
+                "kind": "project",
+                "review_interval": "1w",
+                "updated_at": old_update.format("%Y-%m-%d").to_string(),
+            }).to_string()),
+        );
+
+        // Project with last_reviewed set — should use it over updated_at
+        let reviewed_proj = make_note(
+            "Projects/reviewed/reviewed.md",
+            NoteType::Project,
+            "Reviewed Project",
+            Some(&serde_json::json!({
+                "project-id": "RP",
+                "status": "open",
+                "kind": "project",
+                "review_interval": "2w",
+                "updated_at": old_update.format("%Y-%m-%d").to_string(),
+                "last_reviewed": recent_update.format("%Y-%m-%d").to_string(),
+            }).to_string()),
+        );
+
+        let projects: Vec<&IndexedNote> = vec![&stale_proj, &fresh_proj, &done_proj, &reviewed_proj];
+        let due = build_review_due(&projects, today);
+
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].id, "SP");
+        assert_eq!(due[0].days_overdue, 14); // 21 days since update - 7 day interval
     }
 }

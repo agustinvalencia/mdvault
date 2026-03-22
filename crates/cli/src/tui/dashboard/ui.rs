@@ -82,6 +82,16 @@ fn draw_summary(frame: &mut Frame, area: Rect, app: &DashboardApp) {
         ));
     }
 
+    let review_due_count = app.report.review_due.len();
+    if review_due_count > 0 {
+        status_spans
+            .push(Span::styled("  Review Due: ", Style::default().fg(Color::DarkGray)));
+        status_spans.push(Span::styled(
+            review_due_count.to_string(),
+            Style::default().fg(Color::Yellow).bold(),
+        ));
+    }
+
     let lines = vec![
         Line::from(vec![
             Span::styled("  Notes: ", Style::default().fg(Color::DarkGray)),
@@ -446,6 +456,7 @@ fn draw_vault_alerts(
         && app.report.upcoming_deadlines.is_empty()
         && app.report.high_priority.is_empty()
         && app.report.zombie.is_empty()
+        && app.report.review_due.is_empty()
         && app.report.activity.stale_notes.is_empty()
     {
         lines.push(Line::from(Span::styled(
@@ -541,6 +552,29 @@ fn draw_vault_alerts(
                     Span::styled(
                         format!("  [{}]", t.project),
                         Style::default().fg(Color::DarkGray),
+                    ),
+                ]));
+            }
+            lines.push(Line::from(""));
+        }
+
+        if !app.report.review_due.is_empty() {
+            lines.push(Line::from(Span::styled(
+                format!("  Review Due ({})", app.report.review_due.len()),
+                Style::default().fg(Color::Yellow).bold(),
+            )));
+            for p in app.report.review_due.iter().take(8) {
+                let last = p.last_reviewed.as_deref().unwrap_or("never");
+                lines.push(Line::from(vec![
+                    Span::styled("    ↻ ", Style::default().fg(Color::Yellow)),
+                    Span::styled(&p.id, Style::default().fg(Color::Cyan)),
+                    Span::styled(
+                        format!(" {} ", truncate_str(&p.title, 30)),
+                        Style::default().fg(Color::White),
+                    ),
+                    Span::styled(
+                        format!("{}d overdue (interval: {}, last: {last})", p.days_overdue, p.review_interval),
+                        Style::default().fg(Color::Yellow),
                     ),
                 ]));
             }
