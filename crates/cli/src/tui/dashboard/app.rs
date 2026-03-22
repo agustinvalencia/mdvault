@@ -94,6 +94,7 @@ impl DashboardApp {
                 .filter(|t| t.project == proj_id)
                 .count()
             + self.report.high_priority.iter().filter(|t| t.project == proj_id).count()
+            + self.report.zombie.iter().filter(|t| t.project == proj_id).count()
     }
 
     /// Process a message and update state.

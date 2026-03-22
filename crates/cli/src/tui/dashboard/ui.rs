@@ -72,6 +72,16 @@ fn draw_summary(frame: &mut Frame, area: Rect, app: &DashboardApp) {
         ));
     }
 
+    let zombie_count = app.report.zombie.len();
+    if zombie_count > 0 {
+        status_spans
+            .push(Span::styled("  Zombie: ", Style::default().fg(Color::DarkGray)));
+        status_spans.push(Span::styled(
+            zombie_count.to_string(),
+            Style::default().fg(Color::Magenta).bold(),
+        ));
+    }
+
     let lines = vec![
         Line::from(vec![
             Span::styled("  Notes: ", Style::default().fg(Color::DarkGray)),
@@ -248,10 +258,14 @@ fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
         .filter(|s| s.path.contains(proj_id) || s.path.contains(&project.title))
         .collect();
 
+    let zombie: Vec<_> =
+        app.report.zombie.iter().filter(|t| t.project == *proj_id).collect();
+
     let has_alerts = !overdue.is_empty()
         || !upcoming.is_empty()
         || !high_pri.is_empty()
-        || !stale.is_empty();
+        || !stale.is_empty()
+        || !zombie.is_empty();
 
     // Build all detail lines for scrolling
     let mut all_lines: Vec<Line> = Vec::new();
@@ -292,6 +306,19 @@ fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
                     format!(" {}", truncate_str(&t.title, 35)),
                     Style::default().fg(Color::White),
                 ),
+            ]));
+        }
+
+        for t in zombie.iter().take(5) {
+            let days = t.days_overdue.unwrap_or(0);
+            all_lines.push(Line::from(vec![
+                Span::styled("  ~ ", Style::default().fg(Color::Magenta).bold()),
+                Span::styled(&t.id, Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    format!(" {} ", truncate_str(&t.title, 30)),
+                    Style::default().fg(Color::White),
+                ),
+                Span::styled(format!("{days}d in todo"), Style::default().fg(Color::Magenta)),
             ]));
         }
 
@@ -418,6 +445,7 @@ fn draw_vault_alerts(
     if app.report.overdue.is_empty()
         && app.report.upcoming_deadlines.is_empty()
         && app.report.high_priority.is_empty()
+        && app.report.zombie.is_empty()
         && app.report.activity.stale_notes.is_empty()
     {
         lines.push(Line::from(Span::styled(
@@ -486,6 +514,30 @@ fn draw_vault_alerts(
                         format!(" {}", truncate_str(&t.title, 35)),
                         Style::default().fg(Color::White),
                     ),
+                    Span::styled(
+                        format!("  [{}]", t.project),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]));
+            }
+            lines.push(Line::from(""));
+        }
+
+        if !app.report.zombie.is_empty() {
+            lines.push(Line::from(Span::styled(
+                format!("  Zombie Tasks ({})", app.report.zombie.len()),
+                Style::default().fg(Color::Magenta).bold(),
+            )));
+            for t in app.report.zombie.iter().take(8) {
+                let days = t.days_overdue.unwrap_or(0);
+                lines.push(Line::from(vec![
+                    Span::styled("    ~ ", Style::default().fg(Color::Magenta)),
+                    Span::styled(&t.id, Style::default().fg(Color::Cyan)),
+                    Span::styled(
+                        format!(" {} ", truncate_str(&t.title, 35)),
+                        Style::default().fg(Color::White),
+                    ),
+                    Span::styled(format!("{days}d in todo"), Style::default().fg(Color::Magenta)),
                     Span::styled(
                         format!("  [{}]", t.project),
                         Style::default().fg(Color::DarkGray),

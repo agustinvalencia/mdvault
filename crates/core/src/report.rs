@@ -27,6 +27,7 @@ pub struct DashboardReport {
     pub overdue: Vec<FlaggedTask>,
     pub high_priority: Vec<FlaggedTask>,
     pub upcoming_deadlines: Vec<FlaggedTask>,
+    pub zombie: Vec<FlaggedTask>,
 }
 
 /// Whether this report covers the whole vault or a single project.
@@ -146,11 +147,19 @@ pub struct DashboardOptions {
     pub stale_limit: u32,
     /// Minimum staleness score to flag (default: 0.5).
     pub stale_threshold: f64,
+    /// Minimum days in "todo" status before a task is flagged as zombie (default: 30).
+    pub zombie_days: u32,
 }
 
 impl Default for DashboardOptions {
     fn default() -> Self {
-        Self { project: None, activity_days: 30, stale_limit: 10, stale_threshold: 0.5 }
+        Self {
+            project: None,
+            activity_days: 30,
+            stale_limit: 10,
+            stale_threshold: 0.5,
+            zombie_days: 30,
+        }
     }
 }
 
@@ -212,8 +221,8 @@ pub fn build_dashboard(
 
     // Build actionable task lists
     let today = chrono::Local::now().date_naive();
-    let (overdue, high_priority, upcoming_deadlines) =
-        build_flagged_tasks(&tasks, &target_projects, today);
+    let (overdue, high_priority, upcoming_deadlines, zombie) =
+        build_flagged_tasks(&tasks, &target_projects, today, options.zombie_days);
 
     Ok(DashboardReport {
         generated_at: Utc::now().to_rfc3339(),
@@ -224,6 +233,7 @@ pub fn build_dashboard(
         overdue,
         high_priority,
         upcoming_deadlines,
+        zombie,
     })
 }
 
@@ -475,7 +485,8 @@ fn build_flagged_tasks(
     tasks: &[&IndexedNote],
     target_projects: &[&IndexedNote],
     today: NaiveDate,
-) -> (Vec<FlaggedTask>, Vec<FlaggedTask>, Vec<FlaggedTask>) {
+    zombie_days: u32,
+) -> (Vec<FlaggedTask>, Vec<FlaggedTask>, Vec<FlaggedTask>, Vec<FlaggedTask>) {
     // Build folder-name → project-id map
     let folder_to_id: HashMap<String, String> = target_projects
         .iter()
@@ -571,7 +582,34 @@ fn build_flagged_tasks(
         .collect();
     upcoming_deadlines.sort_by(|a, b| a.due_date.cmp(&b.due_date));
 
-    (overdue, high_priority, upcoming_deadlines)
+    // Zombie tasks — stuck in "todo" for zombie_days+ days
+    let zombie_horizon = today - Duration::days(i64::from(zombie_days));
+    let mut zombie: Vec<FlaggedTask> = tasks
+        .iter()
+        .filter_map(|t| {
+            let status = get_frontmatter_str(t, "status").unwrap_or_default();
+            if normalise_status(&status) != "todo" {
+                return None;
+            }
+            let created = get_frontmatter_date(t, "created_at")?;
+            if created > zombie_horizon {
+                return None;
+            }
+            Some(FlaggedTask {
+                id: get_frontmatter_str(t, "task-id").unwrap_or_default(),
+                title: t.title.clone(),
+                project: resolve_project(t),
+                due_date: get_frontmatter_date(t, "due_date")
+                    .map(|d| d.format("%Y-%m-%d").to_string()),
+                priority: get_frontmatter_str(t, "priority"),
+                status: normalise_status(&status),
+                days_overdue: Some((today - created).num_days()),
+            })
+        })
+        .collect();
+    zombie.sort_by(|a, b| b.days_overdue.cmp(&a.days_overdue));
+
+    (overdue, high_priority, upcoming_deadlines, zombie)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1171,5 +1209,32 @@ mod tests {
         assert!(stale_types.iter().all(|t| *t == "task" || *t == "project"));
         assert!(!stale_types.contains(&"zettel"));
         assert!(!stale_types.contains(&"daily"));
+    }
+
+    #[test]
+    fn zombie_tasks_flagged_correctly() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 22).unwrap();
+        let old_date = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(); // 80 days ago
+        let recent_date = NaiveDate::from_ymd_opt(2026, 3, 10).unwrap(); // 12 days ago
+
+        let project = make_project("proj", "P", "Test Project", "open");
+
+        // Zombie: todo for 80 days
+        let zombie_task = make_task("proj", "T-1", "Old task", "todo", Some(old_date), None);
+        // Not zombie: todo but only 12 days
+        let fresh_task = make_task("proj", "T-2", "Fresh task", "todo", Some(recent_date), None);
+        // Not zombie: done (even if old)
+        let done_task = make_task("proj", "T-3", "Done task", "done", Some(old_date), Some(today));
+        // Not zombie: in-progress (even if old)
+        let ip_task = make_task("proj", "T-4", "Active task", "in-progress", Some(old_date), None);
+
+        let tasks: Vec<&IndexedNote> = vec![&zombie_task, &fresh_task, &done_task, &ip_task];
+        let projects: Vec<&IndexedNote> = vec![&project];
+
+        let (_, _, _, zombie) = build_flagged_tasks(&tasks, &projects, today, 30);
+
+        assert_eq!(zombie.len(), 1);
+        assert_eq!(zombie[0].id, "T-1");
+        assert_eq!(zombie[0].days_overdue, Some(80));
     }
 }
