@@ -328,7 +328,10 @@ fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &DashboardApp) {
                     format!(" {} ", truncate_str(&t.title, 30)),
                     Style::default().fg(Color::White),
                 ),
-                Span::styled(format!("{days}d in todo"), Style::default().fg(Color::Magenta)),
+                Span::styled(
+                    format!("{days}d in todo"),
+                    Style::default().fg(Color::Magenta),
+                ),
             ]));
         }
 
@@ -548,7 +551,10 @@ fn draw_vault_alerts(
                         format!(" {} ", truncate_str(&t.title, 35)),
                         Style::default().fg(Color::White),
                     ),
-                    Span::styled(format!("{days}d in todo"), Style::default().fg(Color::Magenta)),
+                    Span::styled(
+                        format!("{days}d in todo"),
+                        Style::default().fg(Color::Magenta),
+                    ),
                     Span::styled(
                         format!("  [{}]", t.project),
                         Style::default().fg(Color::DarkGray),
@@ -573,7 +579,10 @@ fn draw_vault_alerts(
                         Style::default().fg(Color::White),
                     ),
                     Span::styled(
-                        format!("{}d overdue (interval: {}, last: {last})", p.days_overdue, p.review_interval),
+                        format!(
+                            "{}d overdue (interval: {}, last: {last})",
+                            p.days_overdue, p.review_interval
+                        ),
                         Style::default().fg(Color::Yellow),
                     ),
                 ]));

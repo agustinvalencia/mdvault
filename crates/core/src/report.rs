@@ -1303,15 +1303,20 @@ mod tests {
         let project = make_project("proj", "P", "Test Project", "open");
 
         // Zombie: todo for 80 days
-        let zombie_task = make_task("proj", "T-1", "Old task", "todo", Some(old_date), None);
+        let zombie_task =
+            make_task("proj", "T-1", "Old task", "todo", Some(old_date), None);
         // Not zombie: todo but only 12 days
-        let fresh_task = make_task("proj", "T-2", "Fresh task", "todo", Some(recent_date), None);
+        let fresh_task =
+            make_task("proj", "T-2", "Fresh task", "todo", Some(recent_date), None);
         // Not zombie: done (even if old)
-        let done_task = make_task("proj", "T-3", "Done task", "done", Some(old_date), Some(today));
+        let done_task =
+            make_task("proj", "T-3", "Done task", "done", Some(old_date), Some(today));
         // Not zombie: in-progress (even if old)
-        let ip_task = make_task("proj", "T-4", "Active task", "in-progress", Some(old_date), None);
+        let ip_task =
+            make_task("proj", "T-4", "Active task", "in-progress", Some(old_date), None);
 
-        let tasks: Vec<&IndexedNote> = vec![&zombie_task, &fresh_task, &done_task, &ip_task];
+        let tasks: Vec<&IndexedNote> =
+            vec![&zombie_task, &fresh_task, &done_task, &ip_task];
         let projects: Vec<&IndexedNote> = vec![&project];
 
         let (_, _, _, zombie) = build_flagged_tasks(&tasks, &projects, today, 30);
@@ -1342,13 +1347,16 @@ mod tests {
             "Projects/stale/stale.md",
             NoteType::Project,
             "Stale Project",
-            Some(&serde_json::json!({
-                "project-id": "SP",
-                "status": "open",
-                "kind": "project",
-                "review_interval": "1w",
-                "updated_at": old_update.format("%Y-%m-%d").to_string(),
-            }).to_string()),
+            Some(
+                &serde_json::json!({
+                    "project-id": "SP",
+                    "status": "open",
+                    "kind": "project",
+                    "review_interval": "1w",
+                    "updated_at": old_update.format("%Y-%m-%d").to_string(),
+                })
+                .to_string(),
+            ),
         );
 
         // Fresh project: review_interval=1w, updated 2 days ago → not due
@@ -1356,13 +1364,16 @@ mod tests {
             "Projects/fresh/fresh.md",
             NoteType::Project,
             "Fresh Project",
-            Some(&serde_json::json!({
-                "project-id": "FP",
-                "status": "open",
-                "kind": "project",
-                "review_interval": "1w",
-                "updated_at": recent_update.format("%Y-%m-%d").to_string(),
-            }).to_string()),
+            Some(
+                &serde_json::json!({
+                    "project-id": "FP",
+                    "status": "open",
+                    "kind": "project",
+                    "review_interval": "1w",
+                    "updated_at": recent_update.format("%Y-%m-%d").to_string(),
+                })
+                .to_string(),
+            ),
         );
 
         // Done project: should be skipped even if stale
@@ -1370,13 +1381,16 @@ mod tests {
             "Projects/done/done.md",
             NoteType::Project,
             "Done Project",
-            Some(&serde_json::json!({
-                "project-id": "DP",
-                "status": "done",
-                "kind": "project",
-                "review_interval": "1w",
-                "updated_at": old_update.format("%Y-%m-%d").to_string(),
-            }).to_string()),
+            Some(
+                &serde_json::json!({
+                    "project-id": "DP",
+                    "status": "done",
+                    "kind": "project",
+                    "review_interval": "1w",
+                    "updated_at": old_update.format("%Y-%m-%d").to_string(),
+                })
+                .to_string(),
+            ),
         );
 
         // Project with last_reviewed set — should use it over updated_at
@@ -1384,17 +1398,21 @@ mod tests {
             "Projects/reviewed/reviewed.md",
             NoteType::Project,
             "Reviewed Project",
-            Some(&serde_json::json!({
-                "project-id": "RP",
-                "status": "open",
-                "kind": "project",
-                "review_interval": "2w",
-                "updated_at": old_update.format("%Y-%m-%d").to_string(),
-                "last_reviewed": recent_update.format("%Y-%m-%d").to_string(),
-            }).to_string()),
+            Some(
+                &serde_json::json!({
+                    "project-id": "RP",
+                    "status": "open",
+                    "kind": "project",
+                    "review_interval": "2w",
+                    "updated_at": old_update.format("%Y-%m-%d").to_string(),
+                    "last_reviewed": recent_update.format("%Y-%m-%d").to_string(),
+                })
+                .to_string(),
+            ),
         );
 
-        let projects: Vec<&IndexedNote> = vec![&stale_proj, &fresh_proj, &done_proj, &reviewed_proj];
+        let projects: Vec<&IndexedNote> =
+            vec![&stale_proj, &fresh_proj, &done_proj, &reviewed_proj];
         let due = build_review_due(&projects, today);
 
         assert_eq!(due.len(), 1);
