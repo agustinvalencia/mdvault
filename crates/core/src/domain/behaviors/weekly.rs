@@ -264,4 +264,15 @@ mod tests {
         assert!(!looks_like_week("W01-2025"));
         assert!(!looks_like_week("2026-03-23"));
     }
+
+    #[test]
+    fn test_output_path_default() {
+        let ctx = run_before_create("2026-W13", HashMap::new());
+        let behavior = WeeklyBehavior::new(None);
+        let path = behavior.output_path(&ctx).unwrap();
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/test-vault/Journal/2026/Weekly/2026-W13.md")
+        );
+    }
 }

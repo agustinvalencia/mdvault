@@ -1,7 +1,6 @@
 //! Project management commands.
 
 use chrono::{DateTime, Duration, NaiveDate, Utc};
-use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::context::ContextManager;
 use mdvault_core::domain::task_belongs_to_project;
 use mdvault_core::domain::{services::ProjectLogService, DailyLogService};
@@ -9,6 +8,8 @@ use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery, NoteType};
 use serde::Serialize;
 use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
+
+use super::common::{load_config, open_index};
 
 /// Row for project list table.
 #[derive(Tabled)]
@@ -47,23 +48,8 @@ pub fn list(
     status_filter: Option<&str>,
     kind_filter: Option<&str>,
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Failed to open index: {e}");
-            eprintln!("Run 'mdv reindex' first.");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
+    let db = open_index(&cfg.vault_root);
 
     // Query all projects
     let project_query =
@@ -174,23 +160,8 @@ pub fn list(
 
 /// Show project status with tasks in kanban-style columns.
 pub fn status(config: Option<&Path>, profile: Option<&str>, project_name: &str) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Failed to open index: {e}");
-            eprintln!("Run 'mdv reindex' first.");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
+    let db = open_index(&cfg.vault_root);
 
     // Find the project
     let project_query =
@@ -455,23 +426,8 @@ pub fn progress(
     json_output: bool,
     include_archived: bool,
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Failed to open index: {e}");
-            eprintln!("Run 'mdv reindex' first.");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
+    let db = open_index(&cfg.vault_root);
 
     // Query all projects
     let project_query =
@@ -746,23 +702,8 @@ pub fn archive(
     project_name: &str,
     skip_confirm: bool,
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Failed to open index: {e}");
-            eprintln!("Run 'mdv reindex' first.");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
+    let db = open_index(&cfg.vault_root);
 
     // Find the project in the index
     let project_query =

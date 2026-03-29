@@ -185,4 +185,76 @@ mod tests {
         assert_eq!(generate_project_id("Hello World"), "HWE"); // H + W + E (from Hello)
         assert_eq!(generate_project_id("One Two Three Four"), "OTT");
     }
+
+    use crate::config::types::ResolvedConfig;
+    use crate::domain::context::CreationContext;
+    use crate::domain::traits::{NoteIdentity, NoteLifecycle};
+    use crate::types::TypeRegistry;
+    use std::collections::HashMap;
+
+    fn make_test_config(vault_root: &std::path::Path) -> ResolvedConfig {
+        ResolvedConfig {
+            active_profile: "test".into(),
+            vault_root: vault_root.to_path_buf(),
+            templates_dir: vault_root.join(".mdvault/templates"),
+            captures_dir: vault_root.join(".mdvault/captures"),
+            macros_dir: vault_root.join(".mdvault/macros"),
+            typedefs_dir: vault_root.join(".mdvault/typedefs"),
+            typedefs_fallback_dir: None,
+            excluded_folders: vec![],
+            security: Default::default(),
+            logging: Default::default(),
+            activity: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_output_path_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let mut ctx =
+            CreationContext::new("project", "My Cool Project", config, registry);
+
+        let behavior = ProjectBehavior::new(None);
+        behavior.before_create(&mut ctx).unwrap();
+
+        let path = behavior.output_path(&ctx).unwrap();
+        let expected = dir.path().join("Projects/MCP/MCP.md");
+        assert_eq!(path, expected);
+    }
+
+    #[test]
+    fn test_before_create_sets_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let mut ctx =
+            CreationContext::new("project", "My Cool Project", config, registry);
+
+        let behavior = ProjectBehavior::new(None);
+        behavior.before_create(&mut ctx).unwrap();
+
+        assert_eq!(ctx.core_metadata.project_id.as_deref(), Some("MCP"));
+        assert_eq!(ctx.core_metadata.task_counter, Some(0));
+        assert_eq!(ctx.vars.get("project-id").map(|s| s.as_str()), Some("MCP"));
+        assert_eq!(ctx.vars.get("task_counter").map(|s| s.as_str()), Some("0"));
+    }
+
+    #[test]
+    fn test_before_create_uses_provided_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let mut vars = HashMap::new();
+        vars.insert("project-id".into(), "CUS".into());
+        let mut ctx =
+            CreationContext::new("project", "My Cool Project", config, registry)
+                .with_vars(vars);
+
+        let behavior = ProjectBehavior::new(None);
+        behavior.before_create(&mut ctx).unwrap();
+
+        assert_eq!(ctx.core_metadata.project_id.as_deref(), Some("CUS"));
+    }
 }

@@ -1,7 +1,7 @@
 //! Activity report generation commands.
 
+use super::common::{load_config, open_index};
 use chrono::{Datelike, Duration, Local, NaiveDate, Utc};
-use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -98,23 +98,8 @@ pub fn run(
     output: Option<&Path>,
     json_output: bool,
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Failed to open index: {e}");
-            eprintln!("Run 'mdv reindex' first.");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
+    let db = open_index(&cfg.vault_root);
 
     // Determine the time period
     let (start_date, end_date, period_str, period_type) = if let Some(m) = month {
@@ -852,23 +837,8 @@ pub fn run_dashboard(
     output: Option<&Path>,
     visual: bool,
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Failed to open index: {e}");
-            eprintln!("Run 'mdv reindex' first.");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
+    let db = open_index(&cfg.vault_root);
 
     let options = mdvault_core::report::DashboardOptions {
         project: project.map(String::from),

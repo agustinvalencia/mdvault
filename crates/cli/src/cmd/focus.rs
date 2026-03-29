@@ -4,9 +4,9 @@
 //! This context is used by other commands to provide smart defaults.
 
 use mdvault_core::activity::ActivityLogService;
-use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::context::ContextManager;
 
+use super::common::load_config;
 use crate::FocusArgs;
 
 /// Run the focus command.
@@ -15,13 +15,7 @@ pub fn run(
     profile: Option<&str>,
     args: FocusArgs,
 ) {
-    let cfg = match ConfigLoader::load(config_path, profile) {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            eprintln!("Configuration error: {e}");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config_path, profile);
 
     let mut manager = match ContextManager::load(&cfg.vault_root) {
         Ok(m) => m,

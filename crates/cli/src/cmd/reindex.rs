@@ -3,19 +3,13 @@
 use std::io::Write;
 use std::path::Path;
 
-use mdvault_core::config::loader::ConfigLoader;
-use mdvault_core::index::{DerivedIndexBuilder, IndexBuilder, IndexDb};
+use super::common::{load_config, open_index};
+use mdvault_core::index::{DerivedIndexBuilder, IndexBuilder};
 
 /// Run the reindex command.
 pub fn run(config: Option<&Path>, profile: Option<&str>, verbose: bool, force: bool) {
     // Load configuration
-    let rc = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Error loading config: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let rc = load_config(config, profile);
 
     // Determine index path
     let index_dir = rc.vault_root.join(".mdvault");
@@ -28,13 +22,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, verbose: bool, force: b
     }
 
     // Open database
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Error opening index database: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let db = open_index(&rc.vault_root);
 
     let mode = if force { "full" } else { "incremental" };
     println!("Indexing vault ({} mode): {}", mode, rc.vault_root.display());

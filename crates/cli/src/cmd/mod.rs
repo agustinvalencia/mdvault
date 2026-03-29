@@ -2,6 +2,7 @@ pub mod area;
 pub mod capture;
 pub mod charts;
 pub mod check;
+pub mod common;
 pub mod context;
 pub mod doctor;
 pub mod focus;

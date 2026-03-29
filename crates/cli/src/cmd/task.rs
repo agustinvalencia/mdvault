@@ -1,13 +1,14 @@
 //! Task management commands.
 
 use mdvault_core::activity::ActivityLogService;
-use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::domain::{
     find_project_file, services::ProjectLogService, DailyLogService,
 };
 use mdvault_core::index::{IndexBuilder, IndexDb, IndexedNote, NoteQuery, NoteType};
 use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
+
+use super::common::{load_config, open_index};
 
 /// Row for task list table.
 #[derive(Tabled)]
@@ -29,23 +30,8 @@ pub fn list(
     project_filter: Option<&str>,
     status_filter: Option<&str>,
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Failed to open index: {e}");
-            eprintln!("Run 'mdv reindex' first.");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
+    let db = open_index(&cfg.vault_root);
 
     // Query all tasks
     let query = NoteQuery { note_type: Some(NoteType::Task), ..Default::default() };
@@ -115,23 +101,8 @@ pub fn list(
 
 /// Show detailed status for a specific task.
 pub fn status(config: Option<&Path>, profile: Option<&str>, task_id: &str) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Failed to open index: {e}");
-            eprintln!("Run 'mdv reindex' first.");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
+    let db = open_index(&cfg.vault_root);
 
     // Query all tasks and find the one with matching ID
     let query = NoteQuery { note_type: Some(NoteType::Task), ..Default::default() };
@@ -204,13 +175,7 @@ pub fn done(
     task_path: &Path,
     summary: Option<&str>,
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
 
     // Resolve task path relative to vault root
     let full_path = if task_path.is_absolute() {
@@ -373,13 +338,7 @@ pub fn cancel(
     task_path: &Path,
     reason: Option<&str>,
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
 
     // Resolve task path relative to vault root
     let full_path = if task_path.is_absolute() {

@@ -143,4 +143,85 @@ mod tests {
         assert!(!looks_like_date("not a date"));
         assert!(!looks_like_date("01-11-2025"));
     }
+
+    use crate::config::types::ResolvedConfig;
+    use crate::domain::context::CreationContext;
+    use crate::domain::traits::{NoteIdentity, NoteLifecycle};
+    use crate::types::TypeRegistry;
+    use std::collections::HashMap;
+
+    fn make_test_config(vault_root: &std::path::Path) -> ResolvedConfig {
+        ResolvedConfig {
+            active_profile: "test".into(),
+            vault_root: vault_root.to_path_buf(),
+            templates_dir: vault_root.join(".mdvault/templates"),
+            captures_dir: vault_root.join(".mdvault/captures"),
+            macros_dir: vault_root.join(".mdvault/macros"),
+            typedefs_dir: vault_root.join(".mdvault/typedefs"),
+            typedefs_fallback_dir: None,
+            excluded_folders: vec![],
+            security: Default::default(),
+            logging: Default::default(),
+            activity: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_output_path_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let mut ctx = CreationContext::new("daily", "2026-03-15", config, registry);
+
+        let behavior = DailyBehavior::new(None);
+        behavior.before_create(&mut ctx).unwrap();
+
+        let path = behavior.output_path(&ctx).unwrap();
+        let expected = dir.path().join("Journal/2026/Daily/2026-03-15.md");
+        assert_eq!(path, expected);
+    }
+
+    #[test]
+    fn test_before_create_with_date_var() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let mut vars = HashMap::new();
+        vars.insert("date".into(), "2026-03-15".into());
+        let mut ctx = CreationContext::new("daily", "placeholder", config, registry)
+            .with_vars(vars);
+
+        let behavior = DailyBehavior::new(None);
+        behavior.before_create(&mut ctx).unwrap();
+
+        assert_eq!(ctx.core_metadata.date.as_deref(), Some("2026-03-15"));
+    }
+
+    #[test]
+    fn test_before_create_with_date_title() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let mut ctx = CreationContext::new("daily", "2026-03-15", config, registry);
+
+        let behavior = DailyBehavior::new(None);
+        behavior.before_create(&mut ctx).unwrap();
+
+        assert_eq!(ctx.core_metadata.date.as_deref(), Some("2026-03-15"));
+        assert_eq!(ctx.core_metadata.title.as_deref(), Some("2026-03-15"));
+    }
+
+    #[test]
+    fn test_before_create_sets_week_var() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let mut ctx = CreationContext::new("daily", "2026-03-15", config, registry);
+
+        let behavior = DailyBehavior::new(None);
+        behavior.before_create(&mut ctx).unwrap();
+
+        // 2026-03-15 is in ISO week 11
+        assert_eq!(ctx.vars.get("week").map(|s| s.as_str()), Some("[[2026-W11]]"));
+    }
 }

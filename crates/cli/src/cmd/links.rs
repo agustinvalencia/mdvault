@@ -2,32 +2,18 @@
 
 use std::path::Path;
 
-use mdvault_core::config::loader::ConfigLoader;
-use mdvault_core::index::IndexDb;
-
-use super::output::{print_links_json, print_links_quiet, print_links_table, LinkOutput};
+use super::common::{load_config, open_index};
+use super::output::{
+    print_links_json, print_links_quiet, print_links_table, resolve_format, LinkOutput,
+};
 use crate::{LinksArgs, OutputFormat};
 
 pub fn run(config: Option<&Path>, profile: Option<&str>, args: LinksArgs) {
     // Load configuration
-    let rc = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Error loading config: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let rc = load_config(config, profile);
 
     // Open database
-    let index_path = rc.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Error opening index: {}", e);
-            eprintln!("Hint: Run 'mdv reindex' to build the index first.");
-            std::process::exit(1);
-        }
-    };
+    let db = open_index(&rc.vault_root);
 
     // Normalize the note path (strip leading ./)
     let note_path = normalize_path(&args.note);
@@ -120,14 +106,4 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: LinksArgs) {
 /// Normalize note path by removing leading ./.
 fn normalize_path(path: &str) -> String {
     path.strip_prefix("./").unwrap_or(path).to_string()
-}
-
-fn resolve_format(output: OutputFormat, json: bool, quiet: bool) -> OutputFormat {
-    if json {
-        OutputFormat::Json
-    } else if quiet {
-        OutputFormat::Quiet
-    } else {
-        output
-    }
 }

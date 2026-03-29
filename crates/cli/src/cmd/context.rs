@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
+use super::common::load_config;
 use chrono::{Datelike, Duration, Local, NaiveDate};
-use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::context::ContextQueryService;
 use mdvault_core::vars::datemath::{parse_date_expr, DateBase};
 
@@ -15,13 +15,7 @@ pub fn day(
     format: &str,
     lookback: bool,
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            eprintln!("Configuration error: {e}");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
 
     // Parse date argument
     let date = match parse_date_arg(date_arg) {
@@ -76,13 +70,7 @@ pub fn week(
     week_arg: Option<&str>,
     format: &str,
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            eprintln!("Configuration error: {e}");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
 
     // Parse week argument
     let date = match parse_week_arg(week_arg) {
@@ -285,13 +273,7 @@ pub fn note(
     format: &str,
     activity_days: u32,
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            eprintln!("Configuration error: {e}");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
 
     let service = ContextQueryService::new(&cfg);
 
@@ -334,13 +316,7 @@ pub fn focus(
     format: &str,
     _with_tasks: bool, // TODO: implement with_tasks option
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            eprintln!("Configuration error: {e}");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
 
     let service = ContextQueryService::new(&cfg);
 
