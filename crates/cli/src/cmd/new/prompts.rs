@@ -2,6 +2,7 @@ use crate::prompt::{prompt_for_enum, prompt_for_field, CollectedVars, PromptOpti
 use dialoguer::{theme::ColorfulTheme, Editor, FuzzySelect, Input, Select};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::index::{IndexDb, NoteQuery, NoteType};
+use mdvault_core::paths::PathResolver;
 use mdvault_core::types::{TypeDefinition, TypeRegistry};
 use std::collections::HashMap;
 
@@ -308,7 +309,7 @@ pub(super) fn yaml_value_to_string(value: &serde_yaml::Value) -> String {
 
 /// Query existing projects from the index and prompt user to select one.
 fn prompt_project_selection(cfg: &ResolvedConfig) -> Option<String> {
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let index_path = PathResolver::new(&cfg.vault_root).index_db();
     let db = match IndexDb::open(&index_path) {
         Ok(db) => db,
         Err(_) => {
@@ -409,7 +410,7 @@ fn prompt_with_note_selector(
     note_type: &str,
     prompt_text: &str,
 ) -> Result<Option<String>, String> {
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let index_path = PathResolver::new(&cfg.vault_root).index_db();
     let db = IndexDb::open(&index_path).map_err(|e| {
         format!("Failed to open index for selector (run 'mdv reindex' first): {}", e)
     })?;

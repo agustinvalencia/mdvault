@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use chrono::Local;
 
+use crate::paths::PathResolver;
 use crate::templates::engine::render_string;
 use crate::types::TypeDefinition;
 
@@ -78,7 +79,8 @@ impl NoteIdentity for CustomBehavior {
         } else {
             // Default: {type}s/{slug}.md
             let slug = slugify(&ctx.title);
-            Ok(ctx.config.vault_root.join(format!("{}s/{}.md", self.type_name, slug)))
+            Ok(PathResolver::new(&ctx.config.vault_root)
+                .custom_type(&self.type_name, &slug))
         }
     }
 

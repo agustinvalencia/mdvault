@@ -6,6 +6,7 @@ use mdvault_core::frontmatter::{
 };
 use mdvault_core::index::IndexDb;
 use mdvault_core::macros::MacroRepository;
+use mdvault_core::paths::PathResolver;
 use mdvault_core::scripting::{
     run_on_create_hook, HookResult, NoteContext, VaultContext,
 };
@@ -76,7 +77,7 @@ pub(super) fn run_on_create_hook_if_exists(
         CaptureRepository::new(&cfg.captures_dir).map_err(|e| e.to_string())?;
     let macro_repo = MacroRepository::new(&cfg.macros_dir).map_err(|e| e.to_string())?;
 
-    let index_db = IndexDb::open(&cfg.vault_root.join(".mdvault/index.db"))
+    let index_db = IndexDb::open(&PathResolver::new(&cfg.vault_root).index_db())
         .ok()
         .map(std::sync::Arc::new);
 

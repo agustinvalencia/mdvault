@@ -7,6 +7,7 @@ use clap_complete::engine::CompletionCandidate;
 use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::macros::MacroRepository;
+use mdvault_core::paths::PathResolver;
 use mdvault_core::templates::repository::TemplateRepository;
 use mdvault_core::types::{TypeRegistry, TypedefRepository};
 use std::ffi::OsStr;
@@ -123,7 +124,7 @@ pub fn complete_projects(current: &OsStr) -> Vec<CompletionCandidate> {
     let current_str = current.to_str().unwrap_or("");
 
     if let Some(cfg) = load_config() {
-        let index_path = cfg.vault_root.join(".mdvault/index.db");
+        let index_path = PathResolver::new(&cfg.vault_root).index_db();
         if let Ok(db) = IndexDb::open(&index_path) {
             let query =
                 NoteQuery { note_type: Some(NoteType::Project), ..Default::default() };

@@ -17,6 +17,7 @@ use mdvault_core::macros::{
     StepExecutor, StepResult, TemplateStep,
 };
 use mdvault_core::markdown_ast::{MarkdownEditor, SectionMatch};
+use mdvault_core::paths::PathResolver;
 use mdvault_core::templates::discovery::TemplateInfo;
 use mdvault_core::templates::engine::{
     build_minimal_context, render_string, resolve_template_output_path,
@@ -188,7 +189,7 @@ pub fn run(
 
     // 9. Reindex vault so any created/modified notes appear in queries
     if result.success {
-        let index_path = cfg.vault_root.join(".mdvault/index.db");
+        let index_path = PathResolver::new(&cfg.vault_root).index_db();
         if let Some(parent) = index_path.parent() {
             let _ = fs::create_dir_all(parent);
         }

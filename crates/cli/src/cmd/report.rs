@@ -278,7 +278,10 @@ fn generate_report(
             let task_proj = get_task_project(task).unwrap_or_default();
             let path_str = task.path.to_string_lossy();
             if task_proj.eq_ignore_ascii_case(&proj_folder)
-                || path_str.contains(&format!("Projects/{}/", proj_folder))
+                || mdvault_core::paths::PathResolver::is_project_task(
+                    &path_str,
+                    &proj_folder,
+                )
             {
                 total += 1;
                 let status = get_fm_str(task, "status").unwrap_or_default();

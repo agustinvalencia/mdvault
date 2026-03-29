@@ -16,6 +16,7 @@ use mdvault_core::frontmatter::{apply_ops, parse, serialize};
 use mdvault_core::index::{IndexBuilder, IndexDb};
 use mdvault_core::macros::MacroRepository;
 use mdvault_core::markdown_ast::{MarkdownAstError, MarkdownEditor, SectionMatch};
+use mdvault_core::paths::PathResolver;
 use mdvault_core::scripting::{run_on_update_hook, NoteContext, VaultContext};
 use mdvault_core::templates::engine::render_string as engine_render_string;
 use mdvault_core::templates::repository::TemplateRepository;
@@ -287,7 +288,7 @@ pub fn run(
     }
 
     // 11. Reindex the target file so it appears in queries immediately
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let index_path = PathResolver::new(&cfg.vault_root).index_db();
     if let Ok(db) = IndexDb::open(&index_path) {
         let builder = IndexBuilder::new(&db, &cfg.vault_root);
         let rel = target_file.strip_prefix(&cfg.vault_root).unwrap_or(&target_file);

@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use chrono::{Local, NaiveDate, Weekday};
 
+use crate::paths::PathResolver;
 use crate::types::TypeDefinition;
 use crate::vars::datemath::{is_date_expr, try_evaluate_date_expr};
 
@@ -50,9 +51,7 @@ impl NoteIdentity for WeeklyBehavior {
             .week
             .as_ref()
             .ok_or_else(|| DomainError::PathResolution("week not set".into()))?;
-        let year = &week[..4];
-
-        Ok(ctx.config.vault_root.join(format!("Journal/{}/Weekly/{}.md", year, week)))
+        Ok(PathResolver::new(&ctx.config.vault_root).weekly_note(week))
     }
 
     fn core_fields(&self) -> Vec<&'static str> {

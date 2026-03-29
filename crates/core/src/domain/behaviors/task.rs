@@ -9,6 +9,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::paths::PathResolver;
 use crate::types::TypeDefinition;
 
 use super::super::context::{CreationContext, FieldPrompt, PromptContext, PromptType};
@@ -54,14 +55,12 @@ impl NoteIdentity for TaskBehavior {
             .ok_or_else(|| DomainError::PathResolution("task-id not set".into()))?;
 
         let project = ctx.get_var("project").unwrap_or("inbox");
+        let resolver = PathResolver::new(&ctx.config.vault_root);
 
         if project == "inbox" {
-            Ok(ctx.config.vault_root.join(format!("Inbox/{}.md", task_id)))
+            Ok(resolver.inbox_task(task_id))
         } else {
-            Ok(ctx
-                .config
-                .vault_root
-                .join(format!("Projects/{}/Tasks/{}.md", project, task_id)))
+            Ok(resolver.project_task(project, task_id))
         }
     }
 
@@ -243,8 +242,7 @@ fn get_project_info(
 
 /// Check if a task path belongs to a project (active or archived).
 pub fn task_belongs_to_project(task_path: &str, project_folder: &str) -> bool {
-    task_path.contains(&format!("Projects/{}/", project_folder))
-        || task_path.contains(&format!("Projects/_archive/{}/", project_folder))
+    PathResolver::is_project_task(task_path, project_folder)
 }
 
 /// Find the project file by project name/ID/title.
@@ -258,17 +256,21 @@ pub fn find_project_file(
     project: &str,
 ) -> DomainResult<PathBuf> {
     // Try common patterns first (fast path)
-    let patterns = [
-        format!("Projects/{}/{}.md", project, project),
-        format!("Projects/{}.md", project),
-        format!("projects/{}/{}.md", project.to_lowercase(), project.to_lowercase()),
-        format!("Projects/_archive/{}/{}.md", project, project),
+    let resolver = PathResolver::new(&config.vault_root);
+    let fast_paths = [
+        resolver.project_note(project),
+        config.vault_root.join(format!("Projects/{}.md", project)),
+        config.vault_root.join(format!(
+            "projects/{}/{}.md",
+            project.to_lowercase(),
+            project.to_lowercase()
+        )),
+        resolver.archive_project_note(project),
     ];
 
-    for pattern in &patterns {
-        let path = config.vault_root.join(pattern);
+    for path in &fast_paths {
         if path.exists() {
-            return Ok(path);
+            return Ok(path.clone());
         }
     }
 

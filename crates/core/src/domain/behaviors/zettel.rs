@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::paths::PathResolver;
 use crate::types::TypeDefinition;
 
 use super::super::context::{CreationContext, FieldPrompt, PromptContext};
@@ -42,7 +43,7 @@ impl NoteIdentity for ZettelBehavior {
 
         // Default: zettels/{slug}.md
         let slug = slugify(&ctx.title);
-        Ok(ctx.config.vault_root.join(format!("zettels/{}.md", slug)))
+        Ok(PathResolver::new(&ctx.config.vault_root).zettel(&slug))
     }
 
     fn core_fields(&self) -> Vec<&'static str> {

@@ -5,6 +5,7 @@ use mdvault_core::domain::{
     find_project_file, services::ProjectLogService, DailyLogService,
 };
 use mdvault_core::index::{IndexBuilder, IndexDb, IndexedNote, NoteQuery, NoteType};
+use mdvault_core::paths::PathResolver;
 use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
 
@@ -292,7 +293,7 @@ pub fn done(
     }
 
     // Update index for this file
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let index_path = PathResolver::new(&cfg.vault_root).index_db();
     if let Ok(db) = IndexDb::open(&index_path) {
         let builder = IndexBuilder::new(&db, &cfg.vault_root);
         if let Err(e) = builder.reindex_file(task_path) {
@@ -456,7 +457,7 @@ pub fn cancel(
     }
 
     // Update index for this file
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let index_path = PathResolver::new(&cfg.vault_root).index_db();
     if let Ok(db) = IndexDb::open(&index_path) {
         let builder = IndexBuilder::new(&db, &cfg.vault_root);
         if let Err(e) = builder.reindex_file(task_path) {

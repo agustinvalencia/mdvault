@@ -4,6 +4,7 @@ use std::path::Path;
 
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::index::IndexDb;
+use mdvault_core::paths::PathResolver;
 use mdvault_core::types::{
     add_link_integrity_warnings, apply_fixes, try_fix_note, validate_note, TypeRegistry,
     TypedefRepository, ValidationResult,
@@ -45,7 +46,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
     }
 
     // Open index database if needed (for querying notes or link checking)
-    let index_path = rc.vault_root.join(".mdvault/index.db");
+    let index_path = PathResolver::new(&rc.vault_root).index_db();
     let index_db: Option<IndexDb> = if args.path.is_none() || args.check_links {
         match IndexDb::open(&index_path) {
             Ok(db) => Some(db),

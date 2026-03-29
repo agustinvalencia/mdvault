@@ -13,6 +13,8 @@ use crate::frontmatter::parse as parse_frontmatter;
 use crate::index::IndexDb;
 use crate::markdown_ast::MarkdownEditor;
 
+use crate::paths::PathResolver;
+
 use super::query_types::*;
 
 /// Service for querying day and week context.
@@ -35,7 +37,7 @@ impl ContextQueryService {
     pub fn new(config: &ResolvedConfig) -> Self {
         let activity_service = ActivityLogService::try_from_config(config);
 
-        let index_path = config.vault_root.join(".mdvault/index.db");
+        let index_path = PathResolver::new(&config.vault_root).index_db();
         let index_db = IndexDb::open(&index_path).ok();
 
         Self {
@@ -584,17 +586,21 @@ impl ContextQueryService {
 
     /// Find the path to a project note by project name/ID.
     fn find_project_path(&self, project: &str) -> Option<PathBuf> {
+        use crate::paths::PathResolver;
+
         // Try common patterns
-        let patterns = [
-            format!("Projects/{}/{}.md", project, project),
-            format!("Projects/{}.md", project),
+        let resolver = PathResolver::new(&self.vault_root);
+        let candidates = [
+            resolver.project_note(project),
+            self.vault_root.join(format!("Projects/{}.md", project)),
         ];
 
-        for pattern in &patterns {
-            let path = PathBuf::from(pattern);
-            let full_path = self.vault_root.join(&path);
+        for full_path in &candidates {
             if full_path.exists() {
-                return Some(path);
+                let path = full_path
+                    .strip_prefix(&self.vault_root)
+                    .unwrap_or(full_path.as_path());
+                return Some(path.to_path_buf());
             }
         }
 
@@ -1021,6 +1027,48 @@ mod tests {
         assert_eq!(counts.doing, 0);
         assert_eq!(counts.done, 0);
         assert_eq!(counts.blocked, 0);
+    }
+
+    #[test]
+    fn test_find_project_path_returns_relative() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_root = dir.path();
+
+        // Create project structure
+        let project_dir = vault_root.join("Projects/my-proj");
+        std::fs::create_dir_all(&project_dir).unwrap();
+        std::fs::write(
+            project_dir.join("my-proj.md"),
+            "---\ntype: project\ntitle: My Project\n---\n",
+        )
+        .unwrap();
+
+        let config = make_test_config(vault_root.to_path_buf());
+        let service = ContextQueryService::new(&config);
+
+        let result = service.find_project_path("my-proj");
+        assert!(result.is_some(), "Should find the project");
+
+        let path = result.unwrap();
+        assert!(
+            path.is_relative(),
+            "Should return a relative path, got: {}",
+            path.display()
+        );
+        assert_eq!(path, PathBuf::from("Projects/my-proj/my-proj.md"));
+    }
+
+    #[test]
+    fn test_find_project_path_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_root = dir.path();
+        std::fs::create_dir_all(vault_root.join("Projects")).unwrap();
+
+        let config = make_test_config(vault_root.to_path_buf());
+        let service = ContextQueryService::new(&config);
+
+        let result = service.find_project_path("nonexistent");
+        assert!(result.is_none());
     }
 
     fn make_test_config(vault_root: PathBuf) -> ResolvedConfig {

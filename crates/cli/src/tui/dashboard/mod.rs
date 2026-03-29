@@ -24,6 +24,7 @@ use ratatui::prelude::*;
 
 use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::index::IndexDb;
+use mdvault_core::paths::PathResolver;
 use mdvault_core::report::{build_dashboard, DashboardOptions};
 
 use app::DashboardApp;
@@ -40,7 +41,7 @@ pub fn run(
         color_eyre::eyre::eyre!("Configuration error: {e}\nRun 'mdv doctor' to diagnose.")
     })?;
 
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let index_path = PathResolver::new(&cfg.vault_root).index_db();
     let db = IndexDb::open(&index_path).map_err(|e| {
         color_eyre::eyre::eyre!("Failed to open index: {e}\nRun 'mdv reindex' first.")
     })?;

@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use chrono::Local;
 
+use crate::paths::PathResolver;
 use crate::types::TypeDefinition;
 
 use super::super::context::{CreationContext, FieldPrompt, PromptContext, PromptType};
@@ -59,9 +60,8 @@ impl NoteIdentity for MeetingBehavior {
             .date
             .as_ref()
             .ok_or_else(|| DomainError::PathResolution("date not set".into()))?;
-        let year = &date[..4];
 
-        Ok(ctx.config.vault_root.join(format!("Meetings/{}/{}.md", year, meeting_id)))
+        Ok(PathResolver::new(&ctx.config.vault_root).meeting_note(date, meeting_id))
     }
 
     fn core_fields(&self) -> Vec<&'static str> {

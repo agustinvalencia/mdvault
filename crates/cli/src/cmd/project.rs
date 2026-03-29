@@ -9,6 +9,8 @@ use serde::Serialize;
 use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
 
+use mdvault_core::paths::PathResolver;
+
 use super::common::{load_config, open_index};
 use crate::{KindFilter, StatusFilter};
 
@@ -846,7 +848,8 @@ pub fn archive(
     }
 
     // 5. Move files from Projects/{slug}/ to Projects/_archive/{slug}/
-    let source_dir = cfg.vault_root.join(format!("Projects/{}", project_folder));
+    let resolver = PathResolver::new(&cfg.vault_root);
+    let source_dir = resolver.project_dir(&project_folder);
     let archive_dir =
         cfg.vault_root.join(format!("Projects/_archive/{}", project_folder));
 

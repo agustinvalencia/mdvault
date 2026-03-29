@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::context::types::{ContextState, FocusContext};
+use crate::paths::PathResolver;
 
 /// Error type for context operations.
 #[derive(Debug, thiserror::Error)]
@@ -33,16 +34,12 @@ pub struct ContextManager {
 }
 
 impl ContextManager {
-    /// State file location relative to vault root.
-    const STATE_DIR: &'static str = ".mdvault/state";
-    const STATE_FILE: &'static str = "context.toml";
-
     /// Load context manager for a vault.
     ///
     /// Creates the state file if it doesn't exist.
     pub fn load(vault_root: &Path) -> Result<Self> {
-        let state_dir = vault_root.join(Self::STATE_DIR);
-        let state_path = state_dir.join(Self::STATE_FILE);
+        let resolver = PathResolver::new(vault_root);
+        let state_path = resolver.state_file();
 
         let state = if state_path.exists() {
             let content = fs::read_to_string(&state_path)?;
