@@ -9,6 +9,7 @@ use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
 
 use super::common::{load_config, open_index};
+use crate::StatusFilter;
 
 /// Row for task list table.
 #[derive(Tabled)]
@@ -28,7 +29,7 @@ pub fn list(
     config: Option<&Path>,
     profile: Option<&str>,
     project_filter: Option<&str>,
-    status_filter: Option<&str>,
+    status_filter: Option<StatusFilter>,
 ) {
     let cfg = load_config(config, profile);
     let db = open_index(&cfg.vault_root);
@@ -66,8 +67,8 @@ pub fn list(
         let (task_id, task_status, project) = extract_task_info(task);
 
         // Filter by status if specified
-        if let Some(status) = status_filter {
-            if task_status != status {
+        if let Some(filter) = status_filter {
+            if !filter.matches(&task_status) {
                 continue;
             }
         }

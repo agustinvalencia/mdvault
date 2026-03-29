@@ -2,6 +2,8 @@ use clap::{Args, Subcommand};
 use clap_complete::engine::ArgValueCompleter;
 use std::path::PathBuf;
 
+use super::StatusFilter;
+
 /// Task management subcommands.
 #[derive(Debug, Subcommand)]
 pub enum TaskCommands {
@@ -24,9 +26,9 @@ pub struct TaskListArgs {
     #[arg(long, short)]
     pub project: Option<String>,
 
-    /// Filter by status (todo, in-progress, done, blocked)
-    #[arg(long, short)]
-    pub status: Option<String>,
+    /// Filter by status (todo, in-progress, done, blocked, cancelled)
+    #[arg(long, short, value_enum)]
+    pub status: Option<StatusFilter>,
 }
 
 #[derive(Debug, Args)]

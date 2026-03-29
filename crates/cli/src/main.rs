@@ -122,7 +122,7 @@ fn main() {
                     cli.config.as_deref(),
                     cli.profile.as_deref(),
                     args.project.as_deref(),
-                    args.status.as_deref(),
+                    args.status,
                 );
             }
             TaskCommands::Done(args) => {
@@ -154,8 +154,8 @@ fn main() {
                 cmd::project::list(
                     cli.config.as_deref(),
                     cli.profile.as_deref(),
-                    args.status.as_deref(),
-                    args.kind.as_deref(),
+                    args.status,
+                    args.kind,
                 );
             }
             ProjectCommands::Status(args) => {

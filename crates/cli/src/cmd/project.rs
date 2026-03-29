@@ -10,6 +10,7 @@ use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
 
 use super::common::{load_config, open_index};
+use crate::{KindFilter, StatusFilter};
 
 /// Row for project list table.
 #[derive(Tabled)]
@@ -45,8 +46,8 @@ struct TaskRow {
 pub fn list(
     config: Option<&Path>,
     profile: Option<&str>,
-    status_filter: Option<&str>,
-    kind_filter: Option<&str>,
+    status_filter: Option<StatusFilter>,
+    kind_filter: Option<KindFilter>,
 ) {
     let cfg = load_config(config, profile);
     let db = open_index(&cfg.vault_root);
@@ -82,14 +83,14 @@ pub fn list(
 
         // Filter by status if specified
         if let Some(filter) = status_filter {
-            if project_status != filter {
+            if !filter.matches(&project_status) {
                 continue;
             }
         }
 
         // Filter by kind if specified
         if let Some(filter) = kind_filter {
-            if project_kind != filter {
+            if project_kind != filter.as_str() {
                 continue;
             }
         }
