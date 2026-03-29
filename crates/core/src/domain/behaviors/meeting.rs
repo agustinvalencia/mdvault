@@ -176,3 +176,94 @@ fn generate_meeting_id(vault_root: &std::path::Path, date: &str) -> DomainResult
 
     Ok(format!("{}{:03}", prefix, max_num + 1))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::types::ResolvedConfig;
+    use crate::domain::context::CreationContext;
+    use crate::domain::traits::{NoteIdentity, NoteLifecycle};
+    use crate::types::TypeRegistry;
+    use std::collections::HashMap;
+
+    fn make_test_config(vault_root: &std::path::Path) -> ResolvedConfig {
+        ResolvedConfig {
+            active_profile: "test".into(),
+            vault_root: vault_root.to_path_buf(),
+            templates_dir: vault_root.join(".mdvault/templates"),
+            captures_dir: vault_root.join(".mdvault/captures"),
+            macros_dir: vault_root.join(".mdvault/macros"),
+            typedefs_dir: vault_root.join(".mdvault/typedefs"),
+            typedefs_fallback_dir: None,
+            excluded_folders: vec![],
+            security: Default::default(),
+            logging: Default::default(),
+            activity: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_output_path_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let mut ctx = CreationContext::new("meeting", "Standup", config, registry);
+
+        let behavior = MeetingBehavior::new(None);
+
+        let mut vars = HashMap::new();
+        vars.insert("date".into(), "2026-01-15".into());
+        ctx.vars.extend(vars);
+
+        behavior.before_create(&mut ctx).unwrap();
+
+        let path = behavior.output_path(&ctx).unwrap();
+        let expected = dir.path().join("Meetings/2026/MTG-2026-01-15-001.md");
+        assert_eq!(path, expected);
+    }
+
+    #[test]
+    fn test_before_create_sets_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let mut ctx = CreationContext::new("meeting", "Standup", config, registry);
+        ctx.vars.insert("date".into(), "2026-01-15".into());
+
+        let behavior = MeetingBehavior::new(None);
+        behavior.before_create(&mut ctx).unwrap();
+
+        assert_eq!(ctx.core_metadata.date.as_deref(), Some("2026-01-15"));
+        assert_eq!(ctx.core_metadata.meeting_id.as_deref(), Some("MTG-2026-01-15-001"));
+    }
+
+    #[test]
+    fn test_generate_meeting_id_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = generate_meeting_id(dir.path(), "2026-01-15").unwrap();
+        assert_eq!(id, "MTG-2026-01-15-001");
+    }
+
+    #[test]
+    fn test_generate_meeting_id_increments() {
+        let dir = tempfile::tempdir().unwrap();
+        let meetings_dir = dir.path().join("Meetings/2026");
+        fs::create_dir_all(&meetings_dir).unwrap();
+        fs::write(meetings_dir.join("MTG-2026-01-15-001.md"), "").unwrap();
+
+        let id = generate_meeting_id(dir.path(), "2026-01-15").unwrap();
+        assert_eq!(id, "MTG-2026-01-15-002");
+    }
+
+    #[test]
+    fn test_output_path_without_metadata_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let ctx = CreationContext::new("meeting", "Standup", config, registry);
+
+        let behavior = MeetingBehavior::new(None);
+        let result = behavior.output_path(&ctx);
+        assert!(result.is_err());
+    }
+}

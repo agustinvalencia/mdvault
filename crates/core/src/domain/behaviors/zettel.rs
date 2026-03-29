@@ -100,4 +100,38 @@ mod tests {
         assert_eq!(slugify("  spaced  out  "), "spaced-out");
         assert_eq!(slugify("under_score"), "under-score");
     }
+
+    use crate::config::types::ResolvedConfig;
+    use crate::domain::context::CreationContext;
+    use crate::domain::traits::NoteIdentity;
+    use crate::types::TypeRegistry;
+
+    fn make_test_config(vault_root: &std::path::Path) -> ResolvedConfig {
+        ResolvedConfig {
+            active_profile: "test".into(),
+            vault_root: vault_root.to_path_buf(),
+            templates_dir: vault_root.join(".mdvault/templates"),
+            captures_dir: vault_root.join(".mdvault/captures"),
+            macros_dir: vault_root.join(".mdvault/macros"),
+            typedefs_dir: vault_root.join(".mdvault/typedefs"),
+            typedefs_fallback_dir: None,
+            excluded_folders: vec![],
+            security: Default::default(),
+            logging: Default::default(),
+            activity: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_output_path_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let ctx = CreationContext::new("zettel", "My Knowledge Note", config, registry);
+
+        let behavior = ZettelBehavior::new(None);
+        let path = behavior.output_path(&ctx).unwrap();
+        let expected = dir.path().join("zettels/my-knowledge-note.md");
+        assert_eq!(path, expected);
+    }
 }
