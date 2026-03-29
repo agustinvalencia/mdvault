@@ -5,9 +5,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use super::common::load_config;
 use crate::prompt::{collect_variables, PromptOptions};
 use mdvault_core::captures::CaptureRepository;
-use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::{apply_ops, parse, serialize};
 use mdvault_core::index::{IndexBuilder, IndexDb};
@@ -27,17 +27,7 @@ use chrono::Local;
 
 /// List available macros.
 pub fn run_list(config: Option<&Path>, profile: Option<&str>) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("FAIL mdv macro --list");
-            eprintln!("{e}");
-            if config.is_none() {
-                eprintln!("looked for: {}", default_config_path().display());
-            }
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
 
     let repo = match MacroRepository::new(&cfg.macros_dir) {
         Ok(r) => r,
@@ -88,17 +78,7 @@ pub fn run(
     trust: bool,
 ) {
     // 1. Load config
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("FAIL mdv macro");
-            eprintln!("{e}");
-            if config.is_none() {
-                eprintln!("looked for: {}", default_config_path().display());
-            }
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
 
     // 2. Load macro repository
     let repo = match MacroRepository::new(&cfg.macros_dir) {

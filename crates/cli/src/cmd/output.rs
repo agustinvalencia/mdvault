@@ -3,6 +3,21 @@
 use mdvault_core::index::{IndexedLink, IndexedNote};
 use serde::Serialize;
 
+use crate::OutputFormat;
+
+/// Resolve the output format from --output, --json, and --quiet flags.
+///
+/// The --json and --quiet shorthand flags take precedence over --output.
+pub fn resolve_format(output: OutputFormat, json: bool, quiet: bool) -> OutputFormat {
+    if json {
+        OutputFormat::Json
+    } else if quiet {
+        OutputFormat::Quiet
+    } else {
+        output
+    }
+}
+
 /// Formatted note for JSON output.
 #[derive(Debug, Serialize)]
 pub struct NoteOutput {

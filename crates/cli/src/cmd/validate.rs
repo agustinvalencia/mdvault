@@ -2,7 +2,6 @@
 
 use std::path::Path;
 
-use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::index::IndexDb;
 use mdvault_core::types::{
@@ -10,17 +9,13 @@ use mdvault_core::types::{
     TypedefRepository, ValidationResult,
 };
 
+use super::common::load_config;
+use super::output::resolve_format;
 use crate::{OutputFormat, ValidateArgs};
 
 pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
     // Load configuration
-    let rc = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Error loading config: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let rc = load_config(config, profile);
 
     // Load type definitions (with fallback to default dir)
     let typedef_repo = match &rc.typedefs_fallback_dir {
@@ -433,15 +428,5 @@ fn print_results_quiet(
 ) {
     for (path, _, _, _) in results {
         println!("{}", path.display());
-    }
-}
-
-fn resolve_format(output: OutputFormat, json: bool, quiet: bool) -> OutputFormat {
-    if json {
-        OutputFormat::Json
-    } else if quiet {
-        OutputFormat::Quiet
-    } else {
-        output
     }
 }

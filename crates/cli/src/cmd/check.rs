@@ -2,8 +2,7 @@
 
 use std::path::Path;
 
-use mdvault_core::config::loader::ConfigLoader;
-use mdvault_core::index::IndexDb;
+use super::common::{load_config, open_index};
 use mdvault_core::lint::{run_lint, CategoryReport, LintReport};
 use mdvault_core::types::{TypeRegistry, TypedefRepository};
 
@@ -11,24 +10,8 @@ use crate::CheckArgs;
 
 pub fn run(config: Option<&Path>, profile: Option<&str>, args: CheckArgs) {
     // Load configuration
-    let rc = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Error loading config: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    // Open index database
-    let index_path = rc.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Error opening index: {e}");
-            eprintln!("Hint: Run 'mdv reindex' to build the index first.");
-            std::process::exit(1);
-        }
-    };
+    let rc = load_config(config, profile);
+    let db = open_index(&rc.vault_root);
 
     // Load type registry
     let typedef_repo = match &rc.typedefs_fallback_dir {

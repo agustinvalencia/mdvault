@@ -1,19 +1,9 @@
-use mdvault_core::config::loader::{default_config_path, ConfigLoader};
+use super::common::load_config;
 use mdvault_core::templates::discovery::discover_templates;
 use std::path::Path;
 
 pub fn run(config: Option<&Path>, profile: Option<&str>) {
-    let rc = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            println!("FAIL mdv list-templates");
-            println!("{e}");
-            if config.is_none() {
-                println!("looked for: {}", default_config_path().display());
-            }
-            std::process::exit(1);
-        }
-    };
+    let rc = load_config(config, profile);
 
     match discover_templates(&rc.templates_dir) {
         Ok(list) => {

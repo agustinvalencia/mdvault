@@ -3,9 +3,8 @@
 use std::io::{self, Write};
 use std::path::Path;
 
+use super::common::{load_config, open_index};
 use mdvault_core::activity::ActivityLogService;
-use mdvault_core::config::loader::ConfigLoader;
-use mdvault_core::index::IndexDb;
 use mdvault_core::rename::{
     execute_rename, generate_preview, FileChange, RenameError, RenamePreview,
 };
@@ -14,24 +13,8 @@ use crate::RenameArgs;
 
 pub fn run(config: Option<&Path>, profile: Option<&str>, args: RenameArgs) {
     // Load configuration
-    let rc = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Error loading config: {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    // Open database
-    let index_path = rc.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Error opening index: {}", e);
-            eprintln!("Hint: Run 'mdv reindex' to build the index first.");
-            std::process::exit(1);
-        }
-    };
+    let rc = load_config(config, profile);
+    let db = open_index(&rc.vault_root);
 
     // Generate preview
     let preview = match generate_preview(&db, &rc.vault_root, &args.source, &args.dest) {

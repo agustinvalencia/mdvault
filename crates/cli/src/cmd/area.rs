@@ -1,11 +1,12 @@
 //! Area management commands.
 
 use chrono::{Datelike, Local, NaiveDate};
-use mdvault_core::config::loader::ConfigLoader;
-use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery, NoteType};
+use mdvault_core::index::{IndexedNote, NoteQuery, NoteType};
 use serde::Serialize;
 use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
+
+use super::common::{load_config, open_index};
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -201,23 +202,8 @@ pub fn report(
     period: &str,
     json_output: bool,
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Failed to open index: {e}");
-            eprintln!("Run 'mdv reindex' first.");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
+    let db = open_index(&cfg.vault_root);
 
     // Find the area
     let projects = db
@@ -346,23 +332,8 @@ pub fn export(
     to: Option<&str>,
     format: &str,
 ) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Failed to open index: {e}");
-            eprintln!("Run 'mdv reindex' first.");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
+    let db = open_index(&cfg.vault_root);
 
     // Find the area
     let projects = db

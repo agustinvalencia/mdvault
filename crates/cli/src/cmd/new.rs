@@ -1,3 +1,4 @@
+use super::common::load_config;
 use crate::prompt::{
     create_fuzzy_selector_callback, prompt_for_enum, prompt_for_field, CollectedVars,
     PromptOptions,
@@ -6,7 +7,6 @@ use crate::NewArgs;
 use dialoguer::{theme::ColorfulTheme, Editor, Input, Select};
 use mdvault_core::activity::ActivityLogService;
 use mdvault_core::captures::CaptureRepository;
-use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::context::ContextManager;
 use mdvault_core::domain::{CreationContext, NoteType as DomainNoteType};
@@ -35,17 +35,7 @@ use tracing::debug;
 
 pub fn run(config: Option<&Path>, profile: Option<&str>, args: NewArgs) {
     debug!("Running create new");
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            println!("FAIL mdv new");
-            println!("{e}");
-            if config.is_none() {
-                println!("looked for: {}", default_config_path().display());
-            }
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
 
     // Resolve effective name: --template flag OR positional note_type
     let effective_name = args

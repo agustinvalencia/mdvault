@@ -1,7 +1,7 @@
 //! Daily planning and review dashboard commands.
 
+use super::common::{load_config, open_index};
 use chrono::{Local, NaiveDate, Timelike};
-use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery};
 use serde::Serialize;
 use std::path::Path;
@@ -55,23 +55,8 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: TodayArgs) {
         return;
     }
 
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            error!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            error!("Failed to open index: {e}");
-            error!("Run 'mdv reindex' first.");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
+    let db = open_index(&cfg.vault_root);
 
     // Determine mode based on flags or time of day
     let mode = if args.plan {
@@ -99,13 +84,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: TodayArgs) {
 
 /// Open today's daily note in the default editor.
 fn open_daily_note(config: Option<&Path>, profile: Option<&str>) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            error!("Failed to load config: {e}");
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
 
     let today = Local::now().date_naive();
     let year = today.format("%Y");

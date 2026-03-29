@@ -2,11 +2,13 @@
 
 use std::path::Path;
 
-use mdvault_core::config::loader::ConfigLoader;
-use mdvault_core::index::{IndexDb, IndexedNote};
+use mdvault_core::index::IndexedNote;
 use serde::Serialize;
 
-use super::output::{print_notes_json, print_notes_quiet, print_notes_table, truncate};
+use super::common::{load_config, open_index};
+use super::output::{
+    print_notes_json, print_notes_quiet, print_notes_table, resolve_format, truncate,
+};
 use crate::{OutputFormat, StaleArgs};
 
 /// Stale note output for JSON.
@@ -22,24 +24,10 @@ struct StaleNoteOutput {
 
 pub fn run(config: Option<&Path>, profile: Option<&str>, args: StaleArgs) {
     // Load configuration
-    let rc = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("Error loading config: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let rc = load_config(config, profile);
 
     // Open database
-    let index_path = rc.vault_root.join(".mdvault/index.db");
-    let db = match IndexDb::open(&index_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Error opening index: {}", e);
-            eprintln!("Hint: Run 'mdv reindex' to build the index first.");
-            std::process::exit(1);
-        }
-    };
+    let db = open_index(&rc.vault_root);
 
     // Determine output format
     let format = resolve_format(args.output, args.json, args.quiet);
@@ -194,16 +182,5 @@ fn print_stale_json(notes: &[StaleNote]) {
 fn print_stale_quiet(notes: &[StaleNote]) {
     for stale in notes {
         println!("{}", stale.note.path.display());
-    }
-}
-
-/// Resolve the output format from flags.
-fn resolve_format(output: OutputFormat, json: bool, quiet: bool) -> OutputFormat {
-    if json {
-        OutputFormat::Json
-    } else if quiet {
-        OutputFormat::Quiet
-    } else {
-        output
     }
 }

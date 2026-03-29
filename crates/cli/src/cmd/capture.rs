@@ -3,13 +3,13 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+use super::common::load_config;
 use crate::prompt::{collect_variables, create_fuzzy_selector_callback, PromptOptions};
 use mdvault_core::activity::ActivityLogService;
 use mdvault_core::captures::{
     run_after_insert_hook, run_before_insert_hook, CaptureRepoError, CaptureRepository,
     CaptureSpec,
 };
-use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::domain::services::set_updated_at;
 use mdvault_core::frontmatter::{apply_ops, parse, serialize};
@@ -36,17 +36,7 @@ const BUILTIN_VARS: &[&str] = &[
 ];
 
 pub fn run_list(config: Option<&Path>, profile: Option<&str>) {
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("FAIL mdv capture --list");
-            eprintln!("{e}");
-            if config.is_none() {
-                eprintln!("looked for: {}", default_config_path().display());
-            }
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
 
     let repo = match CaptureRepository::new(&cfg.captures_dir) {
         Ok(r) => r,
@@ -132,17 +122,7 @@ pub fn run(
     batch: bool,
 ) {
     // 1. Load config
-    let cfg = match ConfigLoader::load(config, profile) {
-        Ok(rc) => rc,
-        Err(e) => {
-            eprintln!("FAIL mdv capture");
-            eprintln!("{e}");
-            if config.is_none() {
-                eprintln!("looked for: {}", default_config_path().display());
-            }
-            std::process::exit(1);
-        }
-    };
+    let cfg = load_config(config, profile);
 
     // 2. Load capture repository
     let repo = match CaptureRepository::new(&cfg.captures_dir) {
