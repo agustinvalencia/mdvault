@@ -4,25 +4,28 @@ use std::io::Write;
 use std::path::Path;
 
 use super::common::{load_config, open_index};
+use color_eyre::eyre::{Result, WrapErr};
 use mdvault_core::index::{DerivedIndexBuilder, IndexBuilder};
 
 /// Run the reindex command.
-pub fn run(config: Option<&Path>, profile: Option<&str>, verbose: bool, force: bool) {
+pub fn run(
+    config: Option<&Path>,
+    profile: Option<&str>,
+    verbose: bool,
+    force: bool,
+) -> Result<()> {
     // Load configuration
-    let rc = load_config(config, profile);
+    let rc = load_config(config, profile)?;
 
     // Determine index path
     let index_dir = rc.vault_root.join(".mdvault");
     let index_path = index_dir.join("index.db");
 
     // Ensure .mdvault directory exists
-    if let Err(e) = std::fs::create_dir_all(&index_dir) {
-        eprintln!("Error creating index directory: {}", e);
-        std::process::exit(1);
-    }
+    std::fs::create_dir_all(&index_dir).wrap_err("Error creating index directory")?;
 
     // Open database
-    let db = open_index(&rc.vault_root);
+    let db = open_index(&rc.vault_root)?;
 
     let mode = if force { "full" } else { "incremental" };
     println!("Indexing vault ({} mode): {}", mode, rc.vault_root.display());
@@ -51,72 +54,56 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, verbose: bool, force: b
         builder.incremental_reindex(progress)
     };
 
-    match result {
-        Ok(stats) => {
-            if !verbose {
-                println!(); // Newline after progress
-            }
+    let stats = result.wrap_err("Error during indexing")?;
+
+    if !verbose {
+        println!(); // Newline after progress
+    }
+    println!();
+    println!("Indexing complete:");
+    println!("  Files found:    {}", stats.files_found);
+
+    if force {
+        // Full reindex stats
+        println!("  Notes indexed:  {}", stats.notes_indexed);
+    } else {
+        // Incremental stats
+        println!("  Unchanged:      {}", stats.files_unchanged);
+        println!("  Added:          {}", stats.files_added);
+        println!("  Updated:        {}", stats.files_updated);
+        println!("  Deleted:        {}", stats.files_deleted);
+    }
+
+    if stats.notes_skipped > 0 {
+        println!("  Skipped:        {}", stats.notes_skipped);
+    }
+    println!("  Links indexed:  {}", stats.links_indexed);
+    println!("  Broken links:   {}", stats.broken_links);
+    println!("  Duration:       {}ms", stats.duration_ms);
+
+    // Compute derived indices
+    if verbose {
+        println!();
+        println!("Computing derived indices...");
+    }
+    let derived_builder = DerivedIndexBuilder::new(&db);
+    match derived_builder.compute_all() {
+        Ok(derived_stats) => {
             println!();
-            println!("Indexing complete:");
-            println!("  Files found:    {}", stats.files_found);
-
-            if force {
-                // Full reindex stats
-                println!("  Notes indexed:  {}", stats.notes_indexed);
-            } else {
-                // Incremental stats
-                println!("  Unchanged:      {}", stats.files_unchanged);
-                println!("  Added:          {}", stats.files_added);
-                println!("  Updated:        {}", stats.files_updated);
-                println!("  Deleted:        {}", stats.files_deleted);
-            }
-
-            if stats.notes_skipped > 0 {
-                println!("  Skipped:        {}", stats.notes_skipped);
-            }
-            println!("  Links indexed:  {}", stats.links_indexed);
-            println!("  Broken links:   {}", stats.broken_links);
-            println!("  Duration:       {}ms", stats.duration_ms);
-
-            // Compute derived indices
-            if verbose {
-                println!();
-                println!("Computing derived indices...");
-            }
-            let derived_builder = DerivedIndexBuilder::new(&db);
-            match derived_builder.compute_all() {
-                Ok(derived_stats) => {
-                    println!();
-                    println!("Derived indices:");
-                    println!(
-                        "  Dailies processed:    {}",
-                        derived_stats.dailies_processed
-                    );
-                    println!(
-                        "  Activity records:     {}",
-                        derived_stats.activity_records
-                    );
-                    println!(
-                        "  Activity summaries:   {}",
-                        derived_stats.summaries_computed
-                    );
-                    println!(
-                        "  Cooccurrence pairs:   {}",
-                        derived_stats.cooccurrence_pairs
-                    );
-                    println!("  Duration:             {}ms", derived_stats.duration_ms);
-                }
-                Err(e) => {
-                    eprintln!("Warning: Failed to compute derived indices: {}", e);
-                }
-            }
-
-            println!();
-            println!("Index stored at: {}", index_path.display());
+            println!("Derived indices:");
+            println!("  Dailies processed:    {}", derived_stats.dailies_processed);
+            println!("  Activity records:     {}", derived_stats.activity_records);
+            println!("  Activity summaries:   {}", derived_stats.summaries_computed);
+            println!("  Cooccurrence pairs:   {}", derived_stats.cooccurrence_pairs);
+            println!("  Duration:             {}ms", derived_stats.duration_ms);
         }
         Err(e) => {
-            eprintln!("\nError during indexing: {}", e);
-            std::process::exit(1);
+            eprintln!("Warning: Failed to compute derived indices: {}", e);
         }
     }
+
+    println!();
+    println!("Index stored at: {}", index_path.display());
+
+    Ok(())
 }

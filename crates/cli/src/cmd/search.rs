@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use color_eyre::eyre::{Result, WrapErr};
 use mdvault_core::index::{
     MatchSource, SearchEngine, SearchMode, SearchQuery, SearchResult,
 };
@@ -48,12 +49,12 @@ fn format_match_source(source: &MatchSource) -> String {
     }
 }
 
-pub fn run(config: Option<&Path>, profile: Option<&str>, args: SearchArgs) {
+pub fn run(config: Option<&Path>, profile: Option<&str>, args: SearchArgs) -> Result<()> {
     // Load configuration
-    let rc = load_config(config, profile);
+    let rc = load_config(config, profile)?;
 
     // Open database
-    let db = open_index(&rc.vault_root);
+    let db = open_index(&rc.vault_root)?;
 
     // Convert search mode
     let mode = match args.mode {
@@ -76,13 +77,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: SearchArgs) {
 
     // Execute search
     let engine = SearchEngine::new(&db);
-    let results = match engine.search(&query) {
-        Ok(results) => results,
-        Err(e) => {
-            eprintln!("Error searching: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let results = engine.search(&query).wrap_err("Error searching")?;
 
     // Determine output format
     let format = resolve_format(args.output, args.json, args.quiet);
@@ -93,6 +88,8 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: SearchArgs) {
         OutputFormat::Json => print_results_json(&results),
         OutputFormat::Quiet => print_results_quiet(&results),
     }
+
+    Ok(())
 }
 
 /// Print search results as a table.

@@ -4,6 +4,7 @@ use std::path::Path;
 
 use super::common::load_config;
 use chrono::{Datelike, Duration, Local, NaiveDate};
+use color_eyre::eyre::{Result, WrapErr};
 use mdvault_core::context::ContextQueryService;
 use mdvault_core::vars::datemath::{parse_date_expr, DateBase};
 
@@ -14,28 +15,17 @@ pub fn day(
     date_arg: Option<&str>,
     format: &str,
     lookback: bool,
-) {
-    let cfg = load_config(config, profile);
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
 
     // Parse date argument
-    let date = match parse_date_arg(date_arg) {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("Invalid date: {e}");
-            std::process::exit(1);
-        }
-    };
+    let date = parse_date_arg(date_arg)
+        .map_err(|e| color_eyre::eyre::eyre!("Invalid date: {e}"))?;
 
     let service = ContextQueryService::new(&cfg);
 
     // Get context
-    let context = match service.day_context(date) {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            eprintln!("Failed to get context: {e}");
-            std::process::exit(1);
-        }
-    };
+    let context = service.day_context(date).wrap_err("Failed to get context")?;
 
     // Handle lookback: if no activity and lookback is enabled, try previous days
     let context = if lookback && is_empty_context(&context) {
@@ -46,13 +36,11 @@ pub fn day(
 
     // Output based on format
     match format {
-        "json" => match serde_json::to_string_pretty(&context) {
-            Ok(json) => println!("{}", json),
-            Err(e) => {
-                eprintln!("Failed to serialize context: {e}");
-                std::process::exit(1);
-            }
-        },
+        "json" => {
+            let json = serde_json::to_string_pretty(&context)
+                .wrap_err("Failed to serialize context")?;
+            println!("{}", json);
+        }
         "summary" => {
             println!("{}", context.to_summary());
         }
@@ -61,6 +49,7 @@ pub fn day(
             println!("{}", context.to_markdown());
         }
     }
+    Ok(())
 }
 
 /// Get context for a specific week.
@@ -69,38 +58,25 @@ pub fn week(
     profile: Option<&str>,
     week_arg: Option<&str>,
     format: &str,
-) {
-    let cfg = load_config(config, profile);
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
 
     // Parse week argument
-    let date = match parse_week_arg(week_arg) {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("Invalid week: {e}");
-            std::process::exit(1);
-        }
-    };
+    let date = parse_week_arg(week_arg)
+        .map_err(|e| color_eyre::eyre::eyre!("Invalid week: {e}"))?;
 
     let service = ContextQueryService::new(&cfg);
 
     // Get context
-    let context = match service.week_context(date) {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            eprintln!("Failed to get context: {e}");
-            std::process::exit(1);
-        }
-    };
+    let context = service.week_context(date).wrap_err("Failed to get context")?;
 
     // Output based on format
     match format {
-        "json" => match serde_json::to_string_pretty(&context) {
-            Ok(json) => println!("{}", json),
-            Err(e) => {
-                eprintln!("Failed to serialize context: {e}");
-                std::process::exit(1);
-            }
-        },
+        "json" => {
+            let json = serde_json::to_string_pretty(&context)
+                .wrap_err("Failed to serialize context")?;
+            println!("{}", json);
+        }
         "summary" => {
             println!("{}", context.to_summary());
         }
@@ -109,6 +85,7 @@ pub fn week(
             println!("{}", context.to_markdown());
         }
     }
+    Ok(())
 }
 
 /// Parse a date argument into NaiveDate.
@@ -272,8 +249,8 @@ pub fn note(
     note_path: &str,
     format: &str,
     activity_days: u32,
-) {
-    let cfg = load_config(config, profile);
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
 
     let service = ContextQueryService::new(&cfg);
 
@@ -282,23 +259,17 @@ pub fn note(
     let path = std::path::Path::new(note_path);
 
     // Get context
-    let context = match service.note_context(path, activity_days) {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            eprintln!("Failed to get note context: {e}");
-            std::process::exit(1);
-        }
-    };
+    let context = service
+        .note_context(path, activity_days)
+        .wrap_err("Failed to get note context")?;
 
     // Output based on format
     match format {
-        "json" => match serde_json::to_string_pretty(&context) {
-            Ok(json) => println!("{}", json),
-            Err(e) => {
-                eprintln!("Failed to serialize context: {e}");
-                std::process::exit(1);
-            }
-        },
+        "json" => {
+            let json = serde_json::to_string_pretty(&context)
+                .wrap_err("Failed to serialize context")?;
+            println!("{}", json);
+        }
         "summary" => {
             println!("{}", context.to_summary());
         }
@@ -307,6 +278,7 @@ pub fn note(
             println!("{}", context.to_markdown());
         }
     }
+    Ok(())
 }
 
 /// Get context for the focused project.
@@ -315,8 +287,8 @@ pub fn focus(
     profile: Option<&str>,
     format: &str,
     _with_tasks: bool, // TODO: implement with_tasks option
-) {
-    let cfg = load_config(config, profile);
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
 
     let service = ContextQueryService::new(&cfg);
 
@@ -327,22 +299,19 @@ pub fn focus(
             // Check if it's just "no focus set"
             if e.to_string().contains("No focus set") {
                 println!("No focus set. Use `mdv focus <project>` to set focus.");
-                return;
+                return Ok(());
             }
-            eprintln!("Failed to get focus context: {e}");
-            std::process::exit(1);
+            return Err(e).wrap_err("Failed to get focus context");
         }
     };
 
     // Output based on format
     match format {
-        "json" => match serde_json::to_string_pretty(&context) {
-            Ok(json) => println!("{}", json),
-            Err(e) => {
-                eprintln!("Failed to serialize context: {e}");
-                std::process::exit(1);
-            }
-        },
+        "json" => {
+            let json = serde_json::to_string_pretty(&context)
+                .wrap_err("Failed to serialize context")?;
+            println!("{}", json);
+        }
         "summary" => {
             println!("{}", context.to_summary());
         }
@@ -351,4 +320,5 @@ pub fn focus(
             println!("{}", context.to_markdown());
         }
     }
+    Ok(())
 }

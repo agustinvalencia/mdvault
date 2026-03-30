@@ -2,11 +2,11 @@
 
 use super::common::{load_config, open_index};
 use chrono::{Local, NaiveDate, Timelike};
+use color_eyre::eyre::{bail, Result};
 use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery};
 use serde::Serialize;
 use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
-use tracing::error;
 
 use crate::TodayArgs;
 
@@ -48,15 +48,15 @@ struct TaskRow {
 }
 
 /// Run the today command.
-pub fn run(config: Option<&Path>, profile: Option<&str>, args: TodayArgs) {
+pub fn run(config: Option<&Path>, profile: Option<&str>, args: TodayArgs) -> Result<()> {
     // Handle the 'open' subcommand
     if args.command.is_some() {
-        open_daily_note(config, profile);
-        return;
+        open_daily_note(config, profile)?;
+        return Ok(());
     }
 
-    let cfg = load_config(config, profile);
-    let db = open_index(&cfg.vault_root);
+    let cfg = load_config(config, profile)?;
+    let db = open_index(&cfg.vault_root)?;
 
     // Determine mode based on flags or time of day
     let mode = if args.plan {
@@ -80,11 +80,12 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: TodayArgs) {
     } else {
         print_dashboard(&dashboard);
     }
+    Ok(())
 }
 
 /// Open today's daily note in the default editor.
-fn open_daily_note(config: Option<&Path>, profile: Option<&str>) {
-    let cfg = load_config(config, profile);
+fn open_daily_note(config: Option<&Path>, profile: Option<&str>) -> Result<()> {
+    let cfg = load_config(config, profile)?;
 
     let today = Local::now().date_naive();
     let year = today.format("%Y");
@@ -95,11 +96,10 @@ fn open_daily_note(config: Option<&Path>, profile: Option<&str>) {
     ));
 
     if !daily_path.exists() {
-        error!(
+        bail!(
             "Today's daily note doesn't exist yet. Create it with: mdv new daily \"{}\"",
             today.format("%Y-%m-%d")
         );
-        std::process::exit(1);
     }
 
     // Get editor from environment
@@ -113,14 +113,13 @@ fn open_daily_note(config: Option<&Path>, profile: Option<&str>) {
     match status {
         Ok(s) if s.success() => {}
         Ok(s) => {
-            error!("Editor exited with status: {}", s);
-            std::process::exit(1);
+            bail!("Editor exited with status: {}", s);
         }
         Err(e) => {
-            error!("Failed to open editor '{}': {}", editor, e);
-            std::process::exit(1);
+            bail!("Failed to open editor '{}': {}", editor, e);
         }
     }
+    Ok(())
 }
 
 /// Gather all data for the dashboard.

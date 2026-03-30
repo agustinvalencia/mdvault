@@ -1,6 +1,7 @@
 //! Project management commands.
 
 use chrono::{DateTime, Duration, NaiveDate, Utc};
+use color_eyre::eyre::{bail, Result, WrapErr};
 use mdvault_core::context::ContextManager;
 use mdvault_core::domain::task_belongs_to_project;
 use mdvault_core::domain::{services::ProjectLogService, DailyLogService};
@@ -50,26 +51,20 @@ pub fn list(
     profile: Option<&str>,
     status_filter: Option<StatusFilter>,
     kind_filter: Option<KindFilter>,
-) {
-    let cfg = load_config(config, profile);
-    let db = open_index(&cfg.vault_root);
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
+    let db = open_index(&cfg.vault_root)?;
 
     // Query all projects
     let project_query =
         NoteQuery { note_type: Some(NoteType::Project), ..Default::default() };
 
-    let projects = match db.query_notes(&project_query) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Failed to query projects: {e}");
-            std::process::exit(1);
-        }
-    };
+    let projects = db.query_notes(&project_query).wrap_err("Failed to query projects")?;
 
     if projects.is_empty() {
         println!("No projects found.");
         println!("Create one with: mdv new project");
-        return;
+        return Ok(());
     }
 
     // Query all tasks to count per project
@@ -152,19 +147,24 @@ pub fn list(
 
     if rows.is_empty() {
         println!("No projects match the filter.");
-        return;
+        return Ok(());
     }
 
     let table = Table::new(&rows).with(Style::rounded()).to_string();
 
     println!("{}", table);
     println!("\nTotal: {} projects", rows.len());
+    Ok(())
 }
 
 /// Show project status with tasks in kanban-style columns.
-pub fn status(config: Option<&Path>, profile: Option<&str>, project_name: &str) {
-    let cfg = load_config(config, profile);
-    let db = open_index(&cfg.vault_root);
+pub fn status(
+    config: Option<&Path>,
+    profile: Option<&str>,
+    project_name: &str,
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
+    let db = open_index(&cfg.vault_root)?;
 
     // Find the project
     let project_query =
@@ -180,9 +180,8 @@ pub fn status(config: Option<&Path>, profile: Option<&str>, project_name: &str) 
     let project = match project {
         Some(p) => p,
         None => {
-            eprintln!("Project not found: {}", project_name);
             eprintln!("Run 'mdv project list' to see available projects.");
-            std::process::exit(1);
+            bail!("Project not found: {}", project_name);
         }
     };
 
@@ -215,7 +214,7 @@ pub fn status(config: Option<&Path>, profile: Option<&str>, project_name: &str) 
     if project_tasks.is_empty() {
         println!("No tasks found for this project.");
         println!("Create one with: mdv new task");
-        return;
+        return Ok(());
     }
 
     // Group tasks by status
@@ -280,6 +279,7 @@ pub fn status(config: Option<&Path>, profile: Option<&str>, project_name: &str) 
         print_task_table(&cancelled);
         println!();
     }
+    Ok(())
 }
 
 /// Print a table of tasks.
@@ -428,25 +428,19 @@ pub fn progress(
     project_name: Option<&str>,
     json_output: bool,
     include_archived: bool,
-) {
-    let cfg = load_config(config, profile);
-    let db = open_index(&cfg.vault_root);
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
+    let db = open_index(&cfg.vault_root)?;
 
     // Query all projects
     let project_query =
         NoteQuery { note_type: Some(NoteType::Project), ..Default::default() };
-    let projects = match db.query_notes(&project_query) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Failed to query projects: {e}");
-            std::process::exit(1);
-        }
-    };
+    let projects = db.query_notes(&project_query).wrap_err("Failed to query projects")?;
 
     if projects.is_empty() {
         println!("No projects found.");
         println!("Create one with: mdv new project");
-        return;
+        return Ok(());
     }
 
     // Query all tasks
@@ -464,9 +458,8 @@ pub fn progress(
         let project = match project {
             Some(p) => p,
             None => {
-                eprintln!("Project not found: {}", name);
                 eprintln!("Run 'mdv project list' to see available projects.");
-                std::process::exit(1);
+                bail!("Project not found: {}", name);
             }
         };
 
@@ -494,7 +487,7 @@ pub fn progress(
 
         if progress_list.is_empty() {
             println!("No projects match the filter.");
-            return;
+            return Ok(());
         }
 
         if json_output {
@@ -503,6 +496,7 @@ pub fn progress(
             print_all_projects_progress(&progress_list);
         }
     }
+    Ok(())
 }
 
 /// Calculate progress data for a single project.
@@ -704,9 +698,9 @@ pub fn archive(
     profile: Option<&str>,
     project_name: &str,
     skip_confirm: bool,
-) {
-    let cfg = load_config(config, profile);
-    let db = open_index(&cfg.vault_root);
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
+    let db = open_index(&cfg.vault_root)?;
 
     // Find the project in the index
     let project_query =
@@ -722,9 +716,8 @@ pub fn archive(
     let project = match project {
         Some(p) => p,
         None => {
-            eprintln!("Project not found: {}", project_name);
             eprintln!("Run 'mdv project list' to see available projects.");
-            std::process::exit(1);
+            bail!("Project not found: {}", project_name);
         }
     };
 
@@ -739,28 +732,26 @@ pub fn archive(
 
     // Validate: areas cannot be archived
     if project_kind == "area" {
-        eprintln!(
+        bail!(
             "Cannot archive area '{}': areas are ongoing and cannot be archived.",
             project_title
         );
-        std::process::exit(1);
     }
 
     // Validate: only done projects can be archived
     if project_status != "done" {
-        eprintln!(
-            "Cannot archive project '{}': status is '{}', must be 'done'.",
-            project_title, project_status
-        );
         eprintln!("Mark the project as done first, then archive it.");
-        std::process::exit(1);
+        bail!(
+            "Cannot archive project '{}': status is '{}', must be 'done'.",
+            project_title,
+            project_status
+        );
     }
 
     // Check if already archived
     let project_path_str = project.path.to_string_lossy();
     if project_path_str.contains("Projects/_archive/") {
-        eprintln!("Project '{}' is already archived.", project_title);
-        std::process::exit(1);
+        bail!("Project '{}' is already archived.", project_title);
     }
 
     // Find all tasks belonging to this project
@@ -812,7 +803,7 @@ pub fn archive(
         let _ = std::io::stdin().read(&mut input);
         if input[0] != b'y' && input[0] != b'Y' {
             println!("Aborted.");
-            return;
+            return Ok(());
         }
     }
 
@@ -859,10 +850,8 @@ pub fn archive(
         let non_md_files = collect_non_md_files(&source_dir);
 
         // Ensure archive directory structure exists
-        if let Err(e) = std::fs::create_dir_all(&archive_dir) {
-            eprintln!("Failed to create archive directory: {e}");
-            std::process::exit(1);
-        }
+        std::fs::create_dir_all(&archive_dir)
+            .wrap_err("Failed to create archive directory")?;
 
         // Move .md files via execute_rename (updates backlinks and index)
         for md_file in &md_files {
@@ -925,6 +914,7 @@ pub fn archive(
     if tasks_cancelled > 0 {
         println!("tasks cancelled: {}", tasks_cancelled);
     }
+    Ok(())
 }
 
 /// Cancel a single task as part of project archival.

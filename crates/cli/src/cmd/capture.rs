@@ -3,6 +3,8 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+use color_eyre::eyre::{bail, Result, WrapErr};
+
 use super::common::load_config;
 use crate::prompt::{collect_variables, create_fuzzy_selector_callback, PromptOptions};
 use mdvault_core::activity::ActivityLogService;
@@ -36,22 +38,16 @@ const BUILTIN_VARS: &[&str] = &[
     "macros_dir",
 ];
 
-pub fn run_list(config: Option<&Path>, profile: Option<&str>) {
-    let cfg = load_config(config, profile);
+pub fn run_list(config: Option<&Path>, profile: Option<&str>) -> Result<()> {
+    let cfg = load_config(config, profile)?;
 
-    let repo = match CaptureRepository::new(&cfg.captures_dir) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("FAIL mdv capture --list");
-            eprintln!("{e}");
-            std::process::exit(1);
-        }
-    };
+    let repo =
+        CaptureRepository::new(&cfg.captures_dir).wrap_err("FAIL mdv capture --list")?;
 
     let captures = repo.list_all();
     if captures.is_empty() {
         println!("(no captures found)");
-        return;
+        return Ok(());
     }
 
     for info in captures {
@@ -73,6 +69,7 @@ pub fn run_list(config: Option<&Path>, profile: Option<&str>) {
         }
     }
     println!("-- {} captures --", captures.len());
+    Ok(())
 }
 
 /// Extract user-defined variables from a capture spec (excludes built-ins)
@@ -121,35 +118,30 @@ pub fn run(
     capture_name: &str,
     vars: &[(String, String)],
     batch: bool,
-) {
+) -> Result<()> {
     // 1. Load config
-    let cfg = load_config(config, profile);
+    let cfg = load_config(config, profile)?;
 
     // 2. Load capture repository
-    let repo = match CaptureRepository::new(&cfg.captures_dir) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("FAIL mdv capture");
-            eprintln!("{e}");
-            std::process::exit(1);
-        }
-    };
+    let repo = CaptureRepository::new(&cfg.captures_dir).wrap_err("FAIL mdv capture")?;
 
     // 3. Get capture spec
     let loaded = match repo.get_by_name(capture_name) {
         Ok(c) => c,
         Err(e) => match e {
             CaptureRepoError::NotFound(name) => {
-                eprintln!("Capture not found: {name}");
-                eprintln!("Available captures:");
-                for c in repo.list_all() {
-                    eprintln!("  - {}", c.logical_name);
-                }
-                std::process::exit(1);
+                let available: Vec<_> = repo
+                    .list_all()
+                    .iter()
+                    .map(|c| format!("  - {}", c.logical_name))
+                    .collect();
+                bail!(
+                    "Capture not found: {name}\nAvailable captures:\n{}",
+                    available.join("\n")
+                );
             }
             other => {
-                eprintln!("Failed to load capture: {other}");
-                std::process::exit(1);
+                bail!("Failed to load capture: {other}");
             }
         },
     };
@@ -174,19 +166,14 @@ pub fn run(
     let vars_map = loaded.spec.vars.as_ref();
     let prompt_options = PromptOptions { batch_mode: batch };
 
-    let collected = match collect_variables(
+    let collected = collect_variables(
         vars_map,
         &content_for_vars,
         &provided_vars,
         &base_ctx,
         &prompt_options,
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Error: {e}");
-            std::process::exit(1);
-        }
-    };
+    )
+    .wrap_err("Failed to collect variables")?;
 
     // Merge collected variables into context
     let mut ctx = base_ctx;
@@ -211,17 +198,15 @@ pub fn run(
 
             // Ensure parent directory exists
             if let Some(parent) = target_file.parent() {
-                if let Err(e) = fs::create_dir_all(parent) {
-                    eprintln!("Failed to create directory {}: {e}", parent.display());
-                    std::process::exit(1);
-                }
+                fs::create_dir_all(parent).wrap_err_with(|| {
+                    format!("Failed to create directory {}", parent.display())
+                })?;
             }
 
             // Write the new file
-            if let Err(e) = fs::write(&target_file, &content) {
-                eprintln!("Failed to create target file {}: {e}", target_file.display());
-                std::process::exit(1);
-            }
+            fs::write(&target_file, &content).wrap_err_with(|| {
+                format!("Failed to create target file {}", target_file.display())
+            })?;
 
             if let Err(e) = set_updated_at(&target_file) {
                 tracing::warn!("Failed to set updated_at on new capture target: {}", e);
@@ -231,30 +216,21 @@ pub fn run(
             content
         }
         Err(e) => {
-            eprintln!("Failed to read target file {}: {e}", target_file.display());
-            eprintln!("Hint: The target file must exist before capturing to it.");
-            eprintln!(
-                "      Use 'create_if_missing: true' in the capture spec to auto-create."
+            bail!(
+                "Failed to read target file {}: {e}\nHint: The target file must exist before capturing to it.\n      Use 'create_if_missing: true' in the capture spec to auto-create.",
+                target_file.display()
             );
-            std::process::exit(1);
         }
     };
 
     // 7. Execute capture (frontmatter + content insertion)
-    let (result_content, section_info) =
-        match execute_capture_operations(&existing_content, &loaded.spec, &ctx) {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("{e}");
-                std::process::exit(1);
-            }
-        };
+    let (result_content, section_info): (String, Option<(String, u8)>) =
+        execute_capture_operations(&existing_content, &loaded.spec, &ctx)
+            .map_err(|e| color_eyre::eyre::eyre!("{e}"))?;
 
     // 8. Write back to file
-    if let Err(e) = fs::write(&target_file, &result_content) {
-        eprintln!("Failed to write to {}: {e}", target_file.display());
-        std::process::exit(1);
-    }
+    fs::write(&target_file, &result_content)
+        .wrap_err_with(|| format!("Failed to write to {}", target_file.display()))?;
 
     if let Err(e) = set_updated_at(&target_file) {
         tracing::warn!("Failed to set updated_at on capture target: {}", e);
@@ -306,6 +282,7 @@ pub fn run(
     if loaded.spec.frontmatter.is_some() {
         println!("frontmatter: modified");
     }
+    Ok(())
 }
 
 /// Run on_update hook for the target note if its type has one defined.

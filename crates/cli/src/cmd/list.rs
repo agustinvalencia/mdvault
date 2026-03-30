@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use color_eyre::eyre::{Result, WrapErr};
 use mdvault_core::index::NoteQuery;
 use mdvault_core::vars::try_evaluate_date_expr;
 
@@ -12,9 +13,9 @@ use super::output::{
 };
 use crate::{ListArgs, OutputFormat};
 
-pub fn run(config: Option<&Path>, profile: Option<&str>, args: ListArgs) {
-    let rc = load_config(config, profile);
-    let db = open_index(&rc.vault_root);
+pub fn run(config: Option<&Path>, profile: Option<&str>, args: ListArgs) -> Result<()> {
+    let rc = load_config(config, profile)?;
+    let db = open_index(&rc.vault_root)?;
 
     // Build query
     let query = NoteQuery {
@@ -27,13 +28,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ListArgs) {
     };
 
     // Execute query
-    let notes = match db.query_notes(&query) {
-        Ok(notes) => notes,
-        Err(e) => {
-            eprintln!("Error querying notes: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let notes = db.query_notes(&query).wrap_err("Error querying notes")?;
 
     // Determine output format
     let format = resolve_format(args.output, args.json, args.quiet);
@@ -44,6 +39,8 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ListArgs) {
         OutputFormat::Json => print_notes_json(&notes),
         OutputFormat::Quiet => print_notes_quiet(&notes),
     }
+
+    Ok(())
 }
 
 /// Parse a date argument, supporting both YYYY-MM-DD and date math expressions.
