@@ -227,4 +227,98 @@ mod tests {
         // 2026-03-15 is in ISO week 11
         assert_eq!(ctx.vars.get("week").map(|s| s.as_str()), Some("[[2026-W11]]"));
     }
+
+    use crate::domain::context::HookRunner;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// Mock HookRunner that records whether it was called.
+    struct MockHookRunner {
+        called: AtomicBool,
+    }
+
+    impl MockHookRunner {
+        fn new() -> Self {
+            Self { called: AtomicBool::new(false) }
+        }
+
+        fn was_called(&self) -> bool {
+            self.called.load(Ordering::SeqCst)
+        }
+    }
+
+    impl HookRunner for MockHookRunner {
+        fn run_on_create(
+            &self,
+            _output_path: &std::path::Path,
+            _content: &str,
+        ) -> Result<(), String> {
+            self.called.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_after_create_calls_hook_runner() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let runner = MockHookRunner::new();
+
+        let mut ctx = CreationContext::new("daily", "2026-03-15", config, registry)
+            .with_hook_runner(&runner);
+
+        let behavior = DailyBehavior::new(None);
+        behavior.before_create(&mut ctx).unwrap();
+        ctx.output_path = Some(dir.path().join("Journal/2026/Daily/2026-03-15.md"));
+
+        behavior.after_create(&ctx, "---\ndate: 2026-03-15\n---\n").unwrap();
+
+        assert!(runner.was_called(), "HookRunner should have been called");
+    }
+
+    #[test]
+    fn test_after_create_without_hook_runner() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+
+        let mut ctx = CreationContext::new("daily", "2026-03-15", config, registry);
+
+        let behavior = DailyBehavior::new(None);
+        behavior.before_create(&mut ctx).unwrap();
+        ctx.output_path = Some(dir.path().join("Journal/2026/Daily/2026-03-15.md"));
+
+        // Should not fail even without a hook runner
+        behavior.after_create(&ctx, "---\ndate: 2026-03-15\n---\n").unwrap();
+    }
+
+    #[test]
+    fn test_after_create_hook_error_is_non_fatal() {
+        struct FailingHookRunner;
+        impl HookRunner for FailingHookRunner {
+            fn run_on_create(
+                &self,
+                _output_path: &std::path::Path,
+                _content: &str,
+            ) -> Result<(), String> {
+                Err("hook exploded".into())
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let config = Box::leak(Box::new(make_test_config(dir.path())));
+        let registry = Box::leak(Box::new(TypeRegistry::new()));
+        let runner = FailingHookRunner;
+
+        let mut ctx = CreationContext::new("daily", "2026-03-15", config, registry)
+            .with_hook_runner(&runner);
+
+        let behavior = DailyBehavior::new(None);
+        behavior.before_create(&mut ctx).unwrap();
+        ctx.output_path = Some(dir.path().join("Journal/2026/Daily/2026-03-15.md"));
+
+        // Should succeed even when the hook fails (errors are warnings, not fatal)
+        let result = behavior.after_create(&ctx, "---\ndate: 2026-03-15\n---\n");
+        assert!(result.is_ok(), "Hook failure should not propagate as error");
+    }
 }
