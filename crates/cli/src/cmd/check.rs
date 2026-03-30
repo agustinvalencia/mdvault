@@ -3,8 +3,8 @@
 use std::path::Path;
 
 use super::common::{load_config, open_index};
-use color_eyre::eyre::{bail, Result};
-use mdvault_core::lint::{run_lint, CategoryReport, LintReport};
+use color_eyre::eyre::{Result, bail};
+use mdvault_core::lint::{CategoryReport, LintReport, run_lint};
 use mdvault_core::types::{TypeRegistry, TypedefRepository};
 
 use crate::CheckArgs;

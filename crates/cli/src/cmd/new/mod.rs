@@ -3,11 +3,11 @@ mod hooks;
 mod prompts;
 mod writer;
 
-use color_eyre::eyre::{bail, Result, WrapErr};
+use color_eyre::eyre::{Result, WrapErr, bail};
 
 use super::common::load_config;
-use crate::prompt::{CollectedVars, PromptOptions};
 use crate::NewArgs;
+use crate::prompt::{CollectedVars, PromptOptions};
 use mdvault_core::activity::ActivityLogService;
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::context::ContextManager;
@@ -75,11 +75,11 @@ fn inject_focus_context(cfg: &ResolvedConfig, vars: &mut HashMap<String, String>
     if vars.contains_key("project") {
         return;
     }
-    if let Ok(context_mgr) = ContextManager::load(&cfg.vault_root) {
-        if let Some(focused_project) = context_mgr.active_project() {
-            debug!("Using focused project: {}", focused_project);
-            vars.insert("project".to_string(), focused_project.to_string());
-        }
+    if let Ok(context_mgr) = ContextManager::load(&cfg.vault_root)
+        && let Some(focused_project) = context_mgr.active_project()
+    {
+        debug!("Using focused project: {}", focused_project);
+        vars.insert("project".to_string(), focused_project.to_string());
     }
 }
 
@@ -156,7 +156,7 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) -> Re
 
     // 7–9. If behaviour: build CreationContext, inject focus, type prompts, sync vars
     let mut creation_ctx: Option<CreationContext> = None;
-    if let (Some(ref mut _nt), Some(ref registry)) = (&mut note_type, &type_registry) {
+    if let (Some(_nt), Some(registry)) = (&mut note_type, &type_registry) {
         let ctx_title =
             provided_vars.get("title").cloned().unwrap_or_else(|| title.clone());
         let mut ctx = CreationContext::new(effective_name, &ctx_title, cfg, registry)
@@ -307,27 +307,27 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) -> Re
     }
 
     // 19. Validate before write
-    if let Some(ref typedef) = lua_typedef {
-        if let Some(ref registry) = type_registry {
-            let note_type_name = discovery::extract_note_type(&rendered)
-                .unwrap_or_else(|| typedef.name.clone());
+    if let Some(ref typedef) = lua_typedef
+        && let Some(ref registry) = type_registry
+    {
+        let note_type_name = discovery::extract_note_type(&rendered)
+            .unwrap_or_else(|| typedef.name.clone());
 
-            match writer::validate_before_write(
-                registry,
-                &note_type_name,
-                &output_path,
-                &rendered,
-            ) {
-                Ok(Some(fixed)) => rendered = fixed,
-                Ok(None) => {}
-                Err(errors) => {
-                    let errs = errors
-                        .iter()
-                        .map(|e| format!("  - {e}"))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    bail!("Validation failed:\n{errs}");
-                }
+        match writer::validate_before_write(
+            registry,
+            &note_type_name,
+            &output_path,
+            &rendered,
+        ) {
+            Ok(Some(fixed)) => rendered = fixed,
+            Ok(None) => {}
+            Err(errors) => {
+                let errs = errors
+                    .iter()
+                    .map(|e| format!("  - {e}"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                bail!("Validation failed:\n{errs}");
             }
         }
     }
@@ -360,16 +360,15 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) -> Re
     // 22. Print success
     println!("OK   mdv new");
     println!("type: {}", effective_name);
-    if let Some(ref ctx) = creation_ctx {
-        if let Some(ref id) = ctx
+    if let Some(ref ctx) = creation_ctx
+        && let Some(ref id) = ctx
             .core_metadata
             .task_id
             .as_ref()
             .or(ctx.core_metadata.project_id.as_ref())
             .or(ctx.core_metadata.meeting_id.as_ref())
-        {
-            println!("id:   {}", id);
-        }
+    {
+        println!("id:   {}", id);
     }
     println!("output: {}", output_path.display());
     Ok(())
@@ -451,12 +450,11 @@ fn post_write_pipeline(
     // Re-apply core_metadata after hooks
     if let Some(ctx) = creation_ctx {
         let order = lua_typedef.as_ref().and_then(|td| td.frontmatter_order.as_deref());
-        if let Ok(current) = std::fs::read_to_string(output_path) {
-            if let Ok(fixed) = ctx.core_metadata.apply_to_content(&current, order) {
-                if let Err(e) = std::fs::write(output_path, fixed) {
-                    eprintln!("Warning: failed to re-apply core metadata: {e}");
-                }
-            }
+        if let Ok(current) = std::fs::read_to_string(output_path)
+            && let Ok(fixed) = ctx.core_metadata.apply_to_content(&current, order)
+            && let Err(e) = std::fs::write(output_path, fixed)
+        {
+            eprintln!("Warning: failed to re-apply core metadata: {e}");
         }
     }
 

@@ -1,11 +1,11 @@
 //! Area management commands.
 
 use chrono::{Datelike, Local, NaiveDate};
-use color_eyre::eyre::{bail, Result};
+use color_eyre::eyre::{Result, bail};
 use mdvault_core::index::{IndexedNote, NoteQuery, NoteType};
 use serde::Serialize;
 use std::path::Path;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{Table, Tabled, settings::Style};
 
 use super::common::{load_config, open_index};
 
@@ -378,11 +378,7 @@ pub fn export(
         .iter()
         .filter_map(|n| {
             let date = get_note_date(n)?;
-            if date >= start && date <= end {
-                Some((n, date))
-            } else {
-                None
-            }
+            if date >= start && date <= end { Some((n, date)) } else { None }
         })
         .collect();
     daily_in_range.sort_by_key(|(_, d)| *d);

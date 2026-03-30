@@ -1815,7 +1815,7 @@ dependencies = [
 
 [[package]]
 name = "mdvault"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "assert_cmd",
  "charts-rs",
@@ -1843,7 +1843,7 @@ dependencies = [
 
 [[package]]
 name = "mdvault-core"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "chrono",
  "comrak",

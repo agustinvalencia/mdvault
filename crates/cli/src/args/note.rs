@@ -2,7 +2,7 @@ use clap::Args;
 use clap_complete::engine::ArgValueCompleter;
 use std::path::PathBuf;
 
-use super::{parse_key_val, NoteTypeArg, OutputFormat};
+use super::{NoteTypeArg, OutputFormat, parse_key_val};
 
 #[derive(Debug, Args)]
 #[command(after_help = "\

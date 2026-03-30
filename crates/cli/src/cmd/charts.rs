@@ -4,8 +4,8 @@
 //! PNG images suitable for embedding in markdown notes.
 
 use charts_rs::{
-    svg_to_png, BarChart, ChildChart, LineChart, MultiChart, PieChart, Series,
-    THEME_GRAFANA,
+    BarChart, ChildChart, LineChart, MultiChart, PieChart, Series, THEME_GRAFANA,
+    svg_to_png,
 };
 use mdvault_core::report::{DashboardReport, ProjectReport};
 use std::path::Path;

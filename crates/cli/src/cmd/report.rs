@@ -2,13 +2,13 @@
 
 use super::common::{load_config, open_index};
 use chrono::{Datelike, Duration, Local, NaiveDate, Utc};
-use color_eyre::eyre::{bail, Result, WrapErr};
+use color_eyre::eyre::{Result, WrapErr, bail};
 use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{Table, Tabled, settings::Style};
 
 /// Report data for JSON output.
 #[derive(Serialize)]
@@ -1084,12 +1084,11 @@ fn get_note_date(note: &IndexedNote) -> Option<NaiveDate> {
 /// Get project from task frontmatter or path.
 fn get_task_project(note: &IndexedNote) -> Option<String> {
     // Try frontmatter first
-    if let Some(fm_json) = &note.frontmatter_json {
-        if let Ok(fm) = serde_json::from_str::<serde_json::Value>(fm_json) {
-            if let Some(project) = fm.get("project").and_then(|v| v.as_str()) {
-                return Some(project.to_string());
-            }
-        }
+    if let Some(fm_json) = &note.frontmatter_json
+        && let Ok(fm) = serde_json::from_str::<serde_json::Value>(fm_json)
+        && let Some(project) = fm.get("project").and_then(|v| v.as_str())
+    {
+        return Some(project.to_string());
     }
 
     // Try to extract from path (Projects/{project}/Tasks/...)

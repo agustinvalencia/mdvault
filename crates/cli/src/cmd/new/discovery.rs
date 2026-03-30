@@ -1,9 +1,9 @@
-use color_eyre::eyre::{bail, Result, WrapErr};
+use color_eyre::eyre::{Result, WrapErr, bail};
 
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::templates::engine::{render_string, resolve_template_output_path};
-use mdvault_core::types::{discovery::load_typedef_from_file, TypeDefinition};
+use mdvault_core::types::{TypeDefinition, discovery::load_typedef_from_file};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -24,8 +24,8 @@ pub(super) fn resolve_lua_output(
     cfg: &ResolvedConfig,
     render_ctx: &HashMap<String, String>,
 ) -> Result<PathBuf> {
-    if let Some(ref typedef) = lua_typedef {
-        if let Some(ref output_template) = typedef.output {
+    if let Some(typedef) = lua_typedef {
+        if let Some(output_template) = &typedef.output {
             render_output_path(output_template, cfg, render_ctx)
                 .wrap_err("Failed to resolve Lua output path")
         } else {
@@ -58,7 +58,7 @@ pub(super) fn resolve_output_path(
                     match nt.behavior().output_path(ctx) {
                         Ok(path) => return Ok(path),
                         Err(_) => {
-                            return resolve_lua_output(lua_typedef, cfg, render_ctx)
+                            return resolve_lua_output(lua_typedef, cfg, render_ctx);
                         }
                     }
                 } else {
@@ -119,11 +119,7 @@ fn render_output_path(
         render_string(template, ctx).wrap_err("Failed to render output path template")?;
 
     let path = PathBuf::from(&rendered);
-    if path.is_absolute() {
-        Ok(path)
-    } else {
-        Ok(cfg.vault_root.join(path))
-    }
+    if path.is_absolute() { Ok(path) } else { Ok(cfg.vault_root.join(path)) }
 }
 
 #[cfg(test)]

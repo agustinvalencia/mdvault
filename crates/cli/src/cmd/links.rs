@@ -4,7 +4,7 @@ use std::path::Path;
 
 use super::common::{load_config, open_index};
 use super::output::{
-    print_links_json, print_links_quiet, print_links_table, resolve_format, LinkOutput,
+    LinkOutput, print_links_json, print_links_quiet, print_links_table, resolve_format,
 };
 use crate::{LinksArgs, OutputFormat};
 use color_eyre::eyre::{Result, WrapErr};

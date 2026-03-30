@@ -2,11 +2,11 @@
 
 use super::common::{load_config, open_index};
 use chrono::{Local, NaiveDate, Timelike};
-use color_eyre::eyre::{bail, Result};
+use color_eyre::eyre::{Result, bail};
 use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery};
 use serde::Serialize;
 use std::path::Path;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{Table, Tabled, settings::Style};
 
 use crate::TodayArgs;
 
@@ -65,11 +65,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: TodayArgs) -> Res
         "review"
     } else {
         // Auto-select based on time: before noon = plan, after noon = review
-        if Local::now().hour() < 12 {
-            "plan"
-        } else {
-            "review"
-        }
+        if Local::now().hour() < 12 { "plan" } else { "review" }
     };
 
     let today = Local::now().date_naive();
@@ -161,11 +157,11 @@ fn gather_dashboard_data(
         let info = extract_task_info(task);
 
         // Check if completed today
-        if let Some(completed_at) = get_completed_at(task) {
-            if completed_at == today {
-                completed_today.push(info);
-                continue;
-            }
+        if let Some(completed_at) = get_completed_at(task)
+            && completed_at == today
+        {
+            completed_today.push(info);
+            continue;
         }
 
         // Check status
@@ -175,23 +171,21 @@ fn gather_dashboard_data(
             }
             "in-progress" => {
                 // Check if overdue
-                if let Some(ref due) = info.due_date {
-                    if let Ok(due_date) = NaiveDate::parse_from_str(due, "%Y-%m-%d") {
-                        if due_date < today {
-                            overdue_tasks.push(info.clone());
-                        }
-                    }
+                if let Some(ref due) = info.due_date
+                    && let Ok(due_date) = NaiveDate::parse_from_str(due, "%Y-%m-%d")
+                    && due_date < today
+                {
+                    overdue_tasks.push(info.clone());
                 }
                 in_progress_tasks.push(info);
             }
             _ => {
                 // Check if overdue for todo/pending/other non-done statuses
-                if let Some(ref due) = info.due_date {
-                    if let Ok(due_date) = NaiveDate::parse_from_str(due, "%Y-%m-%d") {
-                        if due_date < today {
-                            overdue_tasks.push(info.clone());
-                        }
-                    }
+                if let Some(ref due) = info.due_date
+                    && let Ok(due_date) = NaiveDate::parse_from_str(due, "%Y-%m-%d")
+                    && due_date < today
+                {
+                    overdue_tasks.push(info.clone());
                 }
                 if info.status != "blocked" {
                     pending_tasks.push(info);
@@ -511,10 +505,10 @@ fn extract_task_info(note: &IndexedNote) -> TaskInfo {
             let path_str = note.path.to_string_lossy();
             if path_str.contains("Projects/") {
                 let parts: Vec<&str> = path_str.split("Projects/").collect();
-                if parts.len() > 1 {
-                    if let Some(project_name) = parts[1].split('/').next() {
-                        return project_name.to_string();
-                    }
+                if parts.len() > 1
+                    && let Some(project_name) = parts[1].split('/').next()
+                {
+                    return project_name.to_string();
                 }
             }
             "INB".to_string()

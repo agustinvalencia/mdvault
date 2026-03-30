@@ -2,7 +2,7 @@ use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::index::{IndexBuilder, IndexDb};
 use mdvault_core::paths::PathResolver;
-use mdvault_core::types::{try_fix_note, validate_note_for_creation, TypeRegistry};
+use mdvault_core::types::{TypeRegistry, try_fix_note, validate_note_for_creation};
 use std::fs;
 use std::path::Path;
 

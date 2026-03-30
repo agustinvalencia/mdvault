@@ -1,14 +1,14 @@
 //! Task management commands.
 
-use color_eyre::eyre::{bail, Result, WrapErr};
+use color_eyre::eyre::{Result, WrapErr, bail};
 use mdvault_core::activity::ActivityLogService;
 use mdvault_core::domain::{
-    find_project_file, services::ProjectLogService, DailyLogService,
+    DailyLogService, find_project_file, services::ProjectLogService,
 };
 use mdvault_core::index::{IndexBuilder, IndexDb, IndexedNote, NoteQuery, NoteType};
 use mdvault_core::paths::PathResolver;
 use std::path::Path;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{Table, Tabled, settings::Style};
 
 use super::common::{load_config, open_index};
 use crate::StatusFilter;
@@ -53,20 +53,20 @@ pub fn list(
         let path_str = task.path.to_string_lossy();
 
         // Filter by project if specified
-        if let Some(proj) = project_filter {
-            if !path_str.contains(proj) {
-                continue;
-            }
+        if let Some(proj) = project_filter
+            && !path_str.contains(proj)
+        {
+            continue;
         }
 
         // Get task info from frontmatter
         let (task_id, task_status, project) = extract_task_info(task);
 
         // Filter by status if specified
-        if let Some(filter) = status_filter {
-            if !filter.matches(&task_status) {
-                continue;
-            }
+        if let Some(filter) = status_filter
+            && !filter.matches(&task_status)
+        {
+            continue;
         }
 
         let title = if task.title.is_empty() {
@@ -293,11 +293,11 @@ pub fn done(
     );
 
     // Log to parent project note
-    if let Some(ref project) = project_name {
-        if let Ok(project_file) = find_project_file(&cfg, project) {
-            let msg = format!("Completed task [[{}]]: {}", task_id, safe_title);
-            let _ = ProjectLogService::log_entry(&project_file, &msg);
-        }
+    if let Some(ref project) = project_name
+        && let Ok(project_file) = find_project_file(&cfg, project)
+    {
+        let msg = format!("Completed task [[{}]]: {}", task_id, safe_title);
+        let _ = ProjectLogService::log_entry(&project_file, &msg);
     }
 
     println!("OK   mdv task done");
@@ -437,11 +437,11 @@ pub fn cancel(
     );
 
     // Log to parent project note
-    if let Some(ref project) = project_name {
-        if let Ok(project_file) = find_project_file(&cfg, project) {
-            let msg = format!("Cancelled task [[{}]]: {}", task_id, safe_title);
-            let _ = ProjectLogService::log_entry(&project_file, &msg);
-        }
+    if let Some(ref project) = project_name
+        && let Ok(project_file) = find_project_file(&cfg, project)
+    {
+        let msg = format!("Cancelled task [[{}]]: {}", task_id, safe_title);
+        let _ = ProjectLogService::log_entry(&project_file, &msg);
     }
 
     println!("OK   mdv task cancel");
@@ -572,7 +572,9 @@ mod tests {
     fn nested_wikilinks() {
         // The exact case from the bug report
         assert_eq!(
-            strip_wikilinks("Read [[Zettel/Literature/survey-llm-architectures-2024|Survey of Different Large Language Model Architectures]]"),
+            strip_wikilinks(
+                "Read [[Zettel/Literature/survey-llm-architectures-2024|Survey of Different Large Language Model Architectures]]"
+            ),
             "Read Survey of Different Large Language Model Architectures"
         );
     }

@@ -48,11 +48,11 @@ fn parse_date_arg(arg: &Option<String>, name: &str) -> Option<DateTime<Utc>> {
     let s = arg.as_ref()?;
 
     // Try date math expression first (e.g., "today - 7d")
-    if let Some(result) = try_evaluate_date_expr(s) {
-        if let Ok(date) = NaiveDate::parse_from_str(&result, "%Y-%m-%d") {
-            let datetime = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-            return Some(DateTime::from_naive_utc_and_offset(datetime, Utc));
-        }
+    if let Some(result) = try_evaluate_date_expr(s)
+        && let Ok(date) = NaiveDate::parse_from_str(&result, "%Y-%m-%d")
+    {
+        let datetime = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+        return Some(DateTime::from_naive_utc_and_offset(datetime, Utc));
     }
 
     // Try ISO date (YYYY-MM-DD)

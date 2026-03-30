@@ -45,15 +45,15 @@ pub fn complete_types(current: &OsStr) -> Vec<CompletionCandidate> {
             }
             None => TypedefRepository::new(&cfg.typedefs_dir),
         };
-        if let Ok(typedef_repo) = typedef_result {
-            if let Ok(registry) = TypeRegistry::from_repository(&typedef_repo) {
-                for type_name in registry.list_custom_types() {
-                    if type_name.starts_with(current_str) {
-                        completions.push(
-                            CompletionCandidate::new(type_name)
-                                .help(Some("Custom type".into())),
-                        );
-                    }
+        if let Ok(typedef_repo) = typedef_result
+            && let Ok(registry) = TypeRegistry::from_repository(&typedef_repo)
+        {
+            for type_name in registry.list_custom_types() {
+                if type_name.starts_with(current_str) {
+                    completions.push(
+                        CompletionCandidate::new(type_name)
+                            .help(Some("Custom type".into())),
+                    );
                 }
             }
         }
@@ -67,12 +67,12 @@ pub fn complete_templates(current: &OsStr) -> Vec<CompletionCandidate> {
     let mut completions = vec![];
     let current_str = current.to_str().unwrap_or("");
 
-    if let Some(cfg) = load_config() {
-        if let Ok(repo) = TemplateRepository::new(&cfg.templates_dir) {
-            for info in repo.list_all() {
-                if info.logical_name.starts_with(current_str) {
-                    completions.push(CompletionCandidate::new(&info.logical_name));
-                }
+    if let Some(cfg) = load_config()
+        && let Ok(repo) = TemplateRepository::new(&cfg.templates_dir)
+    {
+        for info in repo.list_all() {
+            if info.logical_name.starts_with(current_str) {
+                completions.push(CompletionCandidate::new(&info.logical_name));
             }
         }
     }
@@ -85,12 +85,12 @@ pub fn complete_captures(current: &OsStr) -> Vec<CompletionCandidate> {
     let mut completions = vec![];
     let current_str = current.to_str().unwrap_or("");
 
-    if let Some(cfg) = load_config() {
-        if let Ok(repo) = CaptureRepository::new(&cfg.captures_dir) {
-            for info in repo.list_all() {
-                if info.logical_name.starts_with(current_str) {
-                    completions.push(CompletionCandidate::new(&info.logical_name));
-                }
+    if let Some(cfg) = load_config()
+        && let Ok(repo) = CaptureRepository::new(&cfg.captures_dir)
+    {
+        for info in repo.list_all() {
+            if info.logical_name.starts_with(current_str) {
+                completions.push(CompletionCandidate::new(&info.logical_name));
             }
         }
     }
@@ -103,12 +103,12 @@ pub fn complete_macros(current: &OsStr) -> Vec<CompletionCandidate> {
     let mut completions = vec![];
     let current_str = current.to_str().unwrap_or("");
 
-    if let Some(cfg) = load_config() {
-        if let Ok(repo) = MacroRepository::new(&cfg.macros_dir) {
-            for info in repo.list_all() {
-                if info.logical_name.starts_with(current_str) {
-                    completions.push(CompletionCandidate::new(&info.logical_name));
-                }
+    if let Some(cfg) = load_config()
+        && let Ok(repo) = MacroRepository::new(&cfg.macros_dir)
+    {
+        for info in repo.list_all() {
+            if info.logical_name.starts_with(current_str) {
+                completions.push(CompletionCandidate::new(&info.logical_name));
             }
         }
     }

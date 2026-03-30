@@ -5,18 +5,18 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use color_eyre::eyre::{bail, Result, WrapErr};
+use color_eyre::eyre::{Result, WrapErr, bail};
 
 use super::common::load_config;
-use crate::prompt::{collect_variables, PromptOptions};
+use crate::prompt::{PromptOptions, collect_variables};
 use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::{apply_ops, parse, serialize};
 use mdvault_core::index::{IndexBuilder, IndexDb};
 use mdvault_core::macros::{
-    get_shell_commands, requires_trust, run_macro, CaptureStep, MacroRepoError,
-    MacroRepository, MacroRunError, MacroSpec, RunContext, RunOptions, ShellStep,
-    StepExecutor, StepResult, TemplateStep,
+    CaptureStep, MacroRepoError, MacroRepository, MacroRunError, MacroSpec, RunContext,
+    RunOptions, ShellStep, StepExecutor, StepResult, TemplateStep, get_shell_commands,
+    requires_trust, run_macro,
 };
 use mdvault_core::markdown_ast::{MarkdownEditor, SectionMatch};
 use mdvault_core::paths::PathResolver;

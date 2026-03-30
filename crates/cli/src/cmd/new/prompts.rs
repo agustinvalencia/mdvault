@@ -1,7 +1,7 @@
-use color_eyre::eyre::{bail, Result, WrapErr};
+use color_eyre::eyre::{Result, WrapErr, bail};
 
-use crate::prompt::{prompt_for_enum, prompt_for_field, CollectedVars, PromptOptions};
-use dialoguer::{theme::ColorfulTheme, Editor, FuzzySelect, Input, Select};
+use crate::prompt::{CollectedVars, PromptOptions, prompt_for_enum, prompt_for_field};
+use dialoguer::{Editor, FuzzySelect, Input, Select, theme::ColorfulTheme};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::index::{IndexDb, NoteQuery, NoteType};
 use mdvault_core::paths::PathResolver;

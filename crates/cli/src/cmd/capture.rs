@@ -3,14 +3,14 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use color_eyre::eyre::{bail, Result, WrapErr};
+use color_eyre::eyre::{Result, WrapErr, bail};
 
 use super::common::load_config;
-use crate::prompt::{collect_variables, create_fuzzy_selector_callback, PromptOptions};
+use crate::prompt::{PromptOptions, collect_variables, create_fuzzy_selector_callback};
 use mdvault_core::activity::ActivityLogService;
 use mdvault_core::captures::{
-    run_after_insert_hook, run_before_insert_hook, CaptureRepoError, CaptureRepository,
-    CaptureSpec,
+    CaptureRepoError, CaptureRepository, CaptureSpec, run_after_insert_hook,
+    run_before_insert_hook,
 };
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::domain::services::set_updated_at;
@@ -19,7 +19,7 @@ use mdvault_core::index::{IndexBuilder, IndexDb};
 use mdvault_core::macros::MacroRepository;
 use mdvault_core::markdown_ast::{MarkdownAstError, MarkdownEditor, SectionMatch};
 use mdvault_core::paths::PathResolver;
-use mdvault_core::scripting::{run_on_update_hook, NoteContext, VaultContext};
+use mdvault_core::scripting::{NoteContext, VaultContext, run_on_update_hook};
 use mdvault_core::templates::engine::render_string as engine_render_string;
 use mdvault_core::templates::repository::TemplateRepository;
 use mdvault_core::types::{TypeRegistry, TypedefRepository};
@@ -509,11 +509,7 @@ fn render_string(template: &str, ctx: &HashMap<String, String>) -> String {
 
 fn resolve_target_path(vault_root: &Path, target: &str) -> std::path::PathBuf {
     let path = std::path::Path::new(target);
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        vault_root.join(path)
-    }
+    if path.is_absolute() { path.to_path_buf() } else { vault_root.join(path) }
 }
 
 /// Create a minimal note structure for auto-created files.
