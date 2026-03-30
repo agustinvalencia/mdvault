@@ -1,14 +1,17 @@
 //! Task management commands.
 
+use color_eyre::eyre::{bail, Result, WrapErr};
 use mdvault_core::activity::ActivityLogService;
 use mdvault_core::domain::{
     find_project_file, services::ProjectLogService, DailyLogService,
 };
 use mdvault_core::index::{IndexBuilder, IndexDb, IndexedNote, NoteQuery, NoteType};
+use mdvault_core::paths::PathResolver;
 use std::path::Path;
 use tabled::{settings::Style, Table, Tabled};
 
 use super::common::{load_config, open_index};
+use crate::StatusFilter;
 
 /// Row for task list table.
 #[derive(Tabled)]
@@ -28,25 +31,19 @@ pub fn list(
     config: Option<&Path>,
     profile: Option<&str>,
     project_filter: Option<&str>,
-    status_filter: Option<&str>,
-) {
-    let cfg = load_config(config, profile);
-    let db = open_index(&cfg.vault_root);
+    status_filter: Option<StatusFilter>,
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
+    let db = open_index(&cfg.vault_root)?;
 
     // Query all tasks
     let query = NoteQuery { note_type: Some(NoteType::Task), ..Default::default() };
 
-    let tasks = match db.query_notes(&query) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Failed to query tasks: {e}");
-            std::process::exit(1);
-        }
-    };
+    let tasks = db.query_notes(&query).wrap_err("Failed to query tasks")?;
 
     if tasks.is_empty() {
         println!("No tasks found.");
-        return;
+        return Ok(());
     }
 
     // Build table rows
@@ -66,8 +63,8 @@ pub fn list(
         let (task_id, task_status, project) = extract_task_info(task);
 
         // Filter by status if specified
-        if let Some(status) = status_filter {
-            if task_status != status {
+        if let Some(filter) = status_filter {
+            if !filter.matches(&task_status) {
                 continue;
             }
         }
@@ -87,7 +84,7 @@ pub fn list(
 
     if rows.is_empty() {
         println!("No tasks match the filter.");
-        return;
+        return Ok(());
     }
 
     // Sort by project then ID
@@ -97,12 +94,13 @@ pub fn list(
 
     println!("{}", table);
     println!("\nTotal: {} tasks", rows.len());
+    Ok(())
 }
 
 /// Show detailed status for a specific task.
-pub fn status(config: Option<&Path>, profile: Option<&str>, task_id: &str) {
-    let cfg = load_config(config, profile);
-    let db = open_index(&cfg.vault_root);
+pub fn status(config: Option<&Path>, profile: Option<&str>, task_id: &str) -> Result<()> {
+    let cfg = load_config(config, profile)?;
+    let db = open_index(&cfg.vault_root)?;
 
     // Query all tasks and find the one with matching ID
     let query = NoteQuery { note_type: Some(NoteType::Task), ..Default::default() };
@@ -124,9 +122,8 @@ pub fn status(config: Option<&Path>, profile: Option<&str>, task_id: &str) {
             match task_by_path {
                 Some(t) => t,
                 None => {
-                    eprintln!("Task not found: {}", task_id);
                     eprintln!("Run 'mdv task list' to see available tasks.");
-                    std::process::exit(1);
+                    bail!("Task not found: {}", task_id);
                 }
             }
         }
@@ -166,6 +163,7 @@ pub fn status(config: Option<&Path>, profile: Option<&str>, task_id: &str) {
         println!("  Completed:    {}", completed_at);
     }
     println!("  Path:         {}", task.path.display());
+    Ok(())
 }
 
 /// Mark a task as done.
@@ -174,8 +172,8 @@ pub fn done(
     profile: Option<&str>,
     task_path: &Path,
     summary: Option<&str>,
-) {
-    let cfg = load_config(config, profile);
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
 
     // Resolve task path relative to vault root
     let full_path = if task_path.is_absolute() {
@@ -185,33 +183,20 @@ pub fn done(
     };
 
     if !full_path.exists() {
-        eprintln!("Task not found: {}", full_path.display());
-        std::process::exit(1);
+        bail!("Task not found: {}", full_path.display());
     }
 
     // Read the task file
-    let content = match std::fs::read_to_string(&full_path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Failed to read task: {e}");
-            std::process::exit(1);
-        }
-    };
+    let content = std::fs::read_to_string(&full_path).wrap_err("Failed to read task")?;
 
     // Parse and update frontmatter
-    let parsed = match mdvault_core::frontmatter::parse(&content) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Failed to parse task frontmatter: {e}");
-            std::process::exit(1);
-        }
-    };
+    let parsed = mdvault_core::frontmatter::parse(&content)
+        .wrap_err("Failed to parse task frontmatter")?;
 
     let mut fm = match parsed.frontmatter {
         Some(fm) => fm,
         None => {
-            eprintln!("Task has no frontmatter");
-            std::process::exit(1);
+            bail!("Task has no frontmatter");
         }
     };
 
@@ -259,13 +244,8 @@ pub fn done(
     for (k, v) in fm.fields {
         mapping.insert(serde_yaml::Value::String(k), v);
     }
-    let yaml_str = match serde_yaml::to_string(&serde_yaml::Value::Mapping(mapping)) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Failed to serialize frontmatter: {e}");
-            std::process::exit(1);
-        }
-    };
+    let yaml_str = serde_yaml::to_string(&serde_yaml::Value::Mapping(mapping))
+        .wrap_err("Failed to serialize frontmatter")?;
 
     // Append summary to body if provided
     let body = if let Some(sum) = summary {
@@ -285,13 +265,10 @@ pub fn done(
     let final_content = format!("---\n{}---\n{}", yaml_str, body);
 
     // Write back
-    if let Err(e) = std::fs::write(&full_path, final_content) {
-        eprintln!("Failed to write task: {e}");
-        std::process::exit(1);
-    }
+    std::fs::write(&full_path, final_content).wrap_err("Failed to write task")?;
 
     // Update index for this file
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let index_path = PathResolver::new(&cfg.vault_root).index_db();
     if let Ok(db) = IndexDb::open(&index_path) {
         let builder = IndexBuilder::new(&db, &cfg.vault_root);
         if let Err(e) = builder.reindex_file(task_path) {
@@ -329,6 +306,7 @@ pub fn done(
     if summary.is_some() {
         println!("summary: logged to task");
     }
+    Ok(())
 }
 
 /// Cancel a task.
@@ -337,8 +315,8 @@ pub fn cancel(
     profile: Option<&str>,
     task_path: &Path,
     reason: Option<&str>,
-) {
-    let cfg = load_config(config, profile);
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
 
     // Resolve task path relative to vault root
     let full_path = if task_path.is_absolute() {
@@ -348,33 +326,20 @@ pub fn cancel(
     };
 
     if !full_path.exists() {
-        eprintln!("Task not found: {}", full_path.display());
-        std::process::exit(1);
+        bail!("Task not found: {}", full_path.display());
     }
 
     // Read the task file
-    let content = match std::fs::read_to_string(&full_path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Failed to read task: {e}");
-            std::process::exit(1);
-        }
-    };
+    let content = std::fs::read_to_string(&full_path).wrap_err("Failed to read task")?;
 
     // Parse and update frontmatter
-    let parsed = match mdvault_core::frontmatter::parse(&content) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Failed to parse task frontmatter: {e}");
-            std::process::exit(1);
-        }
-    };
+    let parsed = mdvault_core::frontmatter::parse(&content)
+        .wrap_err("Failed to parse task frontmatter")?;
 
     let mut fm = match parsed.frontmatter {
         Some(fm) => fm,
         None => {
-            eprintln!("Task has no frontmatter");
-            std::process::exit(1);
+            bail!("Task has no frontmatter");
         }
     };
 
@@ -423,13 +388,8 @@ pub fn cancel(
     for (k, v) in fm.fields {
         mapping.insert(serde_yaml::Value::String(k), v);
     }
-    let yaml_str = match serde_yaml::to_string(&serde_yaml::Value::Mapping(mapping)) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Failed to serialize frontmatter: {e}");
-            std::process::exit(1);
-        }
-    };
+    let yaml_str = serde_yaml::to_string(&serde_yaml::Value::Mapping(mapping))
+        .wrap_err("Failed to serialize frontmatter")?;
 
     // Append reason to body if provided
     let body = if let Some(r) = reason {
@@ -449,13 +409,10 @@ pub fn cancel(
     let final_content = format!("---\n{}---\n{}", yaml_str, body);
 
     // Write back
-    if let Err(e) = std::fs::write(&full_path, final_content) {
-        eprintln!("Failed to write task: {e}");
-        std::process::exit(1);
-    }
+    std::fs::write(&full_path, final_content).wrap_err("Failed to write task")?;
 
     // Update index for this file
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let index_path = PathResolver::new(&cfg.vault_root).index_db();
     if let Ok(db) = IndexDb::open(&index_path) {
         let builder = IndexBuilder::new(&db, &cfg.vault_root);
         if let Err(e) = builder.reindex_file(task_path) {
@@ -493,6 +450,7 @@ pub fn cancel(
     if reason.is_some() {
         println!("reason: logged to task");
     }
+    Ok(())
 }
 
 /// Strip wikilinks from a string so it can be safely embedded inside another wikilink.

@@ -5,6 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use color_eyre::eyre::{bail, Result, WrapErr};
+
 use super::common::load_config;
 use crate::prompt::{collect_variables, PromptOptions};
 use mdvault_core::captures::CaptureRepository;
@@ -17,6 +19,7 @@ use mdvault_core::macros::{
     StepExecutor, StepResult, TemplateStep,
 };
 use mdvault_core::markdown_ast::{MarkdownEditor, SectionMatch};
+use mdvault_core::paths::PathResolver;
 use mdvault_core::templates::discovery::TemplateInfo;
 use mdvault_core::templates::engine::{
     build_minimal_context, render_string, resolve_template_output_path,
@@ -26,22 +29,15 @@ use mdvault_core::templates::repository::TemplateRepository;
 use chrono::Local;
 
 /// List available macros.
-pub fn run_list(config: Option<&Path>, profile: Option<&str>) {
-    let cfg = load_config(config, profile);
+pub fn run_list(config: Option<&Path>, profile: Option<&str>) -> Result<()> {
+    let cfg = load_config(config, profile)?;
 
-    let repo = match MacroRepository::new(&cfg.macros_dir) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("FAIL mdv macro --list");
-            eprintln!("{e}");
-            std::process::exit(1);
-        }
-    };
+    let repo = MacroRepository::new(&cfg.macros_dir).wrap_err("FAIL mdv macro --list")?;
 
     let macros = repo.list_all();
     if macros.is_empty() {
         println!("(no macros found)");
-        return;
+        return Ok(());
     }
 
     for info in macros {
@@ -66,6 +62,7 @@ pub fn run_list(config: Option<&Path>, profile: Option<&str>) {
         }
     }
     println!("-- {} macros --", macros.len());
+    Ok(())
 }
 
 /// Run a macro.
@@ -76,50 +73,44 @@ pub fn run(
     vars: &[(String, String)],
     batch: bool,
     trust: bool,
-) {
+) -> Result<()> {
     // 1. Load config
-    let cfg = load_config(config, profile);
+    let cfg = load_config(config, profile)?;
 
     // 2. Load macro repository
-    let repo = match MacroRepository::new(&cfg.macros_dir) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("FAIL mdv macro");
-            eprintln!("{e}");
-            std::process::exit(1);
-        }
-    };
+    let repo = MacroRepository::new(&cfg.macros_dir).wrap_err("FAIL mdv macro")?;
 
     // 3. Get macro spec
     let loaded = match repo.get_by_name(macro_name) {
         Ok(m) => m,
         Err(e) => match e {
             MacroRepoError::NotFound(name) => {
-                eprintln!("Macro not found: {name}");
-                eprintln!("Available macros:");
-                for m in repo.list_all() {
-                    eprintln!("  - {}", m.logical_name);
-                }
-                std::process::exit(1);
+                let available: Vec<_> = repo
+                    .list_all()
+                    .iter()
+                    .map(|m| format!("  - {}", m.logical_name))
+                    .collect();
+                bail!(
+                    "Macro not found: {name}\nAvailable macros:\n{}",
+                    available.join("\n")
+                );
             }
             other => {
-                eprintln!("Failed to load macro: {other}");
-                std::process::exit(1);
+                bail!("Failed to load macro: {other}");
             }
         },
     };
 
     // 4. Check trust requirements
     if requires_trust(&loaded.spec) && !trust {
-        eprintln!(
-            "Error: This macro contains shell commands that require the --trust flag."
+        let cmds: Vec<_> = get_shell_commands(&loaded.spec)
+            .iter()
+            .map(|cmd| format!("  $ {cmd}"))
+            .collect();
+        bail!(
+            "This macro contains shell commands that require the --trust flag.\nShell commands:\n{}\n\nRun with --trust to allow shell execution.",
+            cmds.join("\n")
         );
-        eprintln!("Shell commands:");
-        for cmd in get_shell_commands(&loaded.spec) {
-            eprintln!("  $ {cmd}");
-        }
-        eprintln!("\nRun with --trust to allow shell execution.");
-        std::process::exit(1);
     }
 
     // 5. Build base context
@@ -135,19 +126,14 @@ pub fn run(
     let vars_map = loaded.spec.vars.as_ref();
     let prompt_options = PromptOptions { batch_mode: batch };
 
-    let collected = match collect_variables(
+    let collected = collect_variables(
         vars_map,
         &content_for_vars,
         &provided_vars,
         &base_ctx,
         &prompt_options,
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Error: {e}");
-            std::process::exit(1);
-        }
-    };
+    )
+    .wrap_err("Failed to collect variables")?;
 
     // Merge collected variables into context
     let mut ctx_vars = base_ctx;
@@ -156,21 +142,11 @@ pub fn run(
     }
 
     // 6. Create executor with loaded repositories
-    let template_repo = match TemplateRepository::new(&cfg.templates_dir) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Failed to load templates: {e}");
-            std::process::exit(1);
-        }
-    };
+    let template_repo = TemplateRepository::new(&cfg.templates_dir)
+        .wrap_err("Failed to load templates")?;
 
-    let capture_repo = match CaptureRepository::new(&cfg.captures_dir) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Failed to load captures: {e}");
-            std::process::exit(1);
-        }
-    };
+    let capture_repo =
+        CaptureRepository::new(&cfg.captures_dir).wrap_err("Failed to load captures")?;
 
     let executor = CliStepExecutor { config: cfg.clone(), template_repo, capture_repo };
 
@@ -188,7 +164,7 @@ pub fn run(
 
     // 9. Reindex vault so any created/modified notes appear in queries
     if result.success {
-        let index_path = cfg.vault_root.join(".mdvault/index.db");
+        let index_path = PathResolver::new(&cfg.vault_root).index_db();
         if let Some(parent) = index_path.parent() {
             let _ = fs::create_dir_all(parent);
         }
@@ -219,14 +195,18 @@ pub fn run(
             println!("  [{status}] Step {}: {}", i + 1, step_result.message);
         }
     } else {
-        eprintln!("FAIL mdv macro");
-        eprintln!("macro: {}", macro_name);
+        let mut msg = format!("FAIL mdv macro\nmacro: {}", macro_name);
         for (i, step_result) in result.step_results.iter().enumerate() {
             let status = if step_result.success { "OK" } else { "FAIL" };
-            eprintln!("  [{status}] Step {}: {}", i + 1, step_result.message);
+            msg.push_str(&format!(
+                "\n  [{status}] Step {}: {}",
+                i + 1,
+                step_result.message
+            ));
         }
-        std::process::exit(1);
+        bail!(msg);
     }
+    Ok(())
 }
 
 /// Build content string for variable extraction from macro spec.

@@ -3,6 +3,8 @@ mod hooks;
 mod prompts;
 mod writer;
 
+use color_eyre::eyre::{bail, Result, WrapErr};
+
 use super::common::load_config;
 use crate::prompt::{CollectedVars, PromptOptions};
 use crate::NewArgs;
@@ -19,23 +21,22 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
-pub fn run(config: Option<&Path>, profile: Option<&str>, args: NewArgs) {
+pub fn run(config: Option<&Path>, profile: Option<&str>, args: NewArgs) -> Result<()> {
     debug!("Running create new");
-    let cfg = load_config(config, profile);
+    let cfg = load_config(config, profile)?;
 
     let effective_name = args
         .template
         .as_deref()
         .or(args.note_type.as_deref())
-        .unwrap_or_else(|| {
-            eprintln!("Error: either provide a type name or use --template");
-            eprintln!("Usage: mdv new <type> [title] [--var field=value]");
-            eprintln!("       mdv new --template <name> [--var key=value]");
-            std::process::exit(1);
-        })
+        .ok_or_else(|| {
+            color_eyre::eyre::eyre!(
+                "Either provide a type name or use --template\nUsage: mdv new <type> [title] [--var field=value]\n       mdv new --template <name> [--var key=value]"
+            )
+        })?
         .to_string();
 
-    run_unified(&cfg, &effective_name, &args);
+    run_unified(&cfg, &effective_name, &args)
 }
 
 /// Merge CreationContext vars and core_metadata fields into a template render HashMap.
@@ -83,7 +84,7 @@ fn inject_focus_context(cfg: &ResolvedConfig, vars: &mut HashMap<String, String>
 }
 
 /// Unified creation flow — handles both template-based and scaffolding-based note creation.
-fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
+fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) -> Result<()> {
     // 1. Load TypedefRepository + TypeRegistry
     let typedef_repo = match &cfg.typedefs_fallback_dir {
         Some(fallback) => {
@@ -114,14 +115,14 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
 
     // 5. Error if no template AND no known type
     if loaded_template.is_none() && note_type.is_none() {
-        eprintln!("Unknown type or template: {effective_name}");
+        let mut msg = format!("Unknown type or template: {effective_name}");
         if let Some(ref reg) = type_registry {
-            eprintln!("Available types:");
+            msg.push_str("\nAvailable types:");
             for t in reg.list_all_types() {
-                eprintln!("  {t}");
+                msg.push_str(&format!("\n  {t}"));
             }
         }
-        std::process::exit(1);
+        bail!(msg);
     }
 
     // 6. Parse CLI vars and title
@@ -139,7 +140,7 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
                 needs_title,
                 args.batch,
                 &type_registry,
-            )
+            )?
         }
     } else {
         prompts::resolve_title_or_default(
@@ -147,7 +148,7 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
             needs_title,
             args.batch,
             &type_registry,
-        )
+        )?
     };
     if !title.is_empty() {
         provided_vars.entry("title".to_string()).or_insert(title.clone());
@@ -169,7 +170,7 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
 
         let behavior = _nt.behavior();
         let type_prompts = behavior.type_prompts(&ctx.to_prompt_context());
-        prompts::dispatch_type_prompts(type_prompts, &mut ctx.vars, cfg, args.batch);
+        prompts::dispatch_type_prompts(type_prompts, &mut ctx.vars, cfg, args.batch)?;
 
         for (k, v) in &ctx.vars {
             if !pre_lifecycle_keys.contains(k) {
@@ -183,18 +184,13 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
     // 10. Collect schema variables
     let prompt_options = PromptOptions { batch_mode: args.batch };
     let collected = if let Some(ref typedef) = lua_typedef {
-        match prompts::collect_schema_variables(
+        prompts::collect_schema_variables(
             typedef,
             &provided_vars,
             &prompt_options,
             Some(cfg),
-        ) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("Error: {e}");
-                std::process::exit(1);
-            }
-        }
+        )
+        .wrap_err("Failed to collect schema variables")?
     } else {
         CollectedVars {
             values: provided_vars.clone(),
@@ -238,11 +234,7 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
         }
         if let Some(ref nt) = note_type {
             let behavior = nt.behavior();
-            if let Err(e) = behavior.before_create(ctx) {
-                eprintln!("FAIL mdv new");
-                eprintln!("{e}");
-                std::process::exit(1);
-            }
+            behavior.before_create(ctx).wrap_err("FAIL mdv new")?;
         }
         ref_date = ctx.reference_date;
         merge_context_to_render_vars(ctx, &mut render_ctx);
@@ -257,7 +249,7 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
         &lua_typedef,
         cfg,
         &render_ctx,
-    );
+    )?;
 
     // 16. Set ctx.output_path + update render context
     if let Some(ref mut ctx) = creation_ctx {
@@ -279,23 +271,17 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
     }
 
     if output_path.exists() {
-        eprintln!(
+        bail!(
             "Refusing to overwrite existing file: {} (add --force later if needed)",
             output_path.display()
         );
-        std::process::exit(1);
     }
 
     // 17. Generate content
     let mut rendered = if let Some(ref loaded) = loaded_template {
         debug!("Render context: {:?}", render_ctx);
-        match render_with_ref_date(loaded, &render_ctx, ref_date) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Failed to render template: {e}");
-                std::process::exit(1);
-            }
-        }
+        render_with_ref_date(loaded, &render_ctx, ref_date)
+            .wrap_err("Failed to render template")?
     } else {
         let title_for_scaffolding = creation_ctx
             .as_ref()
@@ -335,11 +321,12 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
                 Ok(Some(fixed)) => rendered = fixed,
                 Ok(None) => {}
                 Err(errors) => {
-                    eprintln!("Validation failed:");
-                    for err in &errors {
-                        eprintln!("  - {}", err);
-                    }
-                    std::process::exit(1);
+                    let errs = errors
+                        .iter()
+                        .map(|e| format!("  - {e}"))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    bail!("Validation failed:\n{errs}");
                 }
             }
         }
@@ -347,16 +334,14 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
 
     // 20. Create dirs + write file
     if let Some(parent) = output_path.parent() {
-        if let Err(e) = fs::create_dir_all(parent) {
-            eprintln!("Failed to create parent directory {}: {e}", parent.display());
-            std::process::exit(1);
-        }
+        fs::create_dir_all(parent).wrap_err_with(|| {
+            format!("Failed to create parent directory {}", parent.display())
+        })?;
     }
 
-    if let Err(e) = fs::write(&output_path, &rendered) {
-        eprintln!("Failed to write output file {}: {e}", output_path.display());
-        std::process::exit(1);
-    }
+    fs::write(&output_path, &rendered).wrap_err_with(|| {
+        format!("Failed to write output file {}", output_path.display())
+    })?;
 
     // 21. Post-write pipeline
     post_write_pipeline(
@@ -387,6 +372,7 @@ fn run_unified(cfg: &ResolvedConfig, effective_name: &str, args: &NewArgs) {
         }
     }
     println!("output: {}", output_path.display());
+    Ok(())
 }
 
 /// Post-write pipeline: hook execution, core_metadata protection, after_create, reindex, activity logging.

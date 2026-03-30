@@ -9,6 +9,8 @@ use thiserror::Error;
 
 use crate::config::types::{ActivityConfig, ResolvedConfig};
 
+use crate::paths::PathResolver;
+
 use super::types::{ActivityEntry, Operation};
 
 /// Error type for activity logging.
@@ -39,12 +41,10 @@ pub struct ActivityLogService {
 }
 
 impl ActivityLogService {
-    const LOG_FILE: &'static str = ".mdvault/activity.jsonl";
-    const ARCHIVE_DIR: &'static str = ".mdvault/activity_archive";
-
     /// Create a new ActivityLogService for the given vault.
     pub fn new(vault_root: &Path, config: ActivityConfig) -> Self {
-        let log_path = vault_root.join(Self::LOG_FILE);
+        let resolver = PathResolver::new(vault_root);
+        let log_path = resolver.activity_log();
         Self { log_path, config, vault_root: vault_root.to_path_buf() }
     }
 
@@ -220,9 +220,10 @@ impl ActivityLogService {
     /// Perform log rotation if needed.
     /// Should be called at startup or periodically.
     pub fn rotate_if_needed(&self) -> Result<()> {
+        let archive_dir = PathResolver::new(&self.vault_root).activity_archive_dir();
         super::rotation::rotate_log(
             &self.log_path,
-            &self.vault_root.join(Self::ARCHIVE_DIR),
+            &archive_dir,
             self.config.retention_days,
         )
     }

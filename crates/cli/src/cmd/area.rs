@@ -1,6 +1,7 @@
 //! Area management commands.
 
 use chrono::{Datelike, Local, NaiveDate};
+use color_eyre::eyre::{bail, Result};
 use mdvault_core::index::{IndexedNote, NoteQuery, NoteType};
 use serde::Serialize;
 use std::path::Path;
@@ -201,9 +202,9 @@ pub fn report(
     area_name: &str,
     period: &str,
     json_output: bool,
-) {
-    let cfg = load_config(config, profile);
-    let db = open_index(&cfg.vault_root);
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
+    let db = open_index(&cfg.vault_root)?;
 
     // Find the area
     let projects = db
@@ -216,9 +217,8 @@ pub fn report(
     let area = match find_area(&projects, area_name) {
         Some(a) => a,
         None => {
-            eprintln!("Area not found: {}", area_name);
             eprintln!("Run 'mdv project list --kind area' to see available areas.");
-            std::process::exit(1);
+            bail!("Area not found: {}", area_name);
         }
     };
 
@@ -244,7 +244,7 @@ pub fn report(
             println!("Area: {} [{}]", area_title, area_id);
             println!("No health_criteria defined. Add them to the area frontmatter.");
         }
-        return;
+        return Ok(());
     }
 
     // Parse period
@@ -320,6 +320,7 @@ pub fn report(
         let table = Table::new(&rows).with(Style::rounded()).to_string();
         println!("{table}");
     }
+    Ok(())
 }
 
 // ── Export command ────────────────────────────────────────────────────────
@@ -331,9 +332,9 @@ pub fn export(
     from: Option<&str>,
     to: Option<&str>,
     format: &str,
-) {
-    let cfg = load_config(config, profile);
-    let db = open_index(&cfg.vault_root);
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
+    let db = open_index(&cfg.vault_root)?;
 
     // Find the area
     let projects = db
@@ -346,16 +347,14 @@ pub fn export(
     let area = match find_area(&projects, area_name) {
         Some(a) => a,
         None => {
-            eprintln!("Area not found: {}", area_name);
-            std::process::exit(1);
+            bail!("Area not found: {}", area_name);
         }
     };
 
     let fm = get_fm_json(area).unwrap_or(serde_json::Value::Null);
     let criteria = parse_health_criteria(&fm);
     if criteria.is_empty() {
-        eprintln!("No health_criteria defined for this area.");
-        std::process::exit(1);
+        bail!("No health_criteria defined for this area.");
     }
 
     // Parse date range
@@ -433,6 +432,7 @@ pub fn export(
             }
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]

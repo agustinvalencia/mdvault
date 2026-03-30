@@ -43,6 +43,56 @@ pub enum OutputFormat {
     Quiet,
 }
 
+/// Task/project status filter.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum StatusFilter {
+    /// Not started
+    Todo,
+    /// Currently being worked on
+    #[value(alias = "doing")]
+    InProgress,
+    /// Waiting on something
+    #[value(alias = "waiting")]
+    Blocked,
+    /// Completed
+    #[value(alias = "completed")]
+    Done,
+    /// No longer needed
+    #[value(alias = "canceled")]
+    Cancelled,
+}
+
+impl StatusFilter {
+    /// Return all normalised status strings that match this filter variant.
+    pub fn matches(&self, status: &str) -> bool {
+        match self {
+            Self::Todo => matches!(status, "todo" | "open"),
+            Self::InProgress => matches!(status, "in-progress" | "in_progress" | "doing"),
+            Self::Blocked => matches!(status, "blocked" | "waiting"),
+            Self::Done => matches!(status, "done" | "completed"),
+            Self::Cancelled => matches!(status, "cancelled" | "canceled"),
+        }
+    }
+}
+
+/// Project kind filter.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum KindFilter {
+    /// A project with a defined end
+    Project,
+    /// An ongoing area of responsibility
+    Area,
+}
+
+impl KindFilter {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Project => "project",
+            Self::Area => "area",
+        }
+    }
+}
+
 /// Note type filter for list command.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum NoteTypeArg {
@@ -164,4 +214,41 @@ pub(crate) fn parse_key_val(s: &str) -> Result<(String, String), String> {
     let pos =
         s.find('=').ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
     Ok((s[..pos].to_string(), s[pos + 1..].to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_filter_matches_canonical() {
+        assert!(StatusFilter::Todo.matches("todo"));
+        assert!(StatusFilter::InProgress.matches("in-progress"));
+        assert!(StatusFilter::InProgress.matches("in_progress"));
+        assert!(StatusFilter::Blocked.matches("blocked"));
+        assert!(StatusFilter::Done.matches("done"));
+        assert!(StatusFilter::Cancelled.matches("cancelled"));
+    }
+
+    #[test]
+    fn status_filter_matches_aliases() {
+        assert!(StatusFilter::Todo.matches("open"));
+        assert!(StatusFilter::InProgress.matches("doing"));
+        assert!(StatusFilter::Blocked.matches("waiting"));
+        assert!(StatusFilter::Done.matches("completed"));
+        assert!(StatusFilter::Cancelled.matches("canceled"));
+    }
+
+    #[test]
+    fn status_filter_rejects_wrong_status() {
+        assert!(!StatusFilter::Todo.matches("done"));
+        assert!(!StatusFilter::Done.matches("todo"));
+        assert!(!StatusFilter::InProgress.matches("blocked"));
+    }
+
+    #[test]
+    fn kind_filter_as_str() {
+        assert_eq!(KindFilter::Project.as_str(), "project");
+        assert_eq!(KindFilter::Area.as_str(), "area");
+    }
 }

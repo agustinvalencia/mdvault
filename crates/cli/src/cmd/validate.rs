@@ -2,8 +2,10 @@
 
 use std::path::Path;
 
+use color_eyre::eyre::{bail, Result, WrapErr};
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::index::IndexDb;
+use mdvault_core::paths::PathResolver;
 use mdvault_core::types::{
     add_link_integrity_warnings, apply_fixes, try_fix_note, validate_note, TypeRegistry,
     TypedefRepository, ValidationResult,
@@ -13,48 +15,41 @@ use super::common::load_config;
 use super::output::resolve_format;
 use crate::{OutputFormat, ValidateArgs};
 
-pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
+pub fn run(
+    config: Option<&Path>,
+    profile: Option<&str>,
+    args: ValidateArgs,
+) -> Result<()> {
     // Load configuration
-    let rc = load_config(config, profile);
+    let rc = load_config(config, profile)?;
 
     // Load type definitions (with fallback to default dir)
     let typedef_repo = match &rc.typedefs_fallback_dir {
         Some(fallback) => TypedefRepository::with_fallback(&rc.typedefs_dir, fallback),
         None => TypedefRepository::new(&rc.typedefs_dir),
     };
-    let typedef_repo = match typedef_repo {
-        Ok(repo) => repo,
-        Err(e) => {
-            eprintln!("Error loading type definitions: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let typedef_repo = typedef_repo
+        .map_err(|e| color_eyre::eyre::eyre!("Error loading type definitions: {e}"))?;
 
-    let registry = match TypeRegistry::from_repository(&typedef_repo) {
-        Ok(reg) => reg,
-        Err(e) => {
-            eprintln!("Error building type registry: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let registry = TypeRegistry::from_repository(&typedef_repo)
+        .map_err(|e| color_eyre::eyre::eyre!("Error building type registry: {e}"))?;
 
     // If --list-types, just show available types
     if args.list_types {
         print_types(&registry);
-        return;
+        return Ok(());
     }
 
     // Open index database if needed (for querying notes or link checking)
-    let index_path = rc.vault_root.join(".mdvault/index.db");
+    let index_path = PathResolver::new(&rc.vault_root).index_db();
     let index_db: Option<IndexDb> = if args.path.is_none() || args.check_links {
         match IndexDb::open(&index_path) {
             Ok(db) => Some(db),
             Err(e) => {
                 if args.path.is_none() {
                     // Index is required for index-based mode
-                    eprintln!("Error opening index: {}", e);
                     eprintln!("Hint: Run 'mdv reindex' to build the index first.");
-                    std::process::exit(1);
+                    return Err(e).wrap_err("Error opening index");
                 } else if args.check_links {
                     // Index is optional for single-file mode with link checking
                     eprintln!(
@@ -80,17 +75,11 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
         };
 
         if !full_path.exists() {
-            eprintln!("Error: File not found: {}", full_path.display());
-            std::process::exit(1);
+            bail!("File not found: {}", full_path.display());
         }
 
-        let content = match std::fs::read_to_string(&full_path) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("Error reading file: {}", e);
-                std::process::exit(1);
-            }
-        };
+        let content =
+            std::fs::read_to_string(&full_path).wrap_err("Error reading file")?;
 
         // Extract note type from frontmatter
         let note_type = extract_note_type(&content);
@@ -116,13 +105,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
             offset: None,
         };
 
-        let notes = match db.query_notes(&query) {
-            Ok(notes) => notes,
-            Err(e) => {
-                eprintln!("Error querying notes: {}", e);
-                std::process::exit(1);
-            }
-        };
+        let notes = db.query_notes(&query).wrap_err("Error querying notes")?;
 
         // Convert to NoteInfo
         let note_infos: Vec<NoteInfo> = notes
@@ -260,8 +243,9 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: ValidateArgs) {
 
     // Exit with error code if any validation failures remain unfixed
     if error_count > 0 {
-        std::process::exit(1);
+        bail!("{} note(s) failed validation", error_count);
     }
+    Ok(())
 }
 
 /// Information about a note to validate.

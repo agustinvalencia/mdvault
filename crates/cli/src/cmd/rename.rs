@@ -4,6 +4,7 @@ use std::io::{self, Write};
 use std::path::Path;
 
 use super::common::{load_config, open_index};
+use color_eyre::eyre::Result;
 use mdvault_core::activity::ActivityLogService;
 use mdvault_core::rename::{
     execute_rename, generate_preview, FileChange, RenameError, RenamePreview,
@@ -11,19 +12,14 @@ use mdvault_core::rename::{
 
 use crate::RenameArgs;
 
-pub fn run(config: Option<&Path>, profile: Option<&str>, args: RenameArgs) {
+pub fn run(config: Option<&Path>, profile: Option<&str>, args: RenameArgs) -> Result<()> {
     // Load configuration
-    let rc = load_config(config, profile);
-    let db = open_index(&rc.vault_root);
+    let rc = load_config(config, profile)?;
+    let db = open_index(&rc.vault_root)?;
 
     // Generate preview
-    let preview = match generate_preview(&db, &rc.vault_root, &args.source, &args.dest) {
-        Ok(p) => p,
-        Err(e) => {
-            print_error(&e);
-            std::process::exit(1);
-        }
-    };
+    let preview = generate_preview(&db, &rc.vault_root, &args.source, &args.dest)
+        .map_err(|e| format_rename_error(&e))?;
 
     // Display preview
     print_preview(&preview, &rc.vault_root);
@@ -32,83 +28,82 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: RenameArgs) {
     if args.dry_run {
         println!();
         println!("(dry-run mode - no changes made)");
-        return;
+        return Ok(());
     }
 
     // Confirm unless --yes
     if !args.yes && !confirm_rename() {
         println!("Cancelled.");
-        return;
+        return Ok(());
     }
 
     // Execute rename
-    match execute_rename(&db, &rc.vault_root, &args.source, &args.dest) {
-        Ok(result) => {
-            // Log to activity log
-            if let Some(activity) = ActivityLogService::try_from_config(&rc) {
-                // Try to determine note type from the file
-                let note_type = std::fs::read_to_string(&result.new_path)
-                    .ok()
-                    .and_then(|content| mdvault_core::frontmatter::parse(&content).ok())
-                    .and_then(|parsed| parsed.frontmatter)
-                    .and_then(|fm| fm.fields.get("type").cloned())
-                    .and_then(|v| match v {
-                        serde_yaml::Value::String(s) => Some(s),
-                        _ => None,
-                    })
-                    .unwrap_or_else(|| "note".to_string());
+    let result = execute_rename(&db, &rc.vault_root, &args.source, &args.dest)
+        .map_err(|e| format_rename_error(&e))?;
 
-                let _ = activity.log_rename(
-                    &note_type,
-                    &result.old_path,
-                    &result.new_path,
-                    result.references_updated,
-                );
-            }
+    // Log to activity log
+    if let Some(activity) = ActivityLogService::try_from_config(&rc) {
+        // Try to determine note type from the file
+        let note_type = std::fs::read_to_string(&result.new_path)
+            .ok()
+            .and_then(|content| mdvault_core::frontmatter::parse(&content).ok())
+            .and_then(|parsed| parsed.frontmatter)
+            .and_then(|fm| fm.fields.get("type").cloned())
+            .and_then(|v| match v {
+                serde_yaml::Value::String(s) => Some(s),
+                _ => None,
+            })
+            .unwrap_or_else(|| "note".to_string());
 
-            println!();
-            println!(
-                "Renamed: {} -> {}",
-                result
-                    .old_path
-                    .strip_prefix(&rc.vault_root)
-                    .unwrap_or(&result.old_path)
-                    .display(),
-                result
-                    .new_path
-                    .strip_prefix(&rc.vault_root)
-                    .unwrap_or(&result.new_path)
-                    .display()
-            );
-            println!("Files modified: {}", result.files_modified.len());
-            println!("References updated: {}", result.references_updated);
-
-            // Print any warnings
-            for warning in &result.warnings {
-                eprintln!("{}", warning);
-            }
-        }
-        Err(e) => {
-            print_error(&e);
-            std::process::exit(1);
-        }
+        let _ = activity.log_rename(
+            &note_type,
+            &result.old_path,
+            &result.new_path,
+            result.references_updated,
+        );
     }
+
+    println!();
+    println!(
+        "Renamed: {} -> {}",
+        result
+            .old_path
+            .strip_prefix(&rc.vault_root)
+            .unwrap_or(&result.old_path)
+            .display(),
+        result
+            .new_path
+            .strip_prefix(&rc.vault_root)
+            .unwrap_or(&result.new_path)
+            .display()
+    );
+    println!("Files modified: {}", result.files_modified.len());
+    println!("References updated: {}", result.references_updated);
+
+    // Print any warnings
+    for warning in &result.warnings {
+        eprintln!("{}", warning);
+    }
+
+    Ok(())
 }
 
-fn print_error(e: &RenameError) {
+fn format_rename_error(e: &RenameError) -> color_eyre::eyre::Report {
     match e {
         RenameError::SourceNotFound(path) => {
-            eprintln!("Error: Source file not found: {}", path.display());
+            color_eyre::eyre::eyre!("Source file not found: {}", path.display())
         }
         RenameError::TargetExists(path) => {
-            eprintln!("Error: Target file already exists: {}", path.display());
+            color_eyre::eyre::eyre!("Target file already exists: {}", path.display())
         }
         RenameError::NoteNotInIndex(path) => {
-            eprintln!("Error: Note not found in index: {}", path.display());
-            eprintln!("Hint: Run 'mdv reindex' to update the index.");
+            color_eyre::eyre::eyre!(
+                "Note not found in index: {}\nHint: Run 'mdv reindex' to update the index.",
+                path.display()
+            )
         }
         _ => {
-            eprintln!("Error: {}", e);
+            color_eyre::eyre::eyre!("{}", e)
         }
     }
 }

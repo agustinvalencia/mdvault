@@ -1,7 +1,8 @@
+use color_eyre::eyre::{bail, Result};
 use mdvault_core::config::loader::{default_config_path, ConfigLoader};
 use std::path::Path;
 
-pub fn run(config: Option<&Path>, profile: Option<&str>) {
+pub fn run(config: Option<&Path>, profile: Option<&str>) -> Result<()> {
     match ConfigLoader::load(config, profile) {
         Ok(rc) => {
             println!("OK   mdv doctor");
@@ -18,6 +19,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>) {
             println!("macros_dir: {}", rc.macros_dir.display());
             println!("security.allow_shell: {}", rc.security.allow_shell);
             println!("security.allow_http:  {}", rc.security.allow_http);
+            Ok(())
         }
         Err(e) => {
             println!("FAIL mdv doctor");
@@ -25,7 +27,7 @@ pub fn run(config: Option<&Path>, profile: Option<&str>) {
             if config.is_none() {
                 println!("looked for: {}", default_config_path().display());
             }
-            std::process::exit(1);
+            bail!("doctor check failed");
         }
     }
 }

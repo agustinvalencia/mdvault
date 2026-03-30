@@ -1,7 +1,10 @@
+use color_eyre::eyre::{bail, Result, WrapErr};
+
 use crate::prompt::{prompt_for_enum, prompt_for_field, CollectedVars, PromptOptions};
 use dialoguer::{theme::ColorfulTheme, Editor, FuzzySelect, Input, Select};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::index::{IndexDb, NoteQuery, NoteType};
+use mdvault_core::paths::PathResolver;
 use mdvault_core::types::{TypeDefinition, TypeRegistry};
 use std::collections::HashMap;
 
@@ -11,7 +14,7 @@ pub(super) fn dispatch_type_prompts(
     vars: &mut HashMap<String, String>,
     cfg: &ResolvedConfig,
     batch_mode: bool,
-) {
+) -> Result<()> {
     for prompt in prompts {
         if vars.contains_key(&prompt.field_name) {
             continue;
@@ -32,8 +35,7 @@ pub(super) fn dispatch_type_prompts(
                             if let Some(default) = prompt.default_value {
                                 vars.insert(prompt.field_name, default);
                             } else {
-                                eprintln!("No project selected");
-                                std::process::exit(1);
+                                bail!("No project selected");
                             }
                         }
                     }
@@ -52,8 +54,7 @@ pub(super) fn dispatch_type_prompts(
                             vars.insert(prompt.field_name, prompt.default_value.unwrap());
                         }
                         Err(e) => {
-                            eprintln!("Error: {e}");
-                            std::process::exit(1);
+                            bail!("Error: {e}");
                         }
                     }
                 }
@@ -76,14 +77,14 @@ pub(super) fn dispatch_type_prompts(
                             vars.insert(prompt.field_name, prompt.default_value.unwrap());
                         }
                         Err(e) => {
-                            eprintln!("Error: {e}");
-                            std::process::exit(1);
+                            bail!("Error: {e}");
                         }
                     }
                 }
             }
         }
     }
+    Ok(())
 }
 
 /// Resolve title when not explicitly provided.
@@ -92,7 +93,7 @@ pub(super) fn resolve_title_or_default(
     required: bool,
     batch_mode: bool,
     type_registry: &Option<TypeRegistry>,
-) -> String {
+) -> Result<String> {
     let title_default =
         type_registry.as_ref().and_then(|reg| reg.get(effective_name)).and_then(|td| {
             td.schema.get("title").and_then(|fs| {
@@ -104,26 +105,20 @@ pub(super) fn resolve_title_or_default(
         });
 
     if let Some(default_title) = title_default {
-        return default_title;
+        return Ok(default_title);
     }
 
     if !required {
-        return String::new();
+        return Ok(String::new());
     }
 
     if batch_mode {
-        eprintln!("Error: title is required in batch mode");
-        eprintln!("Usage: mdv new {effective_name} \"Title\"");
-        std::process::exit(1);
+        bail!(
+            "Title is required in batch mode\nUsage: mdv new {effective_name} \"Title\""
+        );
     }
 
-    match prompt_for_field("title", "Note title", None, true) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Error: {e}");
-            std::process::exit(1);
-        }
-    }
+    prompt_for_field("title", "Note title", None, true).wrap_err("Failed to read title")
 }
 
 /// Collect variables from Lua schema fields that have `prompt` set.
@@ -132,7 +127,7 @@ pub(super) fn collect_schema_variables(
     provided_vars: &HashMap<String, String>,
     options: &PromptOptions,
     cfg: Option<&ResolvedConfig>,
-) -> Result<CollectedVars, String> {
+) -> Result<CollectedVars> {
     let mut result = CollectedVars {
         values: HashMap::new(),
         prompted: Vec::new(),
@@ -162,10 +157,10 @@ pub(super) fn collect_schema_variables(
                     result.values.insert(field_name.clone(), value);
                     result.defaulted.push(field_name.clone());
                 } else if schema.required {
-                    return Err(format!(
+                    bail!(
                         "Missing required field '{}' in batch mode (selector field)",
                         field_name
-                    ));
+                    );
                 }
             } else if let Some(config) = cfg {
                 let prompt_text = schema.prompt.as_deref().unwrap_or(field_name.as_str());
@@ -182,13 +177,10 @@ pub(super) fn collect_schema_variables(
                             );
                             result.defaulted.push(field_name.clone());
                         } else if schema.required {
-                            return Err(format!(
-                                "Required field '{}' was cancelled",
-                                field_name
-                            ));
+                            bail!("Required field '{}' was cancelled", field_name);
                         }
                     }
-                    Err(e) => return Err(e),
+                    Err(e) => bail!("{e}"),
                 }
             } else if let Some(ref default) = schema.default {
                 result.values.insert(field_name.clone(), yaml_value_to_string(default));
@@ -201,10 +193,7 @@ pub(super) fn collect_schema_variables(
                     result.values.insert(field_name.clone(), value);
                     result.defaulted.push(field_name.clone());
                 } else if schema.required {
-                    return Err(format!(
-                        "Missing required field '{}' in batch mode",
-                        field_name
-                    ));
+                    bail!("Missing required field '{}' in batch mode", field_name);
                 }
             } else {
                 let enum_values = schema.enum_values.as_deref();
@@ -232,7 +221,7 @@ pub(super) fn collect_schema_variables(
                         }
                         result.prompted.push(field_name.clone());
                     }
-                    Err(e) => return Err(e),
+                    Err(e) => bail!("{e}"),
                 }
             }
         } else if let Some(ref default) = schema.default {
@@ -260,10 +249,7 @@ pub(super) fn collect_schema_variables(
                     result.values.insert(var_name.clone(), default.to_string());
                     result.defaulted.push(var_name.clone());
                 } else if is_required {
-                    return Err(format!(
-                        "Missing required variable '{}' in batch mode",
-                        var_name
-                    ));
+                    bail!("Missing required variable '{}' in batch mode", var_name);
                 }
             } else {
                 match prompt_for_variable(
@@ -283,7 +269,7 @@ pub(super) fn collect_schema_variables(
                         }
                         result.prompted.push(var_name.clone());
                     }
-                    Err(e) => return Err(e),
+                    Err(e) => bail!("{e}"),
                 }
             }
         } else if let Some(default) = default_value {
@@ -308,7 +294,7 @@ pub(super) fn yaml_value_to_string(value: &serde_yaml::Value) -> String {
 
 /// Query existing projects from the index and prompt user to select one.
 fn prompt_project_selection(cfg: &ResolvedConfig) -> Option<String> {
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let index_path = PathResolver::new(&cfg.vault_root).index_db();
     let db = match IndexDb::open(&index_path) {
         Ok(db) => db,
         Err(_) => {
@@ -409,7 +395,7 @@ fn prompt_with_note_selector(
     note_type: &str,
     prompt_text: &str,
 ) -> Result<Option<String>, String> {
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let index_path = PathResolver::new(&cfg.vault_root).index_db();
     let db = IndexDb::open(&index_path).map_err(|e| {
         format!("Failed to open index for selector (run 'mdv reindex' first): {}", e)
     })?;
@@ -499,7 +485,7 @@ mod tests {
 
         let result = collect_schema_variables(&typedef, &provided, &options, None);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Missing required field"));
+        assert!(result.unwrap_err().to_string().contains("Missing required field"));
     }
 
     #[test]
@@ -546,7 +532,7 @@ mod tests {
 
         let result = collect_schema_variables(&typedef, &provided, &options, None);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("selector field"));
+        assert!(result.unwrap_err().to_string().contains("selector field"));
     }
 
     #[test]

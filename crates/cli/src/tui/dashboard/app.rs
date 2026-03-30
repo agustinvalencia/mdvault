@@ -235,6 +235,7 @@ impl DashboardApp {
     fn refresh_report(&mut self) {
         use mdvault_core::config::loader::ConfigLoader;
         use mdvault_core::index::IndexDb;
+        use mdvault_core::paths::PathResolver;
 
         let cfg = match ConfigLoader::load(
             self.config_path.as_deref(),
@@ -251,7 +252,7 @@ impl DashboardApp {
             }
         };
 
-        let index_path = cfg.vault_root.join(".mdvault/index.db");
+        let index_path = PathResolver::new(&cfg.vault_root).index_db();
         let db = match IndexDb::open(&index_path) {
             Ok(db) => db,
             Err(e) => {

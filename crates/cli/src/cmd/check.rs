@@ -3,35 +3,26 @@
 use std::path::Path;
 
 use super::common::{load_config, open_index};
+use color_eyre::eyre::{bail, Result};
 use mdvault_core::lint::{run_lint, CategoryReport, LintReport};
 use mdvault_core::types::{TypeRegistry, TypedefRepository};
 
 use crate::CheckArgs;
 
-pub fn run(config: Option<&Path>, profile: Option<&str>, args: CheckArgs) {
+pub fn run(config: Option<&Path>, profile: Option<&str>, args: CheckArgs) -> Result<()> {
     // Load configuration
-    let rc = load_config(config, profile);
-    let db = open_index(&rc.vault_root);
+    let rc = load_config(config, profile)?;
+    let db = open_index(&rc.vault_root)?;
 
     // Load type registry
     let typedef_repo = match &rc.typedefs_fallback_dir {
         Some(fallback) => TypedefRepository::with_fallback(&rc.typedefs_dir, fallback),
         None => TypedefRepository::new(&rc.typedefs_dir),
     };
-    let typedef_repo = match typedef_repo {
-        Ok(repo) => repo,
-        Err(e) => {
-            eprintln!("Error loading type definitions: {e}");
-            std::process::exit(1);
-        }
-    };
-    let registry = match TypeRegistry::from_repository(&typedef_repo) {
-        Ok(reg) => reg,
-        Err(e) => {
-            eprintln!("Error building type registry: {e}");
-            std::process::exit(1);
-        }
-    };
+    let typedef_repo = typedef_repo
+        .map_err(|e| color_eyre::eyre::eyre!("Error loading type definitions: {e}"))?;
+    let registry = TypeRegistry::from_repository(&typedef_repo)
+        .map_err(|e| color_eyre::eyre::eyre!("Error building type registry: {e}"))?;
 
     // Run lint
     let report = run_lint(
@@ -53,8 +44,10 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: CheckArgs) {
 
     // Exit code: 1 if errors found
     if report.has_errors() {
-        std::process::exit(1);
+        bail!("Vault check found errors");
     }
+
+    Ok(())
 }
 
 fn print_table(report: &LintReport) {

@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use chrono::{Datelike, Local, NaiveDate};
 
+use crate::paths::PathResolver;
 use crate::types::TypeDefinition;
 use crate::vars::datemath::try_evaluate_date_expr;
 
@@ -50,9 +51,7 @@ impl NoteIdentity for DailyBehavior {
             .date
             .as_ref()
             .ok_or_else(|| DomainError::PathResolution("date not set".into()))?;
-        let year = &date[..4];
-
-        Ok(ctx.config.vault_root.join(format!("Journal/{}/Daily/{}.md", year, date)))
+        Ok(PathResolver::new(&ctx.config.vault_root).daily_note(date))
     }
 
     fn core_fields(&self) -> Vec<&'static str> {

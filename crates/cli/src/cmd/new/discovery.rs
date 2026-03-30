@@ -1,3 +1,5 @@
+use color_eyre::eyre::{bail, Result, WrapErr};
+
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::templates::engine::{render_string, resolve_template_output_path};
@@ -16,30 +18,21 @@ pub(super) fn extract_note_type(content: &str) -> Option<String> {
     None
 }
 
-/// Resolve output path from Lua typedef, or exit with an error.
-pub(super) fn resolve_lua_output_or_exit(
+/// Resolve output path from Lua typedef, or return an error.
+pub(super) fn resolve_lua_output(
     lua_typedef: &Option<TypeDefinition>,
     cfg: &ResolvedConfig,
     render_ctx: &HashMap<String, String>,
-) -> PathBuf {
+) -> Result<PathBuf> {
     if let Some(ref typedef) = lua_typedef {
         if let Some(ref output_template) = typedef.output {
-            match render_output_path(output_template, cfg, render_ctx) {
-                Ok(path) => path,
-                Err(e) => {
-                    eprintln!("Failed to resolve Lua output path: {e}");
-                    std::process::exit(1);
-                }
-            }
+            render_output_path(output_template, cfg, render_ctx)
+                .wrap_err("Failed to resolve Lua output path")
         } else {
-            eprintln!(
-                "Error: --output is required (neither template nor Lua script has output)"
-            );
-            std::process::exit(1);
+            bail!("--output is required (neither template nor Lua script has output)");
         }
     } else {
-        eprintln!("Error: --output is required (template has no output in frontmatter)");
-        std::process::exit(1);
+        bail!("--output is required (template has no output in frontmatter)");
     }
 }
 
@@ -52,33 +45,28 @@ pub(super) fn resolve_output_path(
     lua_typedef: &Option<TypeDefinition>,
     cfg: &ResolvedConfig,
     render_ctx: &HashMap<String, String>,
-) -> PathBuf {
+) -> Result<PathBuf> {
     if let Some(out) = args_output {
-        return out.clone();
+        return Ok(out.clone());
     }
 
     if let Some(loaded) = loaded_template {
         match resolve_template_output_path(loaded, cfg, render_ctx) {
-            Ok(Some(path)) => return path,
+            Ok(Some(path)) => return Ok(path),
             Ok(None) => {
                 if let (Some(nt), Some(ctx)) = (note_type, creation_ctx) {
                     match nt.behavior().output_path(ctx) {
-                        Ok(path) => return path,
+                        Ok(path) => return Ok(path),
                         Err(_) => {
-                            return resolve_lua_output_or_exit(
-                                lua_typedef,
-                                cfg,
-                                render_ctx,
-                            )
+                            return resolve_lua_output(lua_typedef, cfg, render_ctx)
                         }
                     }
                 } else {
-                    return resolve_lua_output_or_exit(lua_typedef, cfg, render_ctx);
+                    return resolve_lua_output(lua_typedef, cfg, render_ctx);
                 }
             }
             Err(e) => {
-                eprintln!("Failed to resolve output path: {e}");
-                std::process::exit(1);
+                bail!("Failed to resolve output path: {e}");
             }
         }
     }
@@ -86,11 +74,11 @@ pub(super) fn resolve_output_path(
     // No template — try behaviour output_path, then Lua
     if let (Some(nt), Some(ctx)) = (note_type, creation_ctx) {
         match nt.behavior().output_path(ctx) {
-            Ok(path) => path,
-            Err(_) => resolve_lua_output_or_exit(lua_typedef, cfg, render_ctx),
+            Ok(path) => Ok(path),
+            Err(_) => resolve_lua_output(lua_typedef, cfg, render_ctx),
         }
     } else {
-        resolve_lua_output_or_exit(lua_typedef, cfg, render_ctx)
+        resolve_lua_output(lua_typedef, cfg, render_ctx)
     }
 }
 
@@ -126,8 +114,9 @@ fn render_output_path(
     template: &str,
     cfg: &ResolvedConfig,
     ctx: &HashMap<String, String>,
-) -> Result<PathBuf, String> {
-    let rendered = render_string(template, ctx).map_err(|e| e.to_string())?;
+) -> Result<PathBuf> {
+    let rendered =
+        render_string(template, ctx).wrap_err("Failed to render output path template")?;
 
     let path = PathBuf::from(&rendered);
     if path.is_absolute() {

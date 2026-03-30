@@ -26,6 +26,7 @@ pub mod index;
 pub mod lint;
 pub mod macros;
 pub mod markdown_ast;
+pub mod paths;
 pub mod rename;
 pub mod report;
 pub mod scripting;

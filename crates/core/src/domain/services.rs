@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use chrono::Local;
 
 use crate::config::types::ResolvedConfig;
+use crate::paths::PathResolver;
 
 /// Update the `updated_at` frontmatter field in a note file.
 pub fn set_updated_at(path: &Path) -> Result<(), String> {
@@ -42,9 +43,7 @@ impl DailyLogService {
         config: &ResolvedConfig,
         today: &str,
     ) -> Result<PathBuf, String> {
-        let year = &today[..4];
-        let daily_path =
-            config.vault_root.join(format!("Journal/{}/Daily/{}.md", year, today));
+        let daily_path = PathResolver::new(&config.vault_root).daily_note(today);
 
         if daily_path.exists() {
             return Ok(daily_path);

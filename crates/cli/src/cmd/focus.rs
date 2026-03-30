@@ -3,6 +3,7 @@
 //! The focus command sets, shows, or clears the active project context.
 //! This context is used by other commands to provide smart defaults.
 
+use color_eyre::eyre::{Result, WrapErr};
 use mdvault_core::activity::ActivityLogService;
 use mdvault_core::context::ContextManager;
 
@@ -14,26 +15,18 @@ pub fn run(
     config_path: Option<&std::path::Path>,
     profile: Option<&str>,
     args: FocusArgs,
-) {
-    let cfg = load_config(config_path, profile);
+) -> Result<()> {
+    let cfg = load_config(config_path, profile)?;
 
-    let mut manager = match ContextManager::load(&cfg.vault_root) {
-        Ok(m) => m,
-        Err(e) => {
-            eprintln!("Failed to load context state: {e}");
-            std::process::exit(1);
-        }
-    };
+    let mut manager =
+        ContextManager::load(&cfg.vault_root).wrap_err("Failed to load context state")?;
 
     // Handle --clear flag
     if args.clear {
         // Get current project for logging before clearing
         let prev_project = manager.active_project().map(|s| s.to_string());
 
-        if let Err(e) = manager.clear_focus() {
-            eprintln!("Failed to clear focus: {e}");
-            std::process::exit(1);
-        }
+        manager.clear_focus().wrap_err("Failed to clear focus")?;
 
         // Log to activity log
         if let Some(activity) = ActivityLogService::try_from_config(&cfg) {
@@ -43,7 +36,7 @@ pub fn run(
         }
 
         println!("Focus cleared.");
-        return;
+        return Ok(());
     }
 
     // Handle setting focus
@@ -54,10 +47,7 @@ pub fn run(
             manager.set_focus(project)
         };
 
-        if let Err(e) = result {
-            eprintln!("Failed to set focus: {e}");
-            std::process::exit(1);
-        }
+        result.wrap_err("Failed to set focus")?;
 
         // Log to activity log
         if let Some(activity) = ActivityLogService::try_from_config(&cfg) {
@@ -68,19 +58,15 @@ pub fn run(
         if let Some(note) = &args.note {
             println!("Note: {}", note);
         }
-        return;
+        return Ok(());
     }
 
     // No arguments: show current focus
     if args.json {
         let state = manager.state();
-        match serde_json::to_string_pretty(state) {
-            Ok(json) => println!("{}", json),
-            Err(e) => {
-                eprintln!("Failed to serialize state: {e}");
-                std::process::exit(1);
-            }
-        }
+        let json =
+            serde_json::to_string_pretty(state).wrap_err("Failed to serialize state")?;
+        println!("{}", json);
     } else {
         match manager.focus() {
             Some(focus) => {
@@ -98,4 +84,6 @@ pub fn run(
             }
         }
     }
+
+    Ok(())
 }

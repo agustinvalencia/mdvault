@@ -2,6 +2,7 @@
 
 use super::common::{load_config, open_index};
 use chrono::{Datelike, Duration, Local, NaiveDate, Utc};
+use color_eyre::eyre::{bail, Result, WrapErr};
 use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -97,15 +98,15 @@ pub fn run(
     week: Option<&str>,
     output: Option<&Path>,
     json_output: bool,
-) {
-    let cfg = load_config(config, profile);
-    let db = open_index(&cfg.vault_root);
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
+    let db = open_index(&cfg.vault_root)?;
 
     // Determine the time period
     let (start_date, end_date, period_str, period_type) = if let Some(m) = month {
-        parse_month(m)
+        parse_month(m)?
     } else if let Some(w) = week {
-        parse_week(w)
+        parse_week(w)?
     } else {
         // Default to current month
         let now = Local::now().date_naive();
@@ -125,39 +126,29 @@ pub fn run(
     // Output the report
     if let Some(path) = output {
         let markdown = format_markdown_report(&report);
-        if let Err(e) = fs::write(path, &markdown) {
-            eprintln!("Failed to write report: {e}");
-            std::process::exit(1);
-        }
+        fs::write(path, &markdown)
+            .wrap_err_with(|| format!("Failed to write report to {}", path.display()))?;
         println!("Report written to: {}", path.display());
     } else if json_output {
         println!("{}", serde_json::to_string_pretty(&report).unwrap());
     } else {
         print_terminal_report(&report);
     }
+    Ok(())
 }
 
 /// Parse a month string (YYYY-MM) into date range.
-fn parse_month(month: &str) -> (NaiveDate, NaiveDate, String, String) {
+fn parse_month(month: &str) -> Result<(NaiveDate, NaiveDate, String, String)> {
     let parts: Vec<&str> = month.split('-').collect();
     if parts.len() != 2 {
-        eprintln!("Invalid month format. Use YYYY-MM (e.g., 2025-01)");
-        std::process::exit(1);
+        bail!("Invalid month format. Use YYYY-MM (e.g., 2025-01)");
     }
 
-    let year: i32 = parts[0].parse().unwrap_or_else(|_| {
-        eprintln!("Invalid year in month");
-        std::process::exit(1);
-    });
-    let month_num: u32 = parts[1].parse().unwrap_or_else(|_| {
-        eprintln!("Invalid month number");
-        std::process::exit(1);
-    });
+    let year: i32 = parts[0].parse().wrap_err("Invalid year in month")?;
+    let month_num: u32 = parts[1].parse().wrap_err("Invalid month number")?;
 
-    let start = NaiveDate::from_ymd_opt(year, month_num, 1).unwrap_or_else(|| {
-        eprintln!("Invalid month: {}", month);
-        std::process::exit(1);
-    });
+    let start = NaiveDate::from_ymd_opt(year, month_num, 1)
+        .ok_or_else(|| color_eyre::eyre::eyre!("Invalid month: {}", month))?;
 
     let end = if month_num == 12 {
         NaiveDate::from_ymd_opt(year + 1, 1, 1).unwrap()
@@ -165,25 +156,18 @@ fn parse_month(month: &str) -> (NaiveDate, NaiveDate, String, String) {
         NaiveDate::from_ymd_opt(year, month_num + 1, 1).unwrap()
     } - Duration::days(1);
 
-    (start, end, month.to_string(), "month".to_string())
+    Ok((start, end, month.to_string(), "month".to_string()))
 }
 
 /// Parse a week string (YYYY-WXX) into date range.
-fn parse_week(week: &str) -> (NaiveDate, NaiveDate, String, String) {
+fn parse_week(week: &str) -> Result<(NaiveDate, NaiveDate, String, String)> {
     let parts: Vec<&str> = week.split("-W").collect();
     if parts.len() != 2 {
-        eprintln!("Invalid week format. Use YYYY-WXX (e.g., 2025-W01)");
-        std::process::exit(1);
+        bail!("Invalid week format. Use YYYY-WXX (e.g., 2025-W01)");
     }
 
-    let year: i32 = parts[0].parse().unwrap_or_else(|_| {
-        eprintln!("Invalid year in week");
-        std::process::exit(1);
-    });
-    let week_num: u32 = parts[1].parse().unwrap_or_else(|_| {
-        eprintln!("Invalid week number");
-        std::process::exit(1);
-    });
+    let year: i32 = parts[0].parse().wrap_err("Invalid year in week")?;
+    let week_num: u32 = parts[1].parse().wrap_err("Invalid week number")?;
 
     // ISO week: Week 1 is the first week with at least 4 days in the new year
     let jan4 = NaiveDate::from_ymd_opt(year, 1, 4).unwrap();
@@ -192,7 +176,7 @@ fn parse_week(week: &str) -> (NaiveDate, NaiveDate, String, String) {
     let start = week1_monday + Duration::weeks((week_num - 1) as i64);
     let end = start + Duration::days(6);
 
-    (start, end, week.to_string(), "week".to_string())
+    Ok((start, end, week.to_string(), "week".to_string()))
 }
 
 /// Generate report data for the given period.
@@ -278,7 +262,10 @@ fn generate_report(
             let task_proj = get_task_project(task).unwrap_or_default();
             let path_str = task.path.to_string_lossy();
             if task_proj.eq_ignore_ascii_case(&proj_folder)
-                || path_str.contains(&format!("Projects/{}/", proj_folder))
+                || mdvault_core::paths::PathResolver::is_project_task(
+                    &path_str,
+                    &proj_folder,
+                )
             {
                 total += 1;
                 let status = get_fm_str(task, "status").unwrap_or_default();
@@ -836,9 +823,9 @@ pub fn run_dashboard(
     json_output: bool,
     output: Option<&Path>,
     visual: bool,
-) {
-    let cfg = load_config(config, profile);
-    let db = open_index(&cfg.vault_root);
+) -> Result<()> {
+    let cfg = load_config(config, profile)?;
+    let db = open_index(&cfg.vault_root)?;
 
     let options = mdvault_core::report::DashboardOptions {
         project: project.map(String::from),
@@ -846,13 +833,8 @@ pub fn run_dashboard(
         ..Default::default()
     };
 
-    let report = match mdvault_core::report::build_dashboard(&db, &options) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Failed to generate dashboard: {e}");
-            std::process::exit(1);
-        }
-    };
+    let report = mdvault_core::report::build_dashboard(&db, &options)
+        .map_err(|e| color_eyre::eyre::eyre!("Failed to generate dashboard: {e}"))?;
 
     if visual {
         let png_path = if let Some(path) = output {
@@ -876,18 +858,12 @@ pub fn run_dashboard(
             super::charts::generate_dashboard_png
         };
 
-        match gen_fn(&report, &png_path) {
-            Ok(()) => {
-                let rel_path =
-                    png_path.strip_prefix(&cfg.vault_root).unwrap_or(&png_path);
-                println!("Dashboard PNG written to: {}", png_path.display());
-                println!("Embed in markdown:  ![dashboard]({})", rel_path.display());
-            }
-            Err(e) => {
-                eprintln!("Failed to generate dashboard PNG: {e}");
-                std::process::exit(1);
-            }
-        }
+        gen_fn(&report, &png_path).map_err(|e| {
+            color_eyre::eyre::eyre!("Failed to generate dashboard PNG: {e}")
+        })?;
+        let rel_path = png_path.strip_prefix(&cfg.vault_root).unwrap_or(&png_path);
+        println!("Dashboard PNG written to: {}", png_path.display());
+        println!("Embed in markdown:  ![dashboard]({})", rel_path.display());
 
         if json_output {
             println!("{}", serde_json::to_string_pretty(&report).unwrap());
@@ -896,14 +872,13 @@ pub fn run_dashboard(
         println!("{}", serde_json::to_string_pretty(&report).unwrap());
     } else if let Some(path) = output {
         let json_str = serde_json::to_string_pretty(&report).unwrap();
-        if let Err(e) = std::fs::write(path, &json_str) {
-            eprintln!("Failed to write report: {e}");
-            std::process::exit(1);
-        }
+        std::fs::write(path, &json_str)
+            .wrap_err_with(|| format!("Failed to write report to {}", path.display()))?;
         println!("Dashboard written to: {}", path.display());
     } else {
         print_dashboard_terminal(&report);
     }
+    Ok(())
 }
 
 /// Print dashboard report to terminal in human-readable format.

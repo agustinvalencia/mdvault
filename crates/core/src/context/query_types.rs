@@ -779,3 +779,380 @@ impl FocusContextOutput {
         format!("Focus: {}{}", self.project, tasks_str)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── DayContext ────────────────────────────────────────────────────
+
+    #[test]
+    fn day_context_new_is_empty() {
+        let ctx = DayContext::new("2026-03-15", "Saturday");
+        assert_eq!(ctx.date, "2026-03-15");
+        assert_eq!(ctx.day_of_week, "Saturday");
+        assert_eq!(ctx.summary.tasks_completed, 0);
+        assert!(ctx.daily_note.is_none());
+        assert!(ctx.tasks.completed.is_empty());
+        assert!(ctx.activity.is_empty());
+        assert!(ctx.modified_notes.is_empty());
+        assert!(ctx.projects.is_empty());
+    }
+
+    #[test]
+    fn day_context_to_summary() {
+        let mut ctx = DayContext::new("2026-03-15", "Saturday");
+        ctx.summary.tasks_completed = 3;
+        ctx.summary.tasks_created = 1;
+        ctx.summary.notes_modified = 5;
+
+        assert_eq!(ctx.to_summary(), "2026-03-15: 3 done, 1 new, 5 notes modified");
+    }
+
+    #[test]
+    fn day_context_markdown_header_and_summary() {
+        let ctx = DayContext::new("2026-03-15", "Saturday");
+        let md = ctx.to_markdown();
+
+        assert!(md.starts_with("# Context: 2026-03-15 (Saturday)\n"));
+        assert!(md.contains("## Summary\n"));
+        assert!(md.contains("- 0 tasks completed\n"));
+    }
+
+    #[test]
+    fn day_context_markdown_with_focus() {
+        let mut ctx = DayContext::new("2026-03-15", "Saturday");
+        ctx.summary.focus = Some("MDV".to_string());
+
+        let md = ctx.to_markdown();
+        assert!(md.contains("- Focus: MDV\n"));
+    }
+
+    #[test]
+    fn day_context_markdown_with_daily_note_exists() {
+        let mut ctx = DayContext::new("2026-03-15", "Saturday");
+        ctx.daily_note = Some(DailyNoteInfo {
+            path: PathBuf::from("Journal/2026/Daily/2026-03-15.md"),
+            exists: true,
+            sections: vec!["Logs".into(), "Inbox".into()],
+            log_count: 5,
+        });
+
+        let md = ctx.to_markdown();
+        assert!(md.contains("## Daily Note\n"));
+        assert!(md.contains("Sections: Logs, Inbox\n"));
+        assert!(md.contains("Log entries: 5\n"));
+    }
+
+    #[test]
+    fn day_context_markdown_with_daily_note_missing() {
+        let mut ctx = DayContext::new("2026-03-15", "Saturday");
+        ctx.daily_note = Some(DailyNoteInfo {
+            path: PathBuf::from("Journal/2026/Daily/2026-03-15.md"),
+            exists: false,
+            sections: vec![],
+            log_count: 0,
+        });
+
+        let md = ctx.to_markdown();
+        assert!(md.contains("(does not exist)"));
+    }
+
+    #[test]
+    fn day_context_markdown_with_tasks() {
+        let mut ctx = DayContext::new("2026-03-15", "Saturday");
+        ctx.tasks.completed.push(TaskInfo {
+            id: "MDV-001".into(),
+            title: "Fix bug".into(),
+            project: Some("mdvault".into()),
+            path: PathBuf::from("Tasks/MDV-001.md"),
+        });
+        ctx.tasks.created.push(TaskInfo {
+            id: "MDV-002".into(),
+            title: "New feature".into(),
+            project: None,
+            path: PathBuf::from("Tasks/MDV-002.md"),
+        });
+
+        let md = ctx.to_markdown();
+        assert!(md.contains("### Completed (1)\n"));
+        assert!(md.contains("| MDV-001 | Fix bug | mdvault |"));
+        assert!(md.contains("### Created (1)\n"));
+        assert!(md.contains("| MDV-002 | New feature | - |"));
+    }
+
+    #[test]
+    fn day_context_markdown_with_modified_notes() {
+        let mut ctx = DayContext::new("2026-03-15", "Saturday");
+        ctx.modified_notes.push(ModifiedNote {
+            path: PathBuf::from("notes/foo.md"),
+            note_type: Some("zettel".into()),
+            source: "detected".into(),
+            change_summary: Some("+2 logs".into()),
+        });
+
+        let md = ctx.to_markdown();
+        assert!(md.contains("## Modified Notes (1)\n"));
+        assert!(md.contains("| notes/foo.md | zettel | +2 logs |"));
+    }
+
+    #[test]
+    fn day_context_markdown_with_projects() {
+        let mut ctx = DayContext::new("2026-03-15", "Saturday");
+        ctx.projects.push(ProjectActivity {
+            name: "MDV".into(),
+            tasks_done: 2,
+            tasks_active: 1,
+            logs_added: 3,
+        });
+
+        let md = ctx.to_markdown();
+        assert!(md.contains("## Projects with Activity\n"));
+        assert!(md.contains("| MDV | 2 | 1 | 3 |"));
+    }
+
+    // ── WeekContext ───────────────────────────────────────────────────
+
+    #[test]
+    fn week_context_to_summary() {
+        let ctx = WeekContext {
+            week: "2026-W12".into(),
+            start_date: "2026-03-16".into(),
+            end_date: "2026-03-22".into(),
+            summary: WeekSummary {
+                tasks_completed: 5,
+                tasks_created: 2,
+                notes_modified: 10,
+                active_days: 4,
+            },
+            days: vec![],
+            tasks: TaskActivity::default(),
+            projects: vec![],
+        };
+
+        assert_eq!(
+            ctx.to_summary(),
+            "2026-W12: 5 done, 2 new, 10 notes modified over 4 days"
+        );
+    }
+
+    #[test]
+    fn week_context_markdown_header() {
+        let ctx = WeekContext {
+            week: "2026-W12".into(),
+            start_date: "2026-03-16".into(),
+            end_date: "2026-03-22".into(),
+            summary: WeekSummary::default(),
+            days: vec![DaySummaryWithDate {
+                date: "2026-03-16".into(),
+                day_of_week: "Monday".into(),
+                summary: DaySummary { tasks_completed: 1, ..Default::default() },
+            }],
+            tasks: TaskActivity::default(),
+            projects: vec![],
+        };
+
+        let md = ctx.to_markdown();
+        assert!(md.starts_with("# Context: Week 2026-W12 (2026-03-16 to 2026-03-22)"));
+        assert!(md.contains("## Daily Breakdown\n"));
+        assert!(md.contains("| 2026-03-16 | Monday | 1 | 0 | 0 |"));
+    }
+
+    #[test]
+    fn week_context_markdown_with_projects() {
+        let ctx = WeekContext {
+            week: "2026-W12".into(),
+            start_date: "2026-03-16".into(),
+            end_date: "2026-03-22".into(),
+            summary: WeekSummary::default(),
+            days: vec![],
+            tasks: TaskActivity::default(),
+            projects: vec![ProjectActivity {
+                name: "NOMS".into(),
+                tasks_done: 3,
+                tasks_active: 2,
+                logs_added: 1,
+            }],
+        };
+
+        let md = ctx.to_markdown();
+        assert!(md.contains("## Projects\n"));
+        assert!(md.contains("| NOMS | 3 | 2 | 1 |"));
+    }
+
+    // ── NoteContext ──────────────────────────────────────────────────
+
+    fn make_note_context() -> NoteContext {
+        NoteContext {
+            note_type: "project".into(),
+            path: PathBuf::from("Projects/mdv/mdv.md"),
+            title: "mdvault".into(),
+            metadata: serde_json::json!({"status": "open", "project-id": "MDV"}),
+            sections: vec!["Overview".into(), "Tasks".into()],
+            tasks: Some(TaskCounts { total: 10, todo: 3, doing: 2, done: 4, blocked: 1 }),
+            recent_tasks: Some(RecentTasks {
+                completed: vec![TaskInfo {
+                    id: "MDV-045".into(),
+                    title: "Split main.rs".into(),
+                    project: Some("mdv".into()),
+                    path: PathBuf::from("Tasks/MDV-045.md"),
+                }],
+                active: vec![TaskInfo {
+                    id: "MDV-050".into(),
+                    title: "PathResolver".into(),
+                    project: Some("mdv".into()),
+                    path: PathBuf::from("Tasks/MDV-050.md"),
+                }],
+            }),
+            activity: NoteActivity { period_days: 7, entries: vec![] },
+            references: NoteReferences {
+                backlinks: vec![LinkInfo {
+                    path: PathBuf::from("daily/2026-03-29.md"),
+                    title: Some("2026-03-29".into()),
+                    link_text: None,
+                }],
+                backlink_count: 1,
+                outgoing: vec![],
+                outgoing_count: 0,
+            },
+        }
+    }
+
+    #[test]
+    fn note_context_to_summary_with_tasks() {
+        let ctx = make_note_context();
+        let summary = ctx.to_summary();
+        assert!(summary.contains("Projects/mdv/mdv.md (project)"));
+        assert!(summary.contains("4 done/2 doing/3 todo"));
+        assert!(summary.contains("1 backlinks"));
+    }
+
+    #[test]
+    fn note_context_to_summary_without_tasks() {
+        let mut ctx = make_note_context();
+        ctx.tasks = None;
+        let summary = ctx.to_summary();
+        assert!(!summary.contains("done"));
+    }
+
+    #[test]
+    fn note_context_markdown_metadata() {
+        let ctx = make_note_context();
+        let md = ctx.to_markdown();
+        assert!(md.contains("# Context: Projects/mdv/mdv.md (project)"));
+        assert!(md.contains("## Metadata\n"));
+        assert!(md.contains("**project-id**: MDV"));
+        assert!(md.contains("**status**: open"));
+    }
+
+    #[test]
+    fn note_context_markdown_sections() {
+        let ctx = make_note_context();
+        let md = ctx.to_markdown();
+        assert!(md.contains("## Sections\n"));
+        assert!(md.contains("Overview, Tasks"));
+    }
+
+    #[test]
+    fn note_context_markdown_tasks_table() {
+        let ctx = make_note_context();
+        let md = ctx.to_markdown();
+        assert!(md.contains("## Tasks\n"));
+        assert!(md.contains("| Done | 4 |"));
+        assert!(md.contains("| In Progress | 2 |"));
+        assert!(md.contains("| Todo | 3 |"));
+        assert!(md.contains("| Blocked | 1 |"));
+    }
+
+    #[test]
+    fn note_context_markdown_recent_tasks() {
+        let ctx = make_note_context();
+        let md = ctx.to_markdown();
+        assert!(md.contains("### Recent Completed\n"));
+        assert!(md.contains("- MDV-045: Split main.rs"));
+        assert!(md.contains("### Active\n"));
+        assert!(md.contains("- MDV-050: PathResolver"));
+    }
+
+    #[test]
+    fn note_context_markdown_references() {
+        let ctx = make_note_context();
+        let md = ctx.to_markdown();
+        assert!(md.contains("**Backlinks (1)**:"));
+        assert!(md.contains("daily/2026-03-29.md"));
+        assert!(md.contains("**Outgoing (0)**: (none)"));
+    }
+
+    // ── FocusContextOutput ───────────────────────────────────────────
+
+    #[test]
+    fn focus_context_to_summary_with_tasks() {
+        let output = FocusContextOutput {
+            project: "MDV".into(),
+            project_path: Some(PathBuf::from("Projects/mdv/mdv.md")),
+            started_at: Some("2026-03-29T10:00:00".into()),
+            note: Some("Working on PathResolver".into()),
+            context: Some(Box::new(make_note_context())),
+        };
+
+        assert_eq!(output.to_summary(), "Focus: MDV (4 done, 2 doing)");
+    }
+
+    #[test]
+    fn focus_context_to_summary_without_context() {
+        let output = FocusContextOutput {
+            project: "MDV".into(),
+            project_path: None,
+            started_at: None,
+            note: None,
+            context: None,
+        };
+
+        assert_eq!(output.to_summary(), "Focus: MDV");
+    }
+
+    #[test]
+    fn focus_context_markdown() {
+        let output = FocusContextOutput {
+            project: "MDV".into(),
+            project_path: Some(PathBuf::from("Projects/mdv/mdv.md")),
+            started_at: Some("2026-03-29T10:00:00".into()),
+            note: Some("Working on PathResolver".into()),
+            context: Some(Box::new(make_note_context())),
+        };
+
+        let md = output.to_markdown();
+        assert!(md.contains("# Focus Context\n"));
+        assert!(md.contains("**Project**: MDV\n"));
+        assert!(md.contains("**Path**: Projects/mdv/mdv.md\n"));
+        assert!(md.contains("**Started**: 2026-03-29T10:00:00\n"));
+        assert!(md.contains("**Note**: Working on PathResolver\n"));
+        assert!(md.contains("## Project Summary\n"));
+        assert!(md.contains("| Done | 4 |"));
+        assert!(md.contains("### Active Tasks\n"));
+        assert!(md.contains("- MDV-050: PathResolver"));
+    }
+
+    // ── NoteActivity default ─────────────────────────────────────────
+
+    #[test]
+    fn note_activity_default() {
+        let act = NoteActivity::default();
+        assert_eq!(act.period_days, 7);
+        assert!(act.entries.is_empty());
+    }
+
+    // ── ContextError display ─────────────────────────────────────────
+
+    #[test]
+    fn context_error_display() {
+        let e = ContextError::ActivityError("test".into());
+        assert_eq!(e.to_string(), "Failed to read activity log: test");
+
+        let e = ContextError::IndexError("db gone".into());
+        assert_eq!(e.to_string(), "Failed to query index: db gone");
+
+        let e = ContextError::InvalidDate("bad".into());
+        assert_eq!(e.to_string(), "Invalid date: bad");
+    }
+}

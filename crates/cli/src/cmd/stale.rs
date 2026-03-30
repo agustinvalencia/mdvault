@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use color_eyre::eyre::{Result, WrapErr};
 use mdvault_core::index::IndexedNote;
 use serde::Serialize;
 
@@ -22,32 +23,26 @@ struct StaleNoteOutput {
     last_seen: Option<String>,
 }
 
-pub fn run(config: Option<&Path>, profile: Option<&str>, args: StaleArgs) {
+pub fn run(config: Option<&Path>, profile: Option<&str>, args: StaleArgs) -> Result<()> {
     // Load configuration
-    let rc = load_config(config, profile);
+    let rc = load_config(config, profile)?;
 
     // Open database
-    let db = open_index(&rc.vault_root);
+    let db = open_index(&rc.vault_root)?;
 
     // Determine output format
     let format = resolve_format(args.output, args.json, args.quiet);
 
     // --orphans mode: find notes with no incoming links
     if args.orphans {
-        let orphans = match db.find_orphans() {
-            Ok(notes) => notes,
-            Err(e) => {
-                eprintln!("Error finding orphans: {}", e);
-                std::process::exit(1);
-            }
-        };
+        let orphans = db.find_orphans().wrap_err("Error finding orphans")?;
 
         match format {
             OutputFormat::Table => print_notes_table(&orphans),
             OutputFormat::Json => print_notes_json(&orphans),
             OutputFormat::Quiet => print_notes_quiet(&orphans),
         }
-        return;
+        return Ok(());
     }
 
     // Get note type filter
@@ -60,36 +55,26 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: StaleArgs) {
     // Query stale notes
     let results: Vec<StaleNote> = if let Some(days) = args.days {
         // Query by days not seen
-        match db.get_notes_not_seen_in_days(days, note_type_str.as_deref(), args.limit) {
-            Ok(notes) => notes
-                .into_iter()
-                .map(|(note, last_seen)| StaleNote {
-                    note,
-                    staleness: 1.0, // Max staleness for day-based query
-                    last_seen,
-                })
-                .collect(),
-            Err(e) => {
-                eprintln!("Error querying stale notes: {}", e);
-                std::process::exit(1);
-            }
-        }
+        db.get_notes_not_seen_in_days(days, note_type_str.as_deref(), args.limit)
+            .wrap_err("Error querying stale notes")?
+            .into_iter()
+            .map(|(note, last_seen)| StaleNote {
+                note,
+                staleness: 1.0, // Max staleness for day-based query
+                last_seen,
+            })
+            .collect()
     } else {
         // Query by staleness threshold
-        match db.get_stale_notes(args.threshold, note_type_str.as_deref(), args.limit) {
-            Ok(notes) => notes
-                .into_iter()
-                .map(|(note, staleness)| StaleNote {
-                    note,
-                    staleness,
-                    last_seen: None, // Not available in staleness query
-                })
-                .collect(),
-            Err(e) => {
-                eprintln!("Error querying stale notes: {}", e);
-                std::process::exit(1);
-            }
-        }
+        db.get_stale_notes(args.threshold, note_type_str.as_deref(), args.limit)
+            .wrap_err("Error querying stale notes")?
+            .into_iter()
+            .map(|(note, staleness)| StaleNote {
+                note,
+                staleness,
+                last_seen: None, // Not available in staleness query
+            })
+            .collect()
     };
 
     // Output results
@@ -98,6 +83,8 @@ pub fn run(config: Option<&Path>, profile: Option<&str>, args: StaleArgs) {
         OutputFormat::Json => print_stale_json(&results),
         OutputFormat::Quiet => print_stale_quiet(&results),
     }
+
+    Ok(())
 }
 
 /// Internal stale note representation.

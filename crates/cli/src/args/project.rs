@@ -1,6 +1,8 @@
 use clap::{Args, Subcommand};
 use clap_complete::engine::ArgValueCompleter;
 
+use super::{KindFilter, StatusFilter};
+
 /// Project management subcommands.
 #[derive(Debug, Subcommand)]
 pub enum ProjectCommands {
@@ -19,13 +21,13 @@ pub enum ProjectCommands {
 
 #[derive(Debug, Args)]
 pub struct ProjectListArgs {
-    /// Filter by status (active, completed, on-hold, archived)
-    #[arg(long, short)]
-    pub status: Option<String>,
+    /// Filter by status (todo, in-progress, done, blocked, cancelled)
+    #[arg(long, short, value_enum)]
+    pub status: Option<StatusFilter>,
 
     /// Filter by kind (project, area)
-    #[arg(long, short)]
-    pub kind: Option<String>,
+    #[arg(long, short, value_enum)]
+    pub kind: Option<KindFilter>,
 }
 
 #[derive(Debug, Args)]

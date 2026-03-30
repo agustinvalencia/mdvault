@@ -9,6 +9,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::paths::PathResolver;
 use crate::types::TypeDefinition;
 
 use super::super::context::{CreationContext, FieldPrompt, PromptContext, PromptType};
@@ -54,10 +55,7 @@ impl NoteIdentity for ProjectBehavior {
                 DomainError::PathResolution("project-id not set".into())
             })?;
 
-        Ok(ctx
-            .config
-            .vault_root
-            .join(format!("Projects/{}/{}.md", project_id, project_id)))
+        Ok(PathResolver::new(&ctx.config.vault_root).project_note(project_id))
     }
 
     fn core_fields(&self) -> Vec<&'static str> {

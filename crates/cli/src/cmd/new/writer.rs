@@ -1,13 +1,14 @@
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::index::{IndexBuilder, IndexDb};
+use mdvault_core::paths::PathResolver;
 use mdvault_core::types::{try_fix_note, validate_note_for_creation, TypeRegistry};
 use std::fs;
 use std::path::Path;
 
 /// Force a vault reindex to include newly created notes.
 pub(super) fn reindex_vault(cfg: &ResolvedConfig) {
-    let index_path = cfg.vault_root.join(".mdvault/index.db");
+    let index_path = PathResolver::new(&cfg.vault_root).index_db();
 
     if let Some(parent) = index_path.parent() {
         let _ = fs::create_dir_all(parent);
