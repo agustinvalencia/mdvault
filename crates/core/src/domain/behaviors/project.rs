@@ -83,7 +83,7 @@ impl NoteLifecycle for ProjectBehavior {
         Ok(())
     }
 
-    fn after_create(&self, ctx: &CreationContext, _content: &str) -> DomainResult<()> {
+    fn after_create(&self, ctx: &CreationContext, content: &str) -> DomainResult<()> {
         // Log to daily note
         if let Some(ref output_path) = ctx.output_path {
             let project_id = ctx.core_metadata.project_id.as_deref().unwrap_or("");
@@ -99,7 +99,11 @@ impl NoteLifecycle for ProjectBehavior {
             }
         }
 
-        // TODO: Run Lua on_create hook if defined (requires VaultContext)
+        if let (Some(runner), Some(output_path)) = (ctx.hook_runner, &ctx.output_path)
+            && let Err(e) = runner.run_on_create(output_path, content)
+        {
+            tracing::warn!("on_create hook failed: {e}");
+        }
 
         Ok(())
     }

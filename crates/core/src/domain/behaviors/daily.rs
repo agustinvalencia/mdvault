@@ -93,8 +93,12 @@ impl NoteLifecycle for DailyBehavior {
         Ok(())
     }
 
-    fn after_create(&self, _ctx: &CreationContext, _content: &str) -> DomainResult<()> {
-        // TODO: Run Lua on_create hook if defined
+    fn after_create(&self, ctx: &CreationContext, content: &str) -> DomainResult<()> {
+        if let (Some(runner), Some(output_path)) = (ctx.hook_runner, &ctx.output_path)
+            && let Err(e) = runner.run_on_create(output_path, content)
+        {
+            tracing::warn!("on_create hook failed: {e}");
+        }
         Ok(())
     }
 }

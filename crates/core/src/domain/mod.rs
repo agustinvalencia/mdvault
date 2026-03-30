@@ -33,7 +33,7 @@ pub use behaviors::{
     WeeklyBehavior, ZettelBehavior, find_project_file, task_belongs_to_project,
 };
 pub use context::{
-    CoreMetadata, CreationContext, FieldPrompt, PromptContext, PromptType,
+    CoreMetadata, CreationContext, FieldPrompt, HookRunner, PromptContext, PromptType,
 };
 pub use creator::{CreationResult, NoteCreator};
 pub use services::DailyLogService;

@@ -82,6 +82,22 @@ impl CoreMetadata {
     }
 }
 
+/// Trait for running lifecycle hooks (e.g. Lua on_create).
+///
+/// Core defines this trait; the CLI provides the Lua implementation.
+/// This keeps core testable without Lua dependencies.
+pub trait HookRunner: Send + Sync {
+    /// Run the on_create hook for the given note, if one is defined.
+    ///
+    /// Returns Ok(()) on success (or if no hook is defined).
+    /// Implementations should log warnings for non-fatal hook failures.
+    fn run_on_create(
+        &self,
+        output_path: &std::path::Path,
+        content: &str,
+    ) -> Result<(), String>;
+}
+
 /// Context available during note creation.
 pub struct CreationContext<'a> {
     // Core inputs
@@ -108,6 +124,9 @@ pub struct CreationContext<'a> {
 
     // Reference date for date expressions (overrides "today" in templates)
     pub reference_date: Option<NaiveDate>,
+
+    // Hook runner for lifecycle hooks (provided by CLI)
+    pub hook_runner: Option<&'a dyn HookRunner>,
 }
 
 impl<'a> CreationContext<'a> {
@@ -143,6 +162,7 @@ impl<'a> CreationContext<'a> {
             template: None,
             batch_mode: false,
             reference_date: None,
+            hook_runner: None,
         }
     }
 
@@ -155,6 +175,12 @@ impl<'a> CreationContext<'a> {
     /// Set a template to use for content generation.
     pub fn with_template(mut self, template: LoadedTemplate) -> Self {
         self.template = Some(template);
+        self
+    }
+
+    /// Set a hook runner for lifecycle hooks.
+    pub fn with_hook_runner(mut self, runner: &'a dyn HookRunner) -> Self {
+        self.hook_runner = Some(runner);
         self
     }
 

@@ -110,7 +110,7 @@ impl NoteLifecycle for TaskBehavior {
         Ok(())
     }
 
-    fn after_create(&self, ctx: &CreationContext, _content: &str) -> DomainResult<()> {
+    fn after_create(&self, ctx: &CreationContext, content: &str) -> DomainResult<()> {
         let project = ctx.get_var("project").unwrap_or("inbox");
 
         // Increment project counter if not inbox
@@ -147,7 +147,11 @@ impl NoteLifecycle for TaskBehavior {
             }
         }
 
-        // TODO: Run Lua on_create hook if defined (requires VaultContext)
+        if let (Some(runner), Some(output_path)) = (ctx.hook_runner, &ctx.output_path)
+            && let Err(e) = runner.run_on_create(output_path, content)
+        {
+            tracing::warn!("on_create hook failed: {e}");
+        }
 
         Ok(())
     }
