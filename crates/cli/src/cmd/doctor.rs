@@ -1,5 +1,5 @@
-use color_eyre::eyre::{bail, Result};
-use mdvault_core::config::loader::{default_config_path, ConfigLoader};
+use color_eyre::eyre::{Result, bail};
+use mdvault_core::config::loader::{ConfigLoader, default_config_path};
 use std::path::Path;
 
 pub fn run(config: Option<&Path>, profile: Option<&str>) -> Result<()> {

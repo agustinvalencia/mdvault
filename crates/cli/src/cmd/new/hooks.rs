@@ -2,13 +2,13 @@ use crate::prompt::create_fuzzy_selector_callback;
 use mdvault_core::captures::CaptureRepository;
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::{
-    parse as parse_frontmatter, serialize_with_order, Frontmatter, ParsedDocument,
+    Frontmatter, ParsedDocument, parse as parse_frontmatter, serialize_with_order,
 };
 use mdvault_core::index::IndexDb;
 use mdvault_core::macros::MacroRepository;
 use mdvault_core::paths::PathResolver;
 use mdvault_core::scripting::{
-    run_on_create_hook, HookResult, NoteContext, VaultContext,
+    HookResult, NoteContext, VaultContext, run_on_create_hook,
 };
 use mdvault_core::templates::repository::TemplateRepository;
 use mdvault_core::types::{TypeDefinition, TypeRegistry, TypedefRepository};
@@ -54,7 +54,7 @@ pub(super) fn run_on_create_hook_if_exists(
                     frontmatter: None,
                     content: None,
                     variables: None,
-                })
+                });
             }
         };
 
@@ -66,7 +66,7 @@ pub(super) fn run_on_create_hook_if_exists(
                     frontmatter: None,
                     content: None,
                     variables: None,
-                })
+                });
             }
         }
     };

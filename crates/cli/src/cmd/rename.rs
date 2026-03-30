@@ -7,7 +7,7 @@ use super::common::{load_config, open_index};
 use color_eyre::eyre::Result;
 use mdvault_core::activity::ActivityLogService;
 use mdvault_core::rename::{
-    execute_rename, generate_preview, FileChange, RenameError, RenamePreview,
+    FileChange, RenameError, RenamePreview, execute_rename, generate_preview,
 };
 
 use crate::RenameArgs;

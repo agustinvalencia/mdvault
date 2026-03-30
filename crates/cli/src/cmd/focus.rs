@@ -29,10 +29,10 @@ pub fn run(
         manager.clear_focus().wrap_err("Failed to clear focus")?;
 
         // Log to activity log
-        if let Some(activity) = ActivityLogService::try_from_config(&cfg) {
-            if let Some(ref project) = prev_project {
-                let _ = activity.log_focus(project, None, "clear");
-            }
+        if let Some(activity) = ActivityLogService::try_from_config(&cfg)
+            && let Some(ref project) = prev_project
+        {
+            let _ = activity.log_focus(project, None, "clear");
         }
 
         println!("Focus cleared.");

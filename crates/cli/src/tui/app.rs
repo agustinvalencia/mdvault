@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use mdvault_core::captures::CaptureInfo;
 use mdvault_core::config::types::ResolvedConfig;
-use mdvault_core::macros::{requires_trust, MacroInfo};
+use mdvault_core::macros::{MacroInfo, requires_trust};
 use mdvault_core::templates::discovery::TemplateInfo;
 use mdvault_core::templates::engine::build_minimal_context;
 use mdvault_core::templates::repository::TemplateRepository;
@@ -379,13 +379,13 @@ impl App {
         }
 
         // Check if template has output path in frontmatter
-        if let Some(ref fm) = loaded.frontmatter {
-            if let Some(ref output) = fm.output {
-                let rendered = render_string(output, &ctx)
-                    .map_err(|e| format!("Failed to render output path: {e}"))?;
-                let path = self.config.vault_root.join(&rendered);
-                return Ok(Some(path));
-            }
+        if let Some(ref fm) = loaded.frontmatter
+            && let Some(ref output) = fm.output
+        {
+            let rendered = render_string(output, &ctx)
+                .map_err(|e| format!("Failed to render output path: {e}"))?;
+            let path = self.config.vault_root.join(&rendered);
+            return Ok(Some(path));
         }
 
         Ok(None)

@@ -12,10 +12,10 @@ use std::time::Duration;
 
 use color_eyre::eyre::Result;
 use crossterm::{
-    event::{poll, read, Event},
+    event::{Event, poll, read},
     execute,
     terminal::{
-        disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
     },
 };
 use ratatui::prelude::*;
@@ -108,13 +108,13 @@ fn run_app(
         terminal.draw(|frame| ui::draw(frame, &app))?;
 
         // 2. Poll for events (with timeout for responsiveness)
-        if poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = read()? {
-                // 3. Map key event to message
-                if let Some(msg) = map_key_event(&app, key) {
-                    // 4. Process message
-                    app.update(msg);
-                }
+        if poll(Duration::from_millis(100))?
+            && let Event::Key(key) = read()?
+        {
+            // 3. Map key event to message
+            if let Some(msg) = map_key_event(&app, key) {
+                // 4. Process message
+                app.update(msg);
             }
         }
 

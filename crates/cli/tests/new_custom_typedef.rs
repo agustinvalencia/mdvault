@@ -129,7 +129,10 @@ fn new_custom_type_validation_fails() {
 
     // Create template that produces invalid content (missing DRAFT marker)
     let template_path = templates_dir.join("report.md");
-    write(&template_path, "---\ntype: report\ntitle: {{title}}\nstatus: draft\n---\n# Report: {{title}}\n\nSome content.");
+    write(
+        &template_path,
+        "---\ntype: report\ntitle: {{title}}\nstatus: draft\n---\n# Report: {{title}}\n\nSome content.",
+    );
 
     let toml = format!(
         "version = 1\n\

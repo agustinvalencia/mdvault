@@ -9,7 +9,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::frontmatter;
-use crate::rename::types::{Reference, ReferenceType, RenameError};
+use crate::rename::types::{Reference, ReferenceType};
 
 // Regex patterns for reference detection
 static WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -427,20 +427,6 @@ fn find_frontmatter_list_item(
     }
 
     None
-}
-
-/// Read a file and find all references to a target note.
-#[allow(dead_code)]
-pub fn find_references_in_file(
-    source_path: &Path,
-    target_path: &Path,
-    vault_root: &Path,
-) -> Result<Vec<Reference>, RenameError> {
-    let content = std::fs::read_to_string(source_path).map_err(|e| {
-        RenameError::ReadError { path: source_path.to_path_buf(), source: e }
-    })?;
-
-    Ok(find_references_in_content(&content, source_path, target_path, vault_root))
 }
 
 #[cfg(test)]

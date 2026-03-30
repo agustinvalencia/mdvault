@@ -6,7 +6,7 @@ use super::common::load_config;
 use chrono::{Datelike, Duration, Local, NaiveDate};
 use color_eyre::eyre::{Result, WrapErr};
 use mdvault_core::context::ContextQueryService;
-use mdvault_core::vars::datemath::{parse_date_expr, DateBase};
+use mdvault_core::vars::datemath::{DateBase, parse_date_expr};
 
 /// Get context for a specific day.
 pub fn day(
@@ -233,10 +233,10 @@ fn find_last_active_day(
 ) -> Option<mdvault_core::context::DayContext> {
     for i in 1..=30 {
         let date = start_date - Duration::days(i);
-        if let Ok(ctx) = service.day_context(date) {
-            if !is_empty_context(&ctx) {
-                return Some(ctx);
-            }
+        if let Ok(ctx) = service.day_context(date)
+            && !is_empty_context(&ctx)
+        {
+            return Some(ctx);
         }
     }
     None

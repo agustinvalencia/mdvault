@@ -2,13 +2,13 @@
 
 use std::path::Path;
 
-use color_eyre::eyre::{bail, Result, WrapErr};
+use color_eyre::eyre::{Result, WrapErr, bail};
 use mdvault_core::frontmatter::parse as parse_frontmatter;
 use mdvault_core::index::IndexDb;
 use mdvault_core::paths::PathResolver;
 use mdvault_core::types::{
-    add_link_integrity_warnings, apply_fixes, try_fix_note, validate_note, TypeRegistry,
-    TypedefRepository, ValidationResult,
+    TypeRegistry, TypedefRepository, ValidationResult, add_link_integrity_warnings,
+    apply_fixes, try_fix_note, validate_note,
 };
 
 use super::common::load_config;
@@ -168,10 +168,10 @@ pub fn run(
         };
 
         // Check link integrity if requested and index is available
-        if args.check_links {
-            if let Some(ref db) = index_db {
-                add_link_integrity_warnings(&mut result, db, &note.relative_path);
-            }
+        if args.check_links
+            && let Some(ref db) = index_db
+        {
+            add_link_integrity_warnings(&mut result, db, &note.relative_path);
         }
 
         // Determine if note is valid (errors only, warnings don't count)
@@ -340,7 +340,7 @@ fn print_results_table(
         // Show remaining errors
         for error in &result.errors {
             // Skip errors that were fixed
-            if let Some(ref applied) = fixes {
+            if let Some(applied) = &fixes {
                 let error_str = error.to_string();
                 if applied
                     .iter()

@@ -11,7 +11,7 @@ use mdvault_core::captures::{CaptureRepository, CaptureSpec};
 use mdvault_core::config::types::ResolvedConfig;
 use mdvault_core::frontmatter::{apply_ops, parse, serialize};
 use mdvault_core::macros::{
-    run_macro, MacroRepository, RunContext, RunOptions, StepExecutor,
+    MacroRepository, RunContext, RunOptions, StepExecutor, run_macro,
 };
 use mdvault_core::markdown_ast::{MarkdownAstError, MarkdownEditor, SectionMatch};
 use mdvault_core::templates::discovery::TemplateInfo;
@@ -235,11 +235,7 @@ fn render_string(template: &str, ctx: &HashMap<String, String>) -> String {
 
 fn resolve_target_path(vault_root: &Path, target: &str) -> std::path::PathBuf {
     let path = std::path::Path::new(target);
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        vault_root.join(path)
-    }
+    if path.is_absolute() { path.to_path_buf() } else { vault_root.join(path) }
 }
 
 /// Execute a macro workflow.
@@ -444,10 +440,10 @@ pub fn execute_macro(
 
     if result.success {
         let mut msg = format!("Completed {} steps", result.step_results.len());
-        if let Some(last) = result.step_results.last() {
-            if let Some(path) = &last.output_path {
-                msg.push_str(&format!(" → {}", path.display()));
-            }
+        if let Some(last) = result.step_results.last()
+            && let Some(path) = &last.output_path
+        {
+            msg.push_str(&format!(" → {}", path.display()));
         }
         Ok(msg)
     } else {

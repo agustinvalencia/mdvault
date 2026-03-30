@@ -1,14 +1,14 @@
 //! Project management commands.
 
 use chrono::{DateTime, Duration, NaiveDate, Utc};
-use color_eyre::eyre::{bail, Result, WrapErr};
+use color_eyre::eyre::{Result, WrapErr, bail};
 use mdvault_core::context::ContextManager;
 use mdvault_core::domain::task_belongs_to_project;
-use mdvault_core::domain::{services::ProjectLogService, DailyLogService};
+use mdvault_core::domain::{DailyLogService, services::ProjectLogService};
 use mdvault_core::index::{IndexDb, IndexedNote, NoteQuery, NoteType};
 use serde::Serialize;
 use std::path::Path;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{Table, Tabled, settings::Style};
 
 use mdvault_core::paths::PathResolver;
 
@@ -79,17 +79,17 @@ pub fn list(
         let (project_id, project_status, project_kind) = extract_project_info(project);
 
         // Filter by status if specified
-        if let Some(filter) = status_filter {
-            if !filter.matches(&project_status) {
-                continue;
-            }
+        if let Some(filter) = status_filter
+            && !filter.matches(&project_status)
+        {
+            continue;
         }
 
         // Filter by kind if specified
-        if let Some(filter) = kind_filter {
-            if project_kind != filter.as_str() {
-                continue;
-            }
+        if let Some(filter) = kind_filter
+            && project_kind != filter.as_str()
+        {
+            continue;
         }
 
         let title = if project.title.is_empty() {
@@ -552,27 +552,27 @@ fn calculate_project_progress(
     let mut recent_completions: Vec<RecentCompletion> = Vec::new();
 
     for task in &project_tasks {
-        if let Some(completed_at) = get_completed_at(task) {
-            if completed_at >= seven_days_ago {
-                let days_ago = (now - completed_at).num_days();
-                let task_id = get_task_id(task).unwrap_or_else(|| "-".to_string());
-                let title = if task.title.is_empty() {
-                    task.path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("Untitled")
-                        .to_string()
-                } else {
-                    task.title.clone()
-                };
+        if let Some(completed_at) = get_completed_at(task)
+            && completed_at >= seven_days_ago
+        {
+            let days_ago = (now - completed_at).num_days();
+            let task_id = get_task_id(task).unwrap_or_else(|| "-".to_string());
+            let title = if task.title.is_empty() {
+                task.path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled")
+                    .to_string()
+            } else {
+                task.title.clone()
+            };
 
-                recent_completions.push(RecentCompletion {
-                    id: task_id,
-                    title,
-                    completed_at: completed_at.format("%Y-%m-%d").to_string(),
-                    days_ago,
-                });
-            }
+            recent_completions.push(RecentCompletion {
+                id: task_id,
+                title,
+                completed_at: completed_at.format("%Y-%m-%d").to_string(),
+                days_ago,
+            });
         }
     }
 
@@ -828,14 +828,12 @@ pub fn archive(
     let _ = ProjectLogService::log_entry(&project_file_abs, &archive_msg);
 
     // 4. Clear focus if this project is currently focused
-    if let Ok(mut mgr) = ContextManager::load(&cfg.vault_root) {
-        if let Some(focused) = mgr.active_project() {
-            if focused.eq_ignore_ascii_case(&project_folder)
-                || focused.eq_ignore_ascii_case(&project_id)
-            {
-                let _ = mgr.clear_focus();
-            }
-        }
+    if let Ok(mut mgr) = ContextManager::load(&cfg.vault_root)
+        && let Some(focused) = mgr.active_project()
+        && (focused.eq_ignore_ascii_case(&project_folder)
+            || focused.eq_ignore_ascii_case(&project_id))
+    {
+        let _ = mgr.clear_focus();
     }
 
     // 5. Move files from Projects/{slug}/ to Projects/_archive/{slug}/

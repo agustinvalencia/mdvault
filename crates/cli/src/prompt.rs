@@ -6,11 +6,11 @@
 //! - Handle defaults and required/optional status
 //! - Support batch mode (non-interactive) for CI/scripting
 
-use dialoguer::{theme::ColorfulTheme, FuzzySelect, Input, Select};
+use dialoguer::{FuzzySelect, Input, Select, theme::ColorfulTheme};
 use mdvault_core::scripting::{SelectorCallback, SelectorItem, SelectorOptions};
 use mdvault_core::templates::engine::RenderContext;
 use mdvault_core::vars::{
-    collect_all_variables, try_evaluate_date_expr, VarSpec, VarsMap,
+    VarSpec, VarsMap, collect_all_variables, try_evaluate_date_expr,
 };
 use std::collections::HashMap;
 use std::io::{self, IsTerminal};
@@ -51,7 +51,10 @@ impl std::fmt::Display for PromptError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PromptError::MissingRequired(name) => {
-                write!(f, "missing required variable: {name}\n  Hint: use --var {name}=\"...\" or remove --batch")
+                write!(
+                    f,
+                    "missing required variable: {name}\n  Hint: use --var {name}=\"...\" or remove --batch"
+                )
             }
             PromptError::Io(e) => write!(f, "IO error: {e}"),
             PromptError::Cancelled => write!(f, "input cancelled by user"),
@@ -315,20 +318,6 @@ pub fn prompt_for_enum(
     }
 }
 
-/// Parse --var arguments into a HashMap.
-///
-/// Expected format: `key=value`
-#[allow(dead_code)]
-pub fn parse_var_args(args: &[String]) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    for arg in args {
-        if let Some((key, value)) = arg.split_once('=') {
-            map.insert(key.to_string(), value.to_string());
-        }
-    }
-    map
-}
-
 /// Create a selector callback that uses dialoguer's FuzzySelect.
 ///
 /// This callback is passed to VaultContext to enable `mdv.selector()` in Lua scripts.
@@ -375,19 +364,6 @@ pub fn create_fuzzy_selector_callback() -> SelectorCallback {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_parse_var_args() {
-        let args = vec![
-            "title=Hello".to_string(),
-            "author=World".to_string(),
-            "empty=".to_string(),
-        ];
-        let map = parse_var_args(&args);
-        assert_eq!(map.get("title"), Some(&"Hello".to_string()));
-        assert_eq!(map.get("author"), Some(&"World".to_string()));
-        assert_eq!(map.get("empty"), Some(&String::new()));
-    }
 
     #[test]
     fn test_resolve_default_static() {

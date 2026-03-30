@@ -14,10 +14,10 @@ use std::time::Duration;
 
 use color_eyre::eyre::Result;
 use crossterm::{
-    event::{poll, read, Event},
+    event::{Event, poll, read},
     execute,
     terminal::{
-        disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
     },
 };
 use ratatui::prelude::*;
@@ -25,7 +25,7 @@ use ratatui::prelude::*;
 use mdvault_core::config::loader::ConfigLoader;
 use mdvault_core::index::IndexDb;
 use mdvault_core::paths::PathResolver;
-use mdvault_core::report::{build_dashboard, DashboardOptions};
+use mdvault_core::report::{DashboardOptions, build_dashboard};
 
 use app::DashboardApp;
 use event::map_key_event;
@@ -100,12 +100,11 @@ fn run_app(
     loop {
         terminal.draw(|frame| ui::draw(frame, &app))?;
 
-        if poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = read()? {
-                if let Some(msg) = map_key_event(&app, key) {
-                    app.update(msg);
-                }
-            }
+        if poll(Duration::from_millis(100))?
+            && let Event::Key(key) = read()?
+            && let Some(msg) = map_key_event(&app, key)
+        {
+            app.update(msg);
         }
 
         if app.should_quit {
