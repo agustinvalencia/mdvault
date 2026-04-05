@@ -30,9 +30,9 @@ fn template_lua_typedef_requires_title_in_batch_mode() {
 
     // Create Lua typedef with title field (core = true, prompt set, required = true)
     write(
-        &typedefs_dir.join("project_resource.lua"),
+        &typedefs_dir.join("resource.lua"),
         r#"return {
-    name = "project_resource",
+    name = "resource",
     description = "Resource specific to one project",
     output = "Projects/{{project}}/resources/{{title|slugify}}.md",
     schema = {
@@ -45,10 +45,10 @@ fn template_lua_typedef_requires_title_in_batch_mode() {
 
     // Create template that references the Lua typedef
     write(
-        &templates_dir.join("project_resource.md"),
+        &templates_dir.join("resource.md"),
         r#"---
-type: project_resource
-lua: project_resource.lua
+type: resource
+lua: resource.lua
 ---
 
 # {{title}}
@@ -86,7 +86,7 @@ macros_dir = "{{{{vault_root}}}}/.mdvault/macros"
         .arg(&cfg_path)
         .arg("new")
         .arg("--template")
-        .arg("project_resource")
+        .arg("resource")
         .arg("--batch")
         .arg("--var")
         .arg("project=test-project");
@@ -107,9 +107,9 @@ fn template_lua_typedef_title_provided_works() {
 
     // Create Lua typedef with title field (core = true, prompt set, required = true)
     write(
-        &typedefs_dir.join("project_resource.lua"),
+        &typedefs_dir.join("resource.lua"),
         r#"return {
-    name = "project_resource",
+    name = "resource",
     description = "Resource specific to one project",
     output = "Projects/{{project}}/resources/{{title|slugify}}.md",
     schema = {
@@ -122,10 +122,10 @@ fn template_lua_typedef_title_provided_works() {
 
     // Create template that references the Lua typedef
     write(
-        &templates_dir.join("project_resource.md"),
+        &templates_dir.join("resource.md"),
         r#"---
-type: project_resource
-lua: project_resource.lua
+type: resource
+lua: resource.lua
 ---
 
 # {{title}}
@@ -163,7 +163,7 @@ macros_dir = "{{{{vault_root}}}}/.mdvault/macros"
         .arg(&cfg_path)
         .arg("new")
         .arg("--template")
-        .arg("project_resource")
+        .arg("resource")
         .arg("My Test Resource") // Title as positional arg
         .arg("--batch")
         .arg("--var")
